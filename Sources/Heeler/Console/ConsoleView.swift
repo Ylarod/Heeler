@@ -36,6 +36,11 @@ struct ConsoleView: View {
     /// The last list tab any window picked: where a new window, or a
     /// relaunch that restored no scene state, starts.
     @AppStorage("console.last-list-tab") private var lastListTab: ConsoleTab = .agents
+    /// The list tab this window shows, once it has picked one here. The
+    /// tab bar reads it back within the tap that set it, and the two
+    /// storages above can still answer with the old tab then: the bar
+    /// reverted to it and then jumped forward again.
+    @State private var listTab: ConsoleTab?
     @State private var isHostsTabSelected = false
     @State private var isSettingsTabSelected = false
     @State private var isStartingTerminal = false
@@ -264,12 +269,13 @@ struct ConsoleView: View {
             get: {
                 if isHostsTabSelected { return .hosts }
                 if isSettingsTabSelected { return .settings }
-                return ConsoleTab(rawValue: sceneListTab) ?? lastListTab
+                return listTab ?? ConsoleTab(rawValue: sceneListTab) ?? lastListTab
             },
             set: { tab in
                 isHostsTabSelected = tab == .hosts
                 isSettingsTabSelected = tab == .settings
                 guard tab.isList else { return }
+                listTab = tab
                 sceneListTab = tab.rawValue
                 lastListTab = tab
             })
