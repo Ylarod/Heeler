@@ -634,7 +634,8 @@ struct ConsoleView: View {
                     isCovered: isStartingAgent || isStartingTerminal
                         || connectionDetailRequest != nil || isShowingHostIssues
                         || isPresentingOverConsole,
-                    inputMode: inputMode.mode)
+                    inputMode: inputMode.mode,
+                    navigationAnchor: agentsListAnchor)
             },
             titles: ConsoleCommandTitles(
                 listsTerminals: currentTab == .terminals,
@@ -716,6 +717,15 @@ struct ConsoleView: View {
         guard let presented = sceneWindow?.window?.rootViewController?.presentedViewController
         else { return false }
         return !(presented is UISearchController)
+    }
+
+    /// Where previous and next start from off the Agents list: the Agent
+    /// it keeps, on stage under Hosts or Settings or parked under Terminals.
+    private var agentsListAnchor: ConsoleAgent.ID? {
+        guard currentTab != .agents else { return nil }
+        if shownListTab == .agents { return notificationRouter.path.last }
+        if case .agent(let id) = rememberedSelections[.agents] { return id }
+        return nil
     }
 
     private func selectAgent(_ id: ConsoleAgent.ID) {
