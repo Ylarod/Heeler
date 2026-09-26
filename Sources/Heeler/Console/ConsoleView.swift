@@ -316,6 +316,9 @@ struct ConsoleView: View {
             },
             set: { tab in
                 let leavingList = shownListTab
+                // A search field keeping first responder through the switch
+                // can leave the arriving tab blank; its query stays.
+                if tab != currentTab { focusedSearch = nil }
                 isHostsTabSelected = tab == .hosts
                 isSettingsTabSelected = tab == .settings
                 guard tab.isList else { return }
