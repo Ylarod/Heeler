@@ -221,6 +221,24 @@ struct TerminalListProjectionTests {
         #expect(issue.message == "mini: Could not sync this Host. Retrying…")
         #expect(issue.sectionMessage == "Could not sync this Host. Retrying…")
     }
+
+    @Test func workspaceHeadersCountOneShellInTheSingular() throws {
+        let host = Host.fixture()
+        let cards = projection(
+            hosts: [host],
+            terminals: [
+                terminal(host: host, paneID: "only", workspaceID: "w1"),
+                terminal(host: host, paneID: "first", workspaceID: "w2"),
+                terminal(host: host, paneID: "second", workspaceID: "w2", tabPosition: 2),
+            ],
+            collapsedWorkspaces: [TerminalWorkspaceGroup.ID(hostID: host.id, workspaceID: "w2")]
+        ).workspaces()
+        #expect(
+            cards.map(\.headerAccessibilityValue) == [
+                "1 terminal, Expanded", "2 terminals, Collapsed",
+            ])
+        #expect(TerminalCount.text(0) == "0 terminals")
+    }
 }
 
 @MainActor
@@ -354,3 +372,4 @@ struct TerminalRowPresentationTests {
         #expect(row.message == "Loading Terminals from studio…")
     }
 }
+

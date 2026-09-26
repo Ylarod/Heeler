@@ -74,6 +74,18 @@ struct TerminalWorkspaceGroup: Identifiable, Equatable {
     let isCollapsed: Bool
 
     var id: ID { ID(hostID: hostID, workspaceID: workspaceID) }
+
+    /// What VoiceOver hears for the card's header.
+    var headerAccessibilityValue: String {
+        "\(TerminalCount.text(terminals.count)), \(isCollapsed ? "Collapsed" : "Expanded")"
+    }
+}
+
+/// A count of shells as the Terminals list words it.
+enum TerminalCount {
+    static func text(_ count: Int) -> String {
+        count == 1 ? "1 terminal" : "\(count) terminals"
+    }
 }
 
 /// One Host section of the By Host presentation.

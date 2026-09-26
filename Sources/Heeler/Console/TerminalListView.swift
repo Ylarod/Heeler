@@ -569,9 +569,7 @@ private struct TerminalWorkspaceHeader: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             showsHost ? "\(workspace.title), \(workspace.hostName)" : workspace.title)
-        .accessibilityValue(
-            "\(workspace.terminals.count) terminals, \(workspace.isCollapsed ? "Collapsed" : "Expanded")"
-        )
+        .accessibilityValue(workspace.headerAccessibilityValue)
         .accessibilityHint(
             workspace.isCollapsed ? "Expands this Workspace." : "Collapses this Workspace.")
         .accessibilityAddTraits(.isHeader)
@@ -596,7 +594,7 @@ private struct TerminalHostHeader: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if group.isCollapsed, group.terminalCount > 0 {
-                    Text(group.terminalCount == 1 ? "1 terminal" : "\(group.terminalCount) terminals")
+                    Text(TerminalCount.text(group.terminalCount))
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 7)
