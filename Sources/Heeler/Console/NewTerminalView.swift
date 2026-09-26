@@ -108,6 +108,13 @@ struct NewTerminalView: View {
                     }
                 }
             }
+            // The last footer ends clear of the sheet's rounded corners
+            // when the form fits it.
+            .contentMargins(.bottom, 20, for: .scrollContent)
+            // A handful of rows, which a full form would leave a third
+            // empty. The directory browser is a sheet of its own, so a
+            // fitted form costs it no room.
+            .consoleSheetPage()
             .navigationTitle("New Terminal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
