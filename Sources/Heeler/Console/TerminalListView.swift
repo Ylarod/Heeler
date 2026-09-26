@@ -240,6 +240,9 @@ struct TerminalListView: View {
     private func terminalRow(_ terminal: ConsoleTerminal, showsTab: Bool) -> some View {
         NavigationLink(value: ConsoleSelection.terminal(terminal.id)) {
             TerminalRowView(terminal: terminal, showsTab: showsTab)
+                // Across the row, as an Agent's card is: the context menu
+                // lifts a card as wide as the row it measures.
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .modifier(ConsoleRowSelectionContent())
         }
         .hoverEffect(.highlight)

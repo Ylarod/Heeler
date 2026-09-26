@@ -373,3 +373,16 @@ struct TerminalRowPresentationTests {
     }
 }
 
+@Suite("Console row lift")
+struct ConsoleRowLiftTests {
+    @Test func liftedCardIsTheRowPaddedAsACardPadsItsRows() {
+        // A 320-point sidebar's card row: 256 points of content, a 288-point card.
+        #expect(ConsoleRowLift.cardWidth(rowWidth: 256) == 288)
+        #expect(ConsoleRowLift.cardWidth(rowWidth: 376) == 408)
+    }
+
+    @Test func anUnmeasuredRowLiftsTheIdealSidebarsCard() {
+        #expect(ConsoleRowLift.cardWidth(rowWidth: nil) == ConsoleRowLift.fallbackWidth)
+        #expect(ConsoleRowLift.cardWidth(rowWidth: 0) == ConsoleRowLift.fallbackWidth)
+    }
+}

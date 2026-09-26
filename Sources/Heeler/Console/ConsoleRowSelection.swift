@@ -200,11 +200,10 @@ final class ListRowFocusHaloView: UIView {
 /// over the glass and past the sidebar's edge. The sidebar lifts a card of
 /// the row instead; compact width keeps the system's lifted row.
 struct ConsoleRowContextMenu<MenuItems: View, Preview: View>: ViewModifier {
-    private static var previewWidth: CGFloat { 340 }
-
     private let menuItems: MenuItems
     private let preview: Preview
     @Environment(\.isSidebarColumn) private var isSidebarColumn
+    @State private var rowWidth: CGFloat?
 
     init(@ViewBuilder menuItems: () -> MenuItems, @ViewBuilder preview: () -> Preview) {
         self.menuItems = menuItems()
@@ -213,17 +212,47 @@ struct ConsoleRowContextMenu<MenuItems: View, Preview: View>: ViewModifier {
 
     func body(content: Content) -> some View {
         if isSidebarColumn {
-            content.contextMenu {
-                menuItems
-            } preview: {
-                preview
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .frame(width: Self.previewWidth, alignment: .leading)
-                    .background(Color(uiColor: .secondarySystemGroupedBackground))
-            }
+            content
+                // Measured from a background: reading the row's own
+                // geometry drops the list-row background and focus halo
+                // an Agent row carries.
+                .background {
+                    Color.clear.onGeometryChange(for: CGFloat.self) { $0.size.width } action: {
+                        rowWidth = $0
+                    }
+                }
+                .contextMenu {
+                    menuItems
+                } preview: {
+                    preview
+                        .padding(.horizontal, ConsoleRowLift.padding)
+                        .padding(.vertical, 12)
+                        // Narrower when it must be: the system caps a
+                        // preview's width, and a fixed frame past the cap
+                        // would clip the row's ends.
+                        .frame(
+                            idealWidth: ConsoleRowLift.cardWidth(rowWidth: rowWidth),
+                            maxWidth: ConsoleRowLift.cardWidth(rowWidth: rowWidth),
+                            alignment: .leading)
+                        .background(Color(uiColor: .secondarySystemGroupedBackground))
+                }
         } else {
             content.contextMenu { menuItems }
         }
+    }
+}
+
+/// The card a row lifts: its content, at the row's width, inset as a card
+/// insets its rows, so the lifted card is the resting one up to the widest
+/// preview the system allows (about 344pt on an iPad in landscape).
+enum ConsoleRowLift {
+    static let padding: CGFloat = 16
+    /// Until the row has been measured, the card of a sidebar at its ideal
+    /// width.
+    static let fallbackWidth: CGFloat = 340
+
+    static func cardWidth(rowWidth: CGFloat?) -> CGFloat {
+        guard let rowWidth, rowWidth > 0 else { return fallbackWidth }
+        return rowWidth + 2 * padding
     }
 }
