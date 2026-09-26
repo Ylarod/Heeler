@@ -262,6 +262,9 @@ struct AgentTerminalView: View {
     @State private var mountedWindow = WindowReference()
     @Environment(\.detailTopChromeInset) private var topChromeInset
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
+    /// The window's own controls over this screen's top-leading corner, on
+    /// a windowed iPad; see `onWindowControlsHeightChange`.
+    @State private var windowControlsHeight: CGFloat = 0
     /// Nil outside a scene root, where this screen always holds its Host's
     /// terminal channel.
     @Environment(\.agentSceneRouting) private var sceneRouting
@@ -1019,7 +1022,8 @@ struct AgentTerminalView: View {
         // The navigation bar remains present only as the owner of the status
         // bar appearance. Its content stays hidden, while this inset keeps
         // terminal output below the system clock.
-        .padding(.top, max(statusBarInset, topChromeInset))
+        .padding(.top, max(statusBarInset, topChromeInset, windowControlsHeight))
+        .onWindowControlsHeightChange { windowControlsHeight = $0 }
         .background {
             // Keyboard geometry and the status bar inset follow this view's
             // own window, not whichever window of the app is key.

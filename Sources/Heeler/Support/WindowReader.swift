@@ -114,3 +114,28 @@ extension EnvironmentValues {
     /// root view. Nil outside a scene root (previews, hosted test views).
     @Entry var sceneWindow: WindowReference? = nil
 }
+
+extension View {
+    /// Reports how far down this view's top-leading corner the window's own
+    /// controls reach. iPadOS draws a windowed app's close and resize
+    /// controls over its content, outside the safe area, so a screen with no
+    /// navigation bar of its own has to clear them itself. Zero before
+    /// iOS 26 and on iPhone.
+    func onWindowControlsHeightChange(_ action: @escaping (CGFloat) -> Void) -> some View {
+        modifier(WindowControlsHeightReader(action: action))
+    }
+}
+
+private struct WindowControlsHeightReader: ViewModifier {
+    let action: (CGFloat) -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.onGeometryChange(
+                for: CGFloat.self, of: { $0.containerCornerInsets.topLeading.height },
+                action: action)
+        } else {
+            content
+        }
+    }
+}

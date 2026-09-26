@@ -52,6 +52,9 @@ struct ShellTerminalView: View {
     @State private var mountedWindow = WindowReference()
     @Environment(\.detailTopChromeInset) private var topChromeInset
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
+    /// The window's own controls over this screen's top-leading corner, on
+    /// a windowed iPad; see `onWindowControlsHeightChange`.
+    @State private var windowControlsHeight: CGFloat = 0
 
     /// The status bar height of the window this terminal is in; see
     /// `AgentTerminalView.statusBarInset`.
@@ -229,7 +232,8 @@ struct ShellTerminalView: View {
             // No title bar, as on Agent detail: the navigation bar stays
             // only as the owner of the status bar appearance, and this inset
             // keeps terminal output below the system clock.
-            .padding(.top, max(statusBarInset, topChromeInset))
+            .padding(.top, max(statusBarInset, topChromeInset, windowControlsHeight))
+            .onWindowControlsHeightChange { windowControlsHeight = $0 }
             .background {
                 // Keyboard geometry and the status bar inset follow this
                 // view's own window, not whichever window of the app is key.

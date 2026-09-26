@@ -80,6 +80,8 @@ Entries reference the issue that motivated them.
 - Rotating a Max iPhone or resizing an iPad window no longer rebuilds an
   open sheet such as Start Agent, which dropped what was typed in it and
   any page pushed inside it.
+- In a narrow iPad window, an Agent's terminal and a shell start below the
+  window's close and resize controls instead of under them.
 
 ## [0.1.10] - 2026-09-23
 
