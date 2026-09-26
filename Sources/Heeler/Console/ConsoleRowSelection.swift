@@ -74,12 +74,32 @@ struct ListRowFocusHalo<S: Shape>: UIViewRepresentable {
 
     func updateUIView(_ view: ListRowFocusHaloView, context: Context) {
         let shape = shape
-        view.makePath = { shape.path(in: $0).cgPath }
+        view.outline = .shape { shape.path(in: $0).cgPath }
+    }
+}
+
+/// Fits a grouped list row's keyboard focus ring to the corners its card
+/// rounds on the cell. The cell's own ring has a small radius of its own,
+/// so on a card's first and last rows it overhangs the card's corners.
+struct ListRowCellFocusHalo: UIViewRepresentable {
+    func makeUIView(context: Context) -> ListRowFocusHaloView {
+        ListRowFocusHaloView()
+    }
+
+    func updateUIView(_ view: ListRowFocusHaloView, context: Context) {
+        view.outline = .cellCorners
     }
 }
 
 final class ListRowFocusHaloView: UIView {
-    var makePath: ((CGRect) -> CGPath)? {
+    enum Outline {
+        /// A shape laid out in this view's bounds.
+        case shape((CGRect) -> CGPath)
+        /// The corners the cell's section rounds.
+        case cellCorners
+    }
+
+    var outline: Outline? {
         didSet { setNeedsLayout() }
     }
 
@@ -123,12 +143,20 @@ final class ListRowFocusHaloView: UIView {
 
     /// The halo takes the cell's coordinate space.
     private func applyHalo() {
-        guard window != nil, let makePath, let cell, !bounds.isEmpty else { return }
-        let origin = convert(bounds.origin, to: cell)
-        var transform = CGAffineTransform(translationX: origin.x, y: origin.y)
-        guard let path = makePath(CGRect(origin: .zero, size: bounds.size))
-            .copy(using: &transform)
-        else { return }
+        guard window != nil, let outline, let cell, !bounds.isEmpty else { return }
+        let frame = convert(bounds, to: cell)
+        let path: CGPath
+        switch outline {
+        case .shape(let makePath):
+            var transform = CGAffineTransform(translationX: frame.minX, y: frame.minY)
+            guard
+                let placed = makePath(CGRect(origin: .zero, size: frame.size))
+                    .copy(using: &transform)
+            else { return }
+            path = placed
+        case .cellCorners:
+            path = Self.cornerPath(of: cell, in: frame)
+        }
         if shapedCell !== cell { releaseHalo() }
         let effect = UIFocusHaloEffect(path: UIBezierPath(cgPath: path))
         cell.focusEffect = effect
@@ -146,6 +174,24 @@ final class ListRowFocusHaloView: UIView {
         }
         shapedCell = nil
         shapedEffect = nil
+    }
+
+    /// `rect` with the cell's corners. An inset grouped list rounds a
+    /// card's first and last rows through the cell's corner configuration
+    /// (read here in layout, so UIKit lays this view out again when the
+    /// cell's corners change), and before iOS 26 through its layer.
+    private static func cornerPath(of cell: UICollectionViewCell, in rect: CGRect) -> CGPath {
+        func radius(_ corner: UIRectCorner, _ mask: CACornerMask) -> CGFloat {
+            if #available(iOS 26.0, *) { return cell.effectiveRadius(corner: corner) }
+            return cell.layer.maskedCorners.contains(mask) ? cell.layer.cornerRadius : 0
+        }
+        return UnevenRoundedRectangle(
+            topLeadingRadius: radius(.topLeft, .layerMinXMinYCorner),
+            bottomLeadingRadius: radius(.bottomLeft, .layerMinXMaxYCorner),
+            bottomTrailingRadius: radius(.bottomRight, .layerMaxXMaxYCorner),
+            topTrailingRadius: radius(.topRight, .layerMaxXMinYCorner),
+            style: .continuous
+        ).path(in: rect).cgPath
     }
 }
 

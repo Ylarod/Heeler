@@ -198,14 +198,12 @@ struct TerminalListView: View {
             if !workspace.isCollapsed {
                 ForEach(workspace.terminals) {
                     terminalRow($0, showsTab: workspace.terminals.count > 1)
-                        .listRowBackground(
-                            ListCard.fill(inSidebar: isSidebarColumn).overlay(
-                                isShownSelected($0) ? ConsoleRowSelection.fill : Color.clear))
+                        .listRowBackground(cardSlice(isSelected: isShownSelected($0)))
                 }
                 // Every card ends in New Terminal, clear of the header's
                 // collapse control: a mistap there would open a real tab.
                 newTerminalRow(workspace)
-                    .listRowBackground(ListCard.fill(inSidebar: isSidebarColumn))
+                    .listRowBackground(cardSlice(isSelected: false))
             }
         } header: {
             TerminalWorkspaceHeader(
@@ -220,6 +218,14 @@ struct TerminalListView: View {
                         bottom: Self.workspaceHeaderPadding, trailing: 0))
         }
         .listSectionSpacing(.custom(Self.workspaceSpacing))
+    }
+
+    /// A By Workspace row's slice of its card. The list rounds the card's
+    /// ends on the cells, so the focus ring takes the cell's corners.
+    private func cardSlice(isSelected: Bool) -> some View {
+        ListCard.fill(inSidebar: isSidebarColumn)
+            .overlay(isSelected ? ConsoleRowSelection.fill : Color.clear)
+            .background { if isSidebarColumn { ListRowCellFocusHalo() } }
     }
 
     private func isFolded(_ group: TerminalHostGroup) -> Bool {
