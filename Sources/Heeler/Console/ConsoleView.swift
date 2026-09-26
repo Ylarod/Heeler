@@ -473,6 +473,7 @@ struct ConsoleView: View {
                             \.detailTopChromeInset,
                             horizontalSizeClass == .regular ? detailTopInset(for: tab) : 0)
                         .environment(\.detailSurfaceEdges, detailSurfaceEdges(for: tab))
+                        .environment(\.revealDetailSidebar, sidebarReveal(for: tab))
                         .background {
                             if horizontalSizeClass == .regular {
                                 NavigationBarTopReader { detailBar = $0 }
@@ -838,6 +839,21 @@ struct ConsoleView: View {
             || UIDevice.current.userInterfaceIdiom != .pad
             || splitVisibility(for: currentTab).isSidebarVisible != true
             || stagedTerminalChromeScheme.map { $0 == colorScheme } ?? true
+    }
+
+    /// What an edge swipe on an iPad's detail does instead of going back:
+    /// the detail stands beside its list there, so the swipe brings the
+    /// sidebar out rather than leaving the screen. Nil on an iPhone and in
+    /// a compact window, where the detail is pushed and the swipe goes back.
+    private func sidebarReveal(for tab: ConsoleTab) -> (@MainActor @Sendable () -> Void)? {
+        guard horizontalSizeClass == .regular, UIDevice.current.userInterfaceIdiom == .pad
+        else { return nil }
+        return { [splitVisibilities = $splitVisibilities, reduceMotion] in
+            withAnimation(reduceMotion ? nil : .snappy) {
+                splitVisibilities.wrappedValue[tab, default: ConsoleSplitVisibilityState()]
+                    .showSidebar()
+            }
+        }
     }
 
     /// The chrome scheme of the terminal the detail shows, if any.
@@ -1725,6 +1741,10 @@ extension EnvironmentValues {
     /// draws its own selection, focus ring, and lifted rows, sits on the
     /// sidebar's glass, and keeps its search field in view.
     @Entry var isSidebarColumn = false
+    /// Brings out the sidebar beside an iPad's detail column. A detail's
+    /// edge swipe calls it in place of going back; nil where the detail has
+    /// no sidebar to show.
+    @Entry var revealDetailSidebar: (@MainActor @Sendable () -> Void)? = nil
 }
 
 /// A navigation bar's vertical extent in its column's own coordinates.

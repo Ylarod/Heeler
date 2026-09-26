@@ -258,6 +258,7 @@ struct AgentTerminalView: View {
     /// The scene root's window, known before this screen first renders.
     @Environment(\.sceneWindow) private var sceneWindow
     @Environment(\.detailCrossfade) private var detailCrossfade
+    @Environment(\.revealDetailSidebar) private var revealDetailSidebar
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     @Environment(\.detailTopChromeInset) private var topChromeInset
@@ -973,7 +974,9 @@ struct AgentTerminalView: View {
         // Keep the edge gesture below the input chrome and tools dock so
         // its transparent hit region cannot intercept their leading keys.
         .overlay(alignment: .leading) {
-            AgentEdgeBackGesture { dismiss() }
+            AgentEdgeBackGesture {
+                if let revealDetailSidebar { revealDetailSidebar() } else { dismiss() }
+            }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             attachmentStatus
@@ -1774,7 +1777,8 @@ struct AgentTerminalView: View {
     }
 }
 
-/// Preserve edge-swipe navigation after the title bar is removed.
+/// Preserve edge-swipe navigation after the title bar is removed. Beside
+/// an iPad's sidebar the swipe brings the sidebar out instead of going back.
 private struct AgentEdgeBackGesture: View {
     let dismiss: @MainActor () -> Void
 

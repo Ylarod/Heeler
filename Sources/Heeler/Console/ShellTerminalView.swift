@@ -52,6 +52,7 @@ struct ShellTerminalView: View {
     @State private var mountedWindow = WindowReference()
     @Environment(\.detailTopChromeInset) private var topChromeInset
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
+    @Environment(\.revealDetailSidebar) private var revealDetailSidebar
     /// The window's own controls over this screen's top-leading corner, on
     /// a windowed iPad; see `onWindowControlsHeightChange`.
     @State private var windowControlsHeight: CGFloat = 0
@@ -191,7 +192,7 @@ struct ShellTerminalView: View {
             // gesture's hit region, including their leftmost buttons.
             .overlay(alignment: .leading) {
                 ShellTerminalEdgeBackGesture(isEnabled: !isReturning) {
-                    await goBack()
+                    if let revealDetailSidebar { revealDetailSidebar() } else { await goBack() }
                 }
             }
             // Always present, keyboard up or down: with no title bar, its
@@ -643,6 +644,8 @@ struct ShellTerminalKeysDock: View {
     }
 }
 
+/// Goes back on an edge swipe, or beside an iPad's sidebar brings the
+/// sidebar out instead.
 private struct ShellTerminalEdgeBackGesture: View {
     let isEnabled: Bool
     let onBack: @MainActor () async -> Void
