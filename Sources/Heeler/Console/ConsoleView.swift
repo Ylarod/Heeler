@@ -207,6 +207,8 @@ struct ConsoleView: View {
                     presentation: detail,
                     host: host,
                     catalog: hosts,
+                    sheetPresentation: ConsoleSheetPresentation(
+                        horizontalSizeClass: horizontalSizeClass),
                     isRetryInFlight: manualReconnectInFlightHostIDs.contains(host.id)
                 ) {
                     // Holds the sheet open through the retry's dial, which a
@@ -1256,9 +1258,11 @@ struct ConsoleView: View {
     }
 
     private var hostIssuesSheet: some View {
-        ConsoleHostIssuesSheet(
+        let sheetPresentation = ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)
+        return ConsoleHostIssuesSheet(
             issues: filteredHostIssues,
             explained: hostIssuesSheetExplained,
+            sheetPresentation: sheetPresentation,
             onOpenHost: { id in
                 isShowingHostIssues = false
                 presentHosts(id)
@@ -1271,6 +1275,7 @@ struct ConsoleView: View {
                     presentation: detail,
                     host: host,
                     catalog: hosts,
+                    sheetPresentation: sheetPresentation,
                     isRetryInFlight: manualReconnectInFlightHostIDs.contains(id)
                 ) {
                     // As in the single Host's sheet: stays through the dial.

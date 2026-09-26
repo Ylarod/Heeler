@@ -112,17 +112,21 @@ struct ConsoleHostIssueList: View {
     }
 }
 
-/// The Hosts behind the flat lists' summary, in a bottom sheet. A Host that
-/// cannot connect pushes the connection detail its own row would open; any
-/// other navigable condition opens the Host in the Hosts tab.
+/// The Hosts behind the flat lists' summary, in a sheet. A Host that cannot
+/// connect pushes the connection detail its own row would open; any other
+/// navigable condition opens the Host in the Hosts tab.
 struct ConsoleHostIssuesSheet<Detail: View>: View {
     let issues: [ConsoleHostStatusPresentation]
     /// Hosts the connection detail explains, which push it.
     let explained: Set<Host.ID>
+    /// The presenting Console's: inside the sheet, the size class describes
+    /// the sheet, not the screen.
+    let sheetPresentation: ConsoleSheetPresentation
     let onOpenHost: (Host.ID) -> Void
     @ViewBuilder let detail: (Host.ID) -> Detail
 
     @State private var path: [Host.ID] = []
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -147,12 +151,20 @@ struct ConsoleHostIssuesSheet<Detail: View>: View {
             }
             // Rows start under the title, not a section header's gap below.
             .contentMargins(.top, 4, for: .scrollContent)
+            .consoleSheetPage()
             .navigationTitle(ConsoleHostIssueSummary(issues: issues)?.title ?? "Hosts")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                // A form sheet has no grabber to pull down.
+                if sheetPresentation == .form {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { dismiss() }
+                    }
+                }
+            }
             .navigationDestination(for: Host.ID.self) { detail($0) }
         }
-        .presentationDetents([.fraction(0.6), .large])
-        .presentationDragIndicator(.visible)
+        .modifier(ConsoleStatusSheetPresentationModifier(presentation: sheetPresentation))
         // A Host that connects again has nothing left to explain.
         .onChange(of: explained) { _, explained in
             path.removeAll { !explained.contains($0) }
