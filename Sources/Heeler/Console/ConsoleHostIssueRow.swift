@@ -136,14 +136,12 @@ struct ConsoleHostIssuesSheet<Detail: View>: View {
                         HStack {
                             row(issue)
                             // Drawn as the list draws the pushing rows' own,
-                            // so every row in the sheet discloses alike: a
-                            // hierarchical style takes the glass sheet's
-                            // vibrancy as theirs does, and theirs sits this
-                            // far in from the row's edge.
+                            // so every row in the sheet discloses alike, and
+                            // theirs sits this far in from the row's edge.
                             Image(systemName: "chevron.forward")
                                 .font(.body.weight(.semibold))
                                 .imageScale(.small)
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(disclosureInk)
                                 .padding(.trailing, 1.5)
                                 .accessibilityHidden(true)
                         }
@@ -176,6 +174,19 @@ struct ConsoleHostIssuesSheet<Detail: View>: View {
         .onChange(of: explained) { _, explained in
             path.removeAll { !explained.contains($0) }
         }
+    }
+
+    /// The ink of the list's own disclosure chevrons, measured against
+    /// them. The list draws `tertiaryLabel`, which an opaque form sheet
+    /// shows as is; a glass sheet renders it vibrant, darker in light mode
+    /// than any plain label style, so there a translucent label matches.
+    private var disclosureInk: Color {
+        guard sheetPresentation != .form else { return Color(uiColor: .tertiaryLabel) }
+        return Color(
+            uiColor: UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(white: 1, alpha: 0.28) : UIColor(white: 0, alpha: 0.36)
+            })
     }
 
     private func row(_ issue: ConsoleHostStatusPresentation) -> some View {
