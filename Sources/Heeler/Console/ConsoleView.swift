@@ -89,6 +89,10 @@ struct ConsoleView: View {
     @State private var isTerminalSearchPresented = false
     /// Lists whose search an iPad's sidebar has open at its foot.
     @State private var openSidebarSearches: Set<ConsoleTab> = []
+    /// The list the sidebar's switch has picked while its thumb still
+    /// slides, before the tab follows.
+    @State private var switchingList: ConsoleTab?
+    @State private var listSwitchTask: Task<Void, Never>?
     /// The list whose search field has focus.
     @FocusState private var focusedSearch: ConsoleTab?
     @State private var commandRegistry = ConsoleCommandRegistry()
@@ -373,18 +377,45 @@ struct ConsoleView: View {
     }
 
     /// The sidebar's switch between the two lists, standing in for the tab
-    /// bar.
-    private var listSwitcher: some View {
+    /// bar. Each tab has its own, which a hidden tab leaves on the list it
+    /// switched to; it is rebuilt when its tab returns, so it does not
+    /// slide back to that tab's list in view.
+    private func listSwitcher(for tab: ConsoleTab) -> some View {
         Picker(
             "List",
-            selection: Binding(get: { shownListTab }, set: { switchList(to: $0) })
+            selection: Binding(get: { switchingList ?? tab }, set: { pickList($0) })
         ) {
             Text(ConsoleTab.agents.title).tag(ConsoleTab.agents)
             Text(ConsoleTab.terminals.title).tag(ConsoleTab.terminals)
         }
         .pickerStyle(.segmented)
         .fixedSize()
+        .id(shownListTab)
     }
+
+    /// Each tab's sidebar has its own switch, so switching tabs under a
+    /// sliding thumb swaps in the other tab's switch, already settled, and
+    /// cuts the slide short. The tab follows once the thumb lands.
+    private func pickList(_ tab: ConsoleTab) {
+        listSwitchTask?.cancel()
+        let leaving = currentTab
+        guard tab != leaving, !reduceMotion else {
+            switchingList = nil
+            switchList(to: tab)
+            return
+        }
+        switchingList = tab
+        listSwitchTask = Task { @MainActor in
+            try? await Task.sleep(for: Self.listSwitchSlide)
+            guard !Task.isCancelled else { return }
+            switchingList = nil
+            // Something else, a shortcut or a notification, moved on first.
+            if currentTab == leaving { switchList(to: tab) }
+        }
+    }
+
+    /// How long a segmented control's thumb takes to slide and settle.
+    private static let listSwitchSlide = Duration.milliseconds(350)
 
     private func switchList(to tab: ConsoleTab) {
         guard tab != currentTab else { return }
@@ -766,7 +797,7 @@ struct ConsoleView: View {
     private func toolbar(for tab: ConsoleTab) -> some ToolbarContent {
         if usesSidebarNavigation {
             // The list's menus sit at the sidebar's foot; see `sidebarFooter`.
-            ToolbarItem(placement: .principal) { listSwitcher }
+            ToolbarItem(placement: .principal) { listSwitcher(for: tab) }
         } else {
             if filtersByHost, !foldsHostFilter {
                 ToolbarItem(placement: .primaryAction) {
