@@ -79,16 +79,6 @@ struct ListRowFocusHalo<S: Shape>: UIViewRepresentable {
 }
 
 final class ListRowFocusHaloView: UIView {
-    /// The cell's own effect, from before any halo replaced it, which a
-    /// reused cell goes back to when it next holds a row without a halo.
-    private final class OriginalEffect {
-        let effect: UIFocusEffect?
-        init(_ effect: UIFocusEffect?) { self.effect = effect }
-    }
-
-    private static let originalEffects =
-        NSMapTable<UICollectionViewCell, OriginalEffect>.weakToStrongObjects()
-
     var makePath: ((CGRect) -> CGPath)? {
         didSet { setNeedsLayout() }
     }
@@ -140,20 +130,19 @@ final class ListRowFocusHaloView: UIView {
             .copy(using: &transform)
         else { return }
         if shapedCell !== cell { releaseHalo() }
-        // Recorded once per cell, before any halo: a row arriving in a
-        // reused cell can shape it before the leaving row lets go.
-        if Self.originalEffects.object(forKey: cell) == nil {
-            Self.originalEffects.setObject(OriginalEffect(cell.focusEffect), forKey: cell)
-        }
         let effect = UIFocusHaloEffect(path: UIBezierPath(cgPath: path))
         cell.focusEffect = effect
         shapedCell = cell
         shapedEffect = effect
     }
 
+    /// Hands the cell back to the system's ring, which UIKit fits to
+    /// whatever row the cell holds next each time it draws. Only while the
+    /// cell still has this view's halo: a row arriving in a reused cell can
+    /// shape it before the leaving row lets go.
     private func releaseHalo() {
         if let shapedCell, let shapedEffect, shapedCell.focusEffect === shapedEffect {
-            shapedCell.focusEffect = Self.originalEffects.object(forKey: shapedCell)?.effect
+            shapedCell.focusEffect = UIFocusEffect()
         }
         shapedCell = nil
         shapedEffect = nil
