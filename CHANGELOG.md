@@ -47,15 +47,17 @@ Entries reference the issue that motivated them.
   under the floating tab bar, each keeping its own selection and sidebar;
   in portrait a pick returns to the terminal alone, and swiping in from
   the terminal's left edge brings the list back out instead of closing the
-  terminal. The terminal reaches the top of the window, and the status bar
-  and tab bar take its colors, except beside a sidebar of the other
-  appearance, where a band in the app's colors keeps them legible. Sidebar
-  rows mark the selection and the keyboard focus with a quiet rounded fill
-  and ring instead of a blue band, and long-pressing one lifts a card of
-  it. An Agent opened from a notification or from a shell always shows on
-  the Agents tab. ⌘N opens New Terminal on the Terminals tab, and the menu
-  names each command for the tab on screen. A shell's loading, failure, and
-  closed states draw on the terminal's own background.
+  terminal. Where the tab bar leaves the list clear, as in landscape, the
+  list's title and buttons sit beside the tab bar under the status bar. The
+  terminal reaches the top of the window, and the status bar and tab bar
+  take its colors, except beside a sidebar of the other appearance, where a
+  band in the app's colors keeps them legible. Sidebar rows mark the
+  selection and the keyboard focus with a quiet rounded fill and ring
+  instead of a blue band, and long-pressing one lifts a card of it. An
+  Agent opened from a notification or from a shell always shows on the
+  Agents tab. ⌘N opens New Terminal on the Terminals tab, and the menu names
+  each command for the tab on screen. A shell's loading, failure, and closed
+  states draw on the terminal's own background.
 - On iPad, Hosts and Settings read in a centered column, a Host opened from
   another tab goes back with a button naming that tab, and a Host's status
   sheets and New Terminal open as centered forms sized to their content,

@@ -464,6 +464,11 @@ struct ConsoleView: View {
                         ideal: presentation.sidebarWidth.ideal,
                         max: presentation.sidebarWidth.maximum)
                     .toolbar { toolbar(for: tab) }
+                    .background {
+                        if presentation.usesRegularColumns {
+                            SidebarTabBarClearance(containerSize: geometry.size)
+                        }
+                    }
             } detail: {
                 // Every tab keeps its split view alive; only the selected one
                 // may mount the detail, or a terminal would attach twice.
