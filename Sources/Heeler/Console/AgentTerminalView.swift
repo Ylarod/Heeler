@@ -1030,10 +1030,14 @@ struct AgentTerminalView: View {
             .allowsHitTesting(false)
             .accessibilityHidden(true)
         }
-        .background(
+        // Through every safe-area region, not only the container's: SwiftUI
+        // can take the home-indicator inset for a keyboard's, and a
+        // container-only background then leaves it the app's own color.
+        .background {
             terminal.themes.selection(for: colorScheme)
-                .surfaceBackground(for: colorScheme),
-            ignoresSafeAreaEdges: surfaceEdges)
+                .surfaceBackground(for: colorScheme)
+                .ignoresSafeArea(.all, edges: surfaceEdges)
+        }
         .ignoresSafeArea(.container, edges: .top)
         .toolbarColorScheme(
             terminal.themes.selection(for: colorScheme)

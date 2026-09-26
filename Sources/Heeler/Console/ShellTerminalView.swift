@@ -240,11 +240,12 @@ struct ShellTerminalView: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }
-            .background(
+            // Through every safe-area region, as Agent detail's surface.
+            .background {
                 terminal.themes.selection(for: colorScheme)
-                    .surfaceBackground(for: colorScheme),
-                ignoresSafeAreaEdges: surfaceEdges
-            )
+                    .surfaceBackground(for: colorScheme)
+                    .ignoresSafeArea(.all, edges: surfaceEdges)
+            }
             .ignoresSafeArea(.container, edges: .top)
             .toolbarColorScheme(
                 terminal.themes.selection(for: colorScheme)
