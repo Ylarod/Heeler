@@ -142,8 +142,11 @@ struct SettingsView: View {
                     Text("About")
                 }
             }
+            .readableColumnPage()
             .navigationTitle("Settings")
         }
+        // Covers every pushed page too.
+        .readableColumn()
     }
 
     @ViewBuilder

@@ -162,6 +162,7 @@ struct HostListView: View {
                             }
                         }
                     }
+                    .readableColumnPage()
                 }
             }
             .navigationTitle("Hosts")
@@ -268,6 +269,8 @@ struct HostListView: View {
                 if let route = Self.requestedRoute(id, in: store) { path = [route] }
             }
         }
+        // Covers Host detail too.
+        .readableColumn()
     }
 
     private static func requestedRoute(_ id: Host.ID?, in store: HostStore) -> HostRoute? {

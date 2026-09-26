@@ -137,6 +137,7 @@ struct HostOnboardingView: View {
                 }
             }
         }
+        .readableColumnPage()
         .navigationTitle(store.host.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
