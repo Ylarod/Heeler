@@ -99,6 +99,33 @@ struct ConsoleCommandTests {
     }
 }
 
+@Suite("Console command titles")
+struct ConsoleCommandTitlesTests {
+    private func title(_ action: ConsoleCommandAction, _ titles: ConsoleCommandTitles) -> String? {
+        ConsoleCommandShortcut.all.first { $0.action == action }.map(titles.title(for:))
+    }
+
+    @Test func agentsTabKeepsTheTableTitles() {
+        let titles = ConsoleCommandTitles()
+        for shortcut in ConsoleCommandShortcut.all {
+            #expect(titles.title(for: shortcut) == shortcut.title)
+        }
+    }
+
+    @Test func terminalsTabNamesItsOwnSearchAndNew() {
+        let titles = ConsoleCommandTitles(listsTerminals: true)
+        #expect(title(.focusSearch, titles) == "Search Terminals")
+        #expect(title(.newAgent, titles) == "New Terminal")
+        #expect(title(.closeAgent, titles) == "Close Agent View")
+        #expect(title(.hosts, titles) == "Hosts")
+    }
+
+    @Test func shownShellNamesTheCloseCommandForIt() {
+        let titles = ConsoleCommandTitles(listsTerminals: true, showsShell: true)
+        #expect(title(.closeAgent, titles) == "Close Terminal View")
+    }
+}
+
 @MainActor
 @Suite("Console command scene registrations")
 struct ConsoleCommandRegistryTests {

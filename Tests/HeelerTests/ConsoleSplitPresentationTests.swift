@@ -273,6 +273,34 @@ struct ConsoleSplitPresentationTests {
         #expect(state.userVisibility == .all)
     }
 
+    @Test func portraitPickReturnsToTheDetailAlone() {
+        var state = ConsoleSplitVisibilityState()
+        state.update(from: portrait)
+        state.showSidebar()
+        #expect(state.isSidebarVisible == true)
+        state.selectionDidOpenDetail()
+        #expect(state.visibility == .detailOnly)
+        #expect(state.isSidebarVisible == false)
+        // Not a hide preference: landscape still shows both columns.
+        #expect(state.userVisibility == nil)
+        state.update(from: landscape)
+        #expect(state.visibility == .all)
+    }
+
+    @Test func pickKeepsTheSidebarWhereItIsShownByDefault() {
+        var state = ConsoleSplitVisibilityState()
+        state.update(from: landscape)
+        state.selectionDidOpenDetail()
+        #expect(state.visibility == .all)
+
+        var compact = ConsoleSplitVisibilityState()
+        compact.update(
+            from: ConsoleSplitPresentation(
+                horizontalSizeClass: .compact, size: CGSize(width: 390, height: 844)))
+        compact.selectionDidOpenDetail()
+        #expect(compact.visibility == .automatic)
+    }
+
     @Test(arguments: [CGSize.zero, CGSize(width: 0, height: 834), CGSize(width: 1194, height: 0)])
     func zeroSizedPassDoesNotSeedOrReplaceLayout(size: CGSize) {
         let invalid = ConsoleSplitPresentation(

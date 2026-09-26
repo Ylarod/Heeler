@@ -5,7 +5,9 @@ import SwiftUI
 /// grouped by Workspace or Host (#316), and one Search across both. Host
 /// management (#14) lives behind the toolbar button. Every tab is its own
 /// split view, but they share one selection and only the selected tab
-/// mounts the detail column, so a terminal is never attached twice.
+/// mounts the detail column, so a terminal is never attached twice. In
+/// regular width a list tab swaps its own last selection back in when it
+/// returns.
 struct ConsoleView: View {
     let hosts: HostStore
     let console: ConsoleStore
@@ -45,10 +47,14 @@ struct ConsoleView: View {
     @State private var isSettingsTabSelected = false
     @State private var isStartingTerminal = false
     @State private var terminalPresentation = TerminalListPresentationStore()
-    /// Where the detail column's navigation bar starts, in window
-    /// coordinates. In regular width that is just below the floating tab
-    /// bar; see `detailTopChromeInset`.
-    @State private var detailTopInset: CGFloat = 0
+    /// Where the detail column's navigation bar sits, from the column's top
+    /// edge. In regular width it starts just below the floating tab bar; see
+    /// `detailTopChromeInset`.
+    @State private var detailBar = NavigationBarBand()
+    /// Each list tab's last selection. In regular width both lists sit
+    /// beside their own detail, so a list tab comes back to what it showed
+    /// rather than to the other list's pick.
+    @State private var rememberedSelections: [ConsoleTab: ConsoleSelection] = [:]
     /// A request to open the Hosts tab on one Host's detail. Each request
     /// rebuilds the tab so it lands there even when that Host is already
     /// on its stack.
@@ -92,7 +98,10 @@ struct ConsoleView: View {
     /// later — an extra reflow, and a Connecting dialog that visibly jumps
     /// from the middle of the screen to the middle of the terminal.
     @State private var keyboardInset = TerminalKeyboardInset()
-    @State private var splitVisibility = ConsoleSplitVisibilityState()
+    /// Per list tab: hiding one list's sidebar leaves the other's alone, and
+    /// a split view coming back on screen cannot overwrite a hide made in
+    /// the other tab with its own stale state.
+    @State private var splitVisibilities: [ConsoleTab: ConsoleSplitVisibilityState] = [:]
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -154,7 +163,8 @@ struct ConsoleView: View {
             // StartAgentView brings its own NavigationStack.
             StartAgentView(hosts: hosts.hosts, console: console) { id in
                 // A fresh launch lands in its own terminal, exactly
-                // as tapping the new row would.
+                // as tapping the new row would, on the list that has it.
+                if currentTab != .agents { selectedTab.wrappedValue = .agents }
                 notificationRouter.path = [id]
             }
             .modifier(ConsoleSheetPresentationModifier(
@@ -246,6 +256,8 @@ struct ConsoleView: View {
             isSettingsTabSelected = false
             isStartingAgent = false
             isStartingTerminal = false
+            connectionDetailRequest = nil
+            isShowingHostIssues = false
         }
         // A Host opened on request belongs to that one visit: once the user
         // leaves the Hosts tab, it reopens on its list.
@@ -272,9 +284,14 @@ struct ConsoleView: View {
                 return listTab ?? ConsoleTab(rawValue: sceneListTab) ?? lastListTab
             },
             set: { tab in
+                // The list tab on screen, or under Hosts or Settings.
+                let leavingList = listTab ?? ConsoleTab(rawValue: sceneListTab) ?? lastListTab
                 isHostsTabSelected = tab == .hosts
                 isSettingsTabSelected = tab == .settings
                 guard tab.isList else { return }
+                if tab != leavingList, horizontalSizeClass == .regular {
+                    swapListSelection(from: leavingList, to: tab)
+                }
                 listTab = tab
                 sceneListTab = tab.rawValue
                 lastListTab = tab
@@ -282,6 +299,52 @@ struct ConsoleView: View {
     }
 
     private var currentTab: ConsoleTab { selectedTab.wrappedValue }
+
+    /// Parks the leaving list's selection and puts back the arriving one's,
+    /// if what it showed is still there. No crossfade: the detail column
+    /// belongs to the other tab's split view.
+    private func swapListSelection(from leaving: ConsoleTab, to arriving: ConsoleTab) {
+        rememberedSelections[leaving] = selectedItem.wrappedValue
+        switch rememberedSelections[arriving] {
+        case .agent(let id) where console.agents.contains(where: { $0.id == id }):
+            selectedTerminal = nil
+            notificationRouter.path = [id]
+        case .terminal(let id):
+            notificationRouter.path = []
+            selectedTerminal = console.terminals.first(where: { $0.id == id })
+        default:
+            notificationRouter.path = []
+            selectedTerminal = nil
+        }
+    }
+
+    private func splitVisibility(for tab: ConsoleTab) -> ConsoleSplitVisibilityState {
+        splitVisibilities[tab] ?? ConsoleSplitVisibilityState()
+    }
+
+    /// The split view's own reports land in its tab's state only.
+    private func splitVisibilityBinding(
+        for tab: ConsoleTab, presentation: ConsoleSplitPresentation
+    ) -> Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { splitVisibility(for: tab).visibility },
+            set: {
+                splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
+                    .systemDidChangeVisibility($0, presentation: presentation)
+            })
+    }
+
+    /// The floating tab bar follows the terminal on stage, as the status
+    /// bar does; it sits at the bottom, clear of it, in compact width.
+    private var tabBarChromeScheme: ColorScheme? {
+        horizontalSizeClass == .regular ? terminalStatusBarColorScheme : nil
+    }
+
+    /// Output starts below the detail's bar row, or below the whole bar
+    /// while it carries the Show Sidebar button.
+    private func detailTopInset(for tab: ConsoleTab) -> CGFloat {
+        splitVisibility(for: tab).isSidebarVisible == false ? detailBar.bottom : detailBar.top
+    }
 
     /// One tab's split view. A split view instead of a plain stack for the
     /// iPad's sake: regular width shows the list beside the Attach terminal;
@@ -294,11 +357,13 @@ struct ConsoleView: View {
                 horizontalSizeClass: horizontalSizeClass,
                 size: geometry.size,
                 safeAreaInsets: geometry.safeAreaInsets)
-            NavigationSplitView(columnVisibility: Binding(
-                get: { splitVisibility.visibility },
-                set: { splitVisibility.systemDidChangeVisibility($0, presentation: presentation) })
+            NavigationSplitView(
+                columnVisibility: splitVisibilityBinding(for: tab, presentation: presentation)
             ) {
                 sidebar(for: tab)
+                    // The sidebar column reports a compact size class even
+                    // beside a detail, so the lists are told outright.
+                    .environment(\.isSidebarColumn, presentation.usesRegularColumns)
                     .navigationTitle(tab.title)
                     .navigationSplitViewColumnWidth(
                         min: presentation.sidebarWidth.minimum,
@@ -312,10 +377,19 @@ struct ConsoleView: View {
                     detail(in: tab)
                         .environment(
                             \.detailTopChromeInset,
-                            horizontalSizeClass == .regular ? detailTopInset : 0)
+                            horizontalSizeClass == .regular ? detailTopInset(for: tab) : 0)
                         .background {
                             if horizontalSizeClass == .regular {
-                                NavigationBarTopReader { detailTopInset = $0 }
+                                NavigationBarTopReader { detailBar = $0 }
+                            }
+                        }
+                        .overlay(alignment: .top) {
+                            if horizontalSizeClass == .regular, !terminalOwnsTopEdge {
+                                Color(uiColor: .systemBackground)
+                                    .frame(height: detailBar.top)
+                                    .ignoresSafeArea(.container, edges: .top)
+                                    .allowsHitTesting(false)
+                                    .accessibilityHidden(true)
                             }
                         }
                 }
@@ -326,7 +400,17 @@ struct ConsoleView: View {
             // leaving screen to the arriving one; see `DetailCrossfade`.
             .environment(\.detailCrossfade, detailCrossfade)
             .onChange(of: presentation, initial: true) { _, presentation in
-                splitVisibility.update(from: presentation)
+                splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
+                    .update(from: presentation)
+            }
+        }
+        // Up to the window's top edge, as a split view alone in a window
+        // runs: a terminal then reaches under the status bar and the
+        // floating tab bar, while the columns' own bars still clear both.
+        .ignoresSafeArea(.container, edges: horizontalSizeClass == .regular ? .top : [])
+        .background {
+            if horizontalSizeClass == .regular {
+                ConsoleTabBarBridge(chromeScheme: tabBarChromeScheme)
             }
         }
         // A pushed detail owns the whole iPhone screen, as it did before
@@ -457,18 +541,28 @@ struct ConsoleView: View {
             registry: commandRegistry,
             context: {
                 .init(
-                    selection: notificationRouter.path.last ?? selectedTerminal.map {
-                        ConsoleAgent.ID(hostID: $0.hostID, paneID: $0.paneID)
-                    },
+                    // Hosts and Settings show no detail to act on.
+                    selection: !currentTab.isList
+                        ? nil
+                        : notificationRouter.path.last ?? selectedTerminal.map {
+                            ConsoleAgent.ID(hostID: $0.hostID, paneID: $0.paneID)
+                        },
                     agents: listPresentation.mode == .flat
                         ? filteredAgents.map(\.id)
                         : hostSections.filter { !$0.isCollapsed }.flatMap { $0.agents.map(\.id) },
                     isSearchFocused: focusedSearch != nil,
-                    isCovered: isHostsTabSelected || isSettingsTabSelected || isStartingAgent
-                        || isStartingTerminal || connectionDetailRequest != nil,
+                    // Tabs are navigation, not cover: only sheets are.
+                    isCovered: isStartingAgent || isStartingTerminal
+                        || connectionDetailRequest != nil || isShowingHostIssues,
                     inputMode: inputMode.mode)
             },
+            titles: ConsoleCommandTitles(
+                listsTerminals: currentTab == .terminals,
+                showsShell: currentTab.isList && notificationRouter.path.isEmpty
+                    && selectedTerminal != nil),
             navigate: { id in
+                // Agent shortcuts land on the Agents list from any tab.
+                if currentTab != .agents { selectedTab.wrappedValue = .agents }
                 guard id != notificationRouter.path.last else { return }
                 if commandRegistry.terminal?.isFocused == true
                     || commandRegistry.composer?.isFocused == true
@@ -481,6 +575,10 @@ struct ConsoleView: View {
                 // Hosts and Settings have no search; ⌘F lands on Agents.
                 let tab: ConsoleTab = currentTab == .terminals ? .terminals : .agents
                 selectedTab.wrappedValue = tab
+                // The field lives in the sidebar, which may be hidden.
+                if horizontalSizeClass == .regular {
+                    splitVisibilities[tab, default: ConsoleSplitVisibilityState()].showSidebar()
+                }
                 if tab == .terminals {
                     isTerminalSearchPresented = true
                 } else {
@@ -488,7 +586,14 @@ struct ConsoleView: View {
                 }
                 focusedSearch = tab
             },
-            newAgent: { isStartingAgent = true },
+            // ⌘N creates what the list on screen holds.
+            newAgent: {
+                if currentTab == .terminals {
+                    isStartingTerminal = true
+                } else {
+                    isStartingAgent = true
+                }
+            },
             settings: { selectedTab.wrappedValue = .settings },
             hosts: { presentHosts() },
             closeAgent: { clearSelection() })
@@ -515,6 +620,11 @@ struct ConsoleView: View {
                         selectTerminal(terminal)
                     }
                 case nil: clearSelection()
+                }
+                if selection != nil {
+                    withAnimation(reduceMotion ? nil : .snappy) {
+                        splitVisibilities[currentTab]?.selectionDidOpenDetail()
+                    }
                 }
             })
     }
@@ -560,6 +670,24 @@ struct ConsoleView: View {
     /// The split view owns the window's status-bar appearance on iPhone. A
     /// pushed terminal cannot reliably override it from the detail subtree.
     private var terminalStatusBarColorScheme: ColorScheme? {
+        terminalOwnsTopEdge ? stagedTerminalChromeScheme : nil
+    }
+
+    /// A terminal reaches the window's top edge unless the sidebar shares
+    /// that edge and the two disagree: the status bar spans both columns and
+    /// takes one scheme, so white text over a dark terminal would vanish
+    /// over a light sidebar. The detail then keeps the app's own band above
+    /// the terminal, the status bar and floating tab bar in it.
+    private var terminalOwnsTopEdge: Bool {
+        horizontalSizeClass != .regular
+            || splitVisibility(for: currentTab).isSidebarVisible != true
+            || stagedTerminalChromeScheme.map { $0 == colorScheme } ?? true
+    }
+
+    /// The chrome scheme of the terminal the detail shows, if any.
+    private var stagedTerminalChromeScheme: ColorScheme? {
+        // Hosts and Settings keep the selection but show no terminal.
+        guard currentTab.isList else { return nil }
         if selectedTerminal != nil {
             return terminal.themes.selection(for: colorScheme)
                 .chromeColorScheme(for: colorScheme)
@@ -648,13 +776,14 @@ struct ConsoleView: View {
             ConsoleEmptyDetailView(
                 presentation: ConsoleEmptyDetailPresentation(
                     hasHosts: !hosts.hosts.isEmpty,
-                    showsAgentsAction: splitVisibility.showsAgentsAction,
+                    showsAgentsAction: splitVisibility(for: tab).showsAgentsAction,
                     listsTerminals: tab == .terminals)
             ) { action in
                 switch action {
                 case .showAgents:
                     withAnimation(reduceMotion ? nil : .snappy) {
-                        splitVisibility.showSidebar()
+                        splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
+                            .showSidebar()
                     }
                 case .newAgent:
                     if tab == .terminals { isStartingTerminal = true } else { isStartingAgent = true }
@@ -744,6 +873,7 @@ struct ConsoleView: View {
                 }
             }
             .listStyle(.plain)
+            .modifier(ConsoleSidebarListTint())
             .searchDrawerStartsTucked()
         }
     }
@@ -818,25 +948,36 @@ struct ConsoleView: View {
                 layout: console.rowLayout(for: agent.hostID),
                 isPinned: console.pins.isPinned(
                     hostID: agent.hostID, paneID: agent.agent.paneID))
+            .modifier(ConsoleRowSelectionContent())
         }
+        .modifier(
+            ConsoleRowSelectionBackground(
+                isSelected: notificationRouter.path.last == agent.id))
         .hoverEffect(.highlight)
-        .contextMenu {
-            let pinned = console.pins.isPinned(
-                hostID: agent.hostID, paneID: agent.agent.paneID)
-            Button(
-                pinned ? "Unpin" : "Pin",
-                systemImage: pinned ? "pin.slash" : "pin"
-            ) {
-                console.togglePin(
+        .modifier(
+            ConsoleRowContextMenu {
+                let pinned = console.pins.isPinned(
                     hostID: agent.hostID, paneID: agent.agent.paneID)
-            }
-            // Never on iPhone, and not for the Agent this window already shows.
-            if supportsMultipleWindows, notificationRouter.path.last != agent.id {
-                Button("Open in New Window", systemImage: "plus.rectangle.on.rectangle") {
-                    openInNewWindow(agent)
+                Button(
+                    pinned ? "Unpin" : "Pin",
+                    systemImage: pinned ? "pin.slash" : "pin"
+                ) {
+                    console.togglePin(
+                        hostID: agent.hostID, paneID: agent.agent.paneID)
                 }
-            }
-        }
+                // Never on iPhone, and not for the Agent this window already shows.
+                if supportsMultipleWindows, notificationRouter.path.last != agent.id {
+                    Button("Open in New Window", systemImage: "plus.rectangle.on.rectangle") {
+                        openInNewWindow(agent)
+                    }
+                }
+            } preview: {
+                AgentCardView(
+                    agent: agent,
+                    layout: console.rowLayout(for: agent.hostID),
+                    isPinned: console.pins.isPinned(
+                        hostID: agent.hostID, paneID: agent.agent.paneID))
+            })
         .modifier(
             AgentWindowDrag(
                 route: AgentRoute(agentID: agent.id),
@@ -922,18 +1063,20 @@ struct ConsoleView: View {
 
     private var tabCloseConfirmLabel: String { "Close \(pendingCloseScope)" }
 
-    /// Confirmation copy naming the Agent, and the workspace when it dies
-    /// with the tab.
+    /// Confirmation copy naming the Agent as its row does, and the
+    /// workspace when it dies with the tab.
     private func tabCloseMessage(for agent: ConsoleAgent) -> String {
-        let name = agent.agent.displayName
+        let name = AgentCardPresentation(
+            agent: agent, layout: console.rowLayout(for: agent.hostID)
+        ).switcherTitle
         if console.closesWorkspaceWithTab(of: agent) {
             let workspace = agent.workspaceLabel ?? "this workspace"
             return "Are you sure you want to also close workspace \(workspace)? It is the workspace's last tab."
         }
         if console.closesTab(of: agent) {
-            return "Closes the tab running \(name)."
+            return "Closes the tab running \u{201C}\(name)\u{201D}."
         }
-        return "Closes the pane running \(name). The tab's other panes stay open."
+        return "Closes the pane running \u{201C}\(name)\u{201D}. The tab's other panes stay open."
     }
 
     /// A window already showing this Agent comes forward instead of a second
@@ -980,6 +1123,11 @@ struct ConsoleView: View {
     }
 
     private func toggleHostSection(_ hostID: Host.ID) {
+        // A search opens every Host holding a match, so a toggle then would
+        // change nothing on screen, only what the list returns to after.
+        guard agentSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
         if reduceMotion {
             listPresentation.toggleCollapsed(hostID)
         } else {
@@ -1322,9 +1470,11 @@ private struct ConsoleHostSectionHeaderView: View {
                     ConsoleHostStatusCountPills(items: presentation.statusItems)
                         .accessibilityHidden(true)
                 }
+                // The Workspace chevrons' weight and ink: a header's
+                // hierarchical secondary draws a level lighter than theirs.
                 Image(systemName: presentation.disclosureSystemImage)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.secondary)
                     .frame(width: 12, alignment: .center)
                     .accessibilityHidden(true)
             }
@@ -1332,6 +1482,7 @@ private struct ConsoleHostSectionHeaderView: View {
             .padding(.vertical, 4)
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(presentation.accessibilityLabel)
         .accessibilityValue(presentation.accessibilityValue)
@@ -1387,17 +1538,28 @@ enum ConsoleSelection: Hashable {
 }
 
 extension EnvironmentValues {
-    /// How far a full-bleed detail screen must start below the window's top
-    /// edge to clear the Console's floating tab bar. Zero where the tab bar
-    /// sits at the bottom; the screens still clear the status bar themselves.
+    /// How far a full-bleed detail screen must start below the detail
+    /// column's top edge to clear the Console's floating tab bar. Zero where
+    /// the tab bar sits at the bottom; the screens still clear the status bar
+    /// themselves.
     @Entry var detailTopChromeInset: CGFloat = 0
+    /// A Console list shown as the sidebar beside a detail column, where it
+    /// draws its own selection, focus ring, and lifted rows, sits on the
+    /// sidebar's glass, and keeps its search field in view.
+    @Entry var isSidebarColumn = false
 }
 
-/// Reports where the enclosing navigation bar starts, in window coordinates.
-/// The Console's regular-width tab bar floats above the detail column's bar,
+/// A navigation bar's vertical extent in its column's own coordinates.
+struct NavigationBarBand: Equatable {
+    var top: CGFloat = 0
+    var bottom: CGFloat = 0
+}
+
+/// Reports where the enclosing navigation bar sits within its column. The
+/// Console's regular-width tab bar floats above the detail column's bar,
 /// and SwiftUI exposes neither frame.
 private struct NavigationBarTopReader: UIViewRepresentable {
-    let onChange: @MainActor (CGFloat) -> Void
+    let onChange: @MainActor (NavigationBarBand) -> Void
 
     func makeUIView(context: Context) -> ReaderView {
         ReaderView(onChange: onChange)
@@ -1409,10 +1571,10 @@ private struct NavigationBarTopReader: UIViewRepresentable {
     }
 
     final class ReaderView: UIView {
-        var onChange: @MainActor (CGFloat) -> Void
-        private var reported: CGFloat?
+        var onChange: @MainActor (NavigationBarBand) -> Void
+        private var reported: NavigationBarBand?
 
-        init(onChange: @escaping @MainActor (CGFloat) -> Void) {
+        init(onChange: @escaping @MainActor (NavigationBarBand) -> Void) {
             self.onChange = onChange
             super.init(frame: .zero)
             isUserInteractionEnabled = false
@@ -1437,21 +1599,27 @@ private struct NavigationBarTopReader: UIViewRepresentable {
         /// Deferred: this runs inside layout, where SwiftUI state must not
         /// change.
         func report() {
-            guard let window, let bar = enclosingNavigationBar() else { return }
-            let top = bar.convert(bar.bounds, to: window).minY
-            guard top != reported else { return }
-            reported = top
+            guard window != nil, let navigation = enclosingNavigationController() else {
+                return
+            }
+            // The column's own space: the terminal pads from the column's
+            // top edge, wherever the column sits in the window.
+            let bar = navigation.navigationBar
+            let frame = bar.convert(bar.bounds, to: navigation.view)
+            let band = NavigationBarBand(top: frame.minY, bottom: frame.maxY)
+            guard band != reported else { return }
+            reported = band
             let onChange = onChange
-            Task { @MainActor in onChange(top) }
+            Task { @MainActor in onChange(band) }
         }
 
-        private func enclosingNavigationBar() -> UINavigationBar? {
+        private func enclosingNavigationController() -> UINavigationController? {
             var responder: UIResponder? = self
             while let current = responder {
                 if let controller = current as? UIViewController,
                     let navigation = controller.navigationController
                 {
-                    return navigation.navigationBar
+                    return navigation
                 }
                 responder = current.next
             }

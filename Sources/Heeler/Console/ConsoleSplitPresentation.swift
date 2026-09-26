@@ -86,6 +86,19 @@ struct ConsoleSplitVisibilityState {
         userVisibility = appliedPresentation?.defaultVisibility == .all ? nil : .all
     }
 
+    /// A pick from the sidebar that portrait shows only on request returns
+    /// to the detail alone, as a pick on iPhone pushes to it: side by side,
+    /// the terminal would keep only what the sidebar leaves of the width.
+    mutating func selectionDidOpenDetail() {
+        guard let appliedPresentation, appliedPresentation.usesRegularColumns,
+            appliedPresentation.defaultVisibility == .detailOnly,
+            isSidebarVisible == true
+        else { return }
+        visibility = .detailOnly
+        reportedSidebarVisibility = nil
+        userVisibility = nil
+    }
+
     private static func sidebarVisibility(for visibility: NavigationSplitViewVisibility) -> Bool? {
         switch visibility {
         case .all, .doubleColumn: true

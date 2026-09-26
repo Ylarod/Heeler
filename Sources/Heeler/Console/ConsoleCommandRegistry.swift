@@ -99,6 +99,8 @@ struct ConsoleCommandTarget {
 
     let registry: ConsoleCommandRegistry
     let context: @MainActor () -> Context
+    /// Worded for the tab on screen; the menu reads them, key dispatch does not.
+    var titles = ConsoleCommandTitles()
     let navigate: @MainActor (ConsoleAgent.ID) -> Void
     let focusSearch: @MainActor () -> Void
     let newAgent: @MainActor () -> Void

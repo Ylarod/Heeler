@@ -1029,9 +1029,12 @@ struct AgentTerminalView: View {
             .allowsHitTesting(false)
             .accessibilityHidden(true)
         }
+        // Vertical edges only in regular width: the leading one lies under
+        // the sidebar, whose material would take on the terminal's color.
         .background(
             terminal.themes.selection(for: colorScheme)
-                .surfaceBackground(for: colorScheme))
+                .surfaceBackground(for: colorScheme),
+            ignoresSafeAreaEdges: horizontalSizeClass == .regular ? .vertical : .all)
         .ignoresSafeArea(.container, edges: .top)
         .toolbarColorScheme(
             terminal.themes.selection(for: colorScheme)

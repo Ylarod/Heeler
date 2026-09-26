@@ -22,6 +22,7 @@ struct WorkspaceTerminalDetailView: View {
     @State private var isCreatingTerminal = false
     @State private var createFailure: String?
     @State private var retryID = 0
+    @Environment(\.colorScheme) private var colorScheme
 
     private var identity: ShellTerminalIdentity {
         ShellTerminalIdentity(paneID: terminal.paneID, tabID: terminal.tabID, terminalID: terminal.terminalID)
@@ -29,6 +30,22 @@ struct WorkspaceTerminalDetailView: View {
 
     private var poolKey: TerminalConnectionPool.Key {
         .init(hostID: terminal.hostID, identity: identity)
+    }
+
+    private var themePalette: TerminalThemePalette {
+        settings.themes.selection(for: colorScheme).palette(for: colorScheme)
+    }
+
+    /// The states before and after the terminal draw on its surface too,
+    /// as the Agent screen's do: the status bar and tab bar already follow
+    /// the terminal's scheme from the first frame, and a light system page
+    /// would flash under them before every shell.
+    private func terminalSurface(@ViewBuilder _ content: () -> some View) -> some View {
+        ZStack {
+            settings.themes.selection(for: colorScheme).surfaceBackground(for: colorScheme)
+                .ignoresSafeArea()
+            content()
+        }
     }
 
     private var isMissing: Bool {
@@ -40,12 +57,17 @@ struct WorkspaceTerminalDetailView: View {
     var body: some View {
         Group {
             if isMissing {
-                ContentUnavailableView {
-                    Label("Terminal Closed", systemImage: "terminal")
-                } description: {
-                    Text("This pane is no longer available on the Host.")
-                } actions: {
-                    Button("Back to Console") { onBack() }
+                terminalSurface {
+                    TerminalStatusDialog(
+                        glyph: .symbol("terminal"),
+                        title: "Terminal Closed",
+                        message: "This pane is no longer available on the Host.",
+                        palette: themePalette,
+                        dimsBackground: false
+                    ) {
+                        Button("Back to Console") { onBack() }
+                            .buttonStyle(.bordered)
+                    }
                 }
             } else if let entry, console.terminalConnections.entries[poolKey] === entry {
                 ShellTerminalView(
@@ -65,23 +87,33 @@ struct WorkspaceTerminalDetailView: View {
                     backReturnsToAgent: false,
                     onBack: { onBack() })
             } else if let failure {
-                ContentUnavailableView {
-                    Label("Couldn't Open Terminal", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(failure)
-                } actions: {
-                    Button("Try Again") { retryID += 1 }
-                    Button("Back to Console") { onBack() }
+                terminalSurface {
+                    TerminalStatusDialog(
+                        glyph: .symbol("exclamationmark.triangle"),
+                        title: "Couldn't Open Terminal",
+                        message: failure,
+                        palette: themePalette,
+                        dimsBackground: false
+                    ) {
+                        Button("Try Again") { retryID += 1 }
+                            .buttonStyle(.borderedProminent)
+                        Button("Back to Console") { onBack() }
+                            .buttonStyle(.bordered)
+                    }
                 }
             } else {
-                ProgressView("Opening Terminal…")
-                    // The keyboard this screen inherits must not drop while
-                    // the connection is prepared; see `TerminalKeyboardHolder`.
-                    .background {
-                        if keyboardHandoff?.isShellTerminalArmed == true {
-                            TerminalKeyboardHolderView()
-                        }
+                terminalSurface {
+                    TerminalStatusDialog(
+                        glyph: .progress, title: "Opening Terminal…",
+                        palette: themePalette, dimsBackground: false)
+                }
+                // The keyboard this screen inherits must not drop while
+                // the connection is prepared; see `TerminalKeyboardHolder`.
+                .background {
+                    if keyboardHandoff?.isShellTerminalArmed == true {
+                        TerminalKeyboardHolderView()
                     }
+                }
             }
         }
         // The terminal draws its own Back. Hidden here, not only on the
