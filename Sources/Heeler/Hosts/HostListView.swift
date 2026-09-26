@@ -606,6 +606,9 @@ private struct HostRetryButton: View {
     let isBusy: Bool
     let action: () -> Void
 
+    /// The disc grows with the glyph, which follows Dynamic Type.
+    @ScaledMetric(relativeTo: .subheadline) private var discSize: CGFloat = 30
+
     var body: some View {
         // Inert while busy but still hit: a tap on the spinner must not fall
         // through to the row's link and open the Host.
@@ -620,12 +623,12 @@ private struct HostRetryButton: View {
                 .overlay {
                     if isBusy { ProgressView().controlSize(.small) }
                 }
-                .frame(width: 30, height: 30)
+                .frame(width: discSize, height: discSize)
                 // Gray on gray: the stopped Host's red reason stays the one
                 // color in the row.
                 .background(Self.disc, in: Circle())
                 // The full 44-point target around the smaller circle.
-                .frame(width: 44, height: 44)
+                .frame(width: max(44, discSize), height: max(44, discSize))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
