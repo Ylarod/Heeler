@@ -7,6 +7,13 @@
     /// entire implementation is excluded from device and Release builds.
     enum DemoScreenshotMode {
         static let launchArgument = "--demo-screenshots"
+        /// Adds Hosts that reconnect, cannot connect, or cannot sync, so the
+        /// Host problem surfaces can be seen without a failing server.
+        static let hostProblemsArgument = "--demo-host-problems"
+
+        static var showsHostProblems: Bool {
+            ProcessInfo.processInfo.arguments.contains(hostProblemsArgument)
+        }
 
         static var isEnabled: Bool {
             isEnabled(arguments: ProcessInfo.processInfo.arguments)
@@ -160,17 +167,60 @@
                 0x82, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22
             ))
 
-        static let hosts = [
+        static let stagingHostID = UUID(
+            uuid: (
+                0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x43, 0x33,
+                0x83, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33
+            ))
+        static let piHostID = UUID(
+            uuid: (
+                0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
+                0x84, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44
+            ))
+        static let miniHostID = UUID(
+            uuid: (
+                0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x45, 0x55,
+                0x85, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55
+            ))
+
+        static let hosts =
+            [
+                Host(
+                    id: studioHostID,
+                    name: "Studio Mac",
+                    address: "studio.demo.invalid",
+                    username: "developer"),
+                Host(
+                    id: buildHostID,
+                    name: "Build Server",
+                    address: "build.demo.invalid",
+                    username: "builder"),
+            ] + (DemoScreenshotMode.showsHostProblems ? problemHosts : [])
+
+        /// Only with `DemoScreenshotMode.hostProblemsArgument`.
+        static let problemHosts = [
             Host(
-                id: studioHostID,
-                name: "Studio Mac",
-                address: "studio.demo.invalid",
+                id: stagingHostID,
+                name: "Staging VPS",
+                address: "staging.demo.invalid",
+                username: "deploy"),
+            Host(
+                id: piHostID,
+                name: "Raspberry Pi",
+                address: "pi.demo.invalid",
+                username: "pi"),
+            Host(
+                id: miniHostID,
+                name: "Mac mini",
+                address: "mini.demo.invalid",
                 username: "developer"),
-            Host(
-                id: buildHostID,
-                name: "Build Server",
-                address: "build.demo.invalid",
-                username: "builder"),
+        ]
+
+        /// How each problem Host fails to connect: Staging keeps retrying,
+        /// the Pi stops until the user acts.
+        static let connectFailures: [Host.ID: TransportError] = [
+            stagingHostID: .sshUnreachable(detail: "Connection refused."),
+            piHostID: .authenticationFailed,
         ]
 
         static let profiles: [Host.ID: DemoHostProfile] = [
@@ -257,6 +307,12 @@
                     "terminal:api:p8": shellPromptOutput,
                     "terminal:api:p9": shellPromptOutput,
                 ]),
+            miniHostID: DemoHostProfile(
+                snapshot: snapshot(agents: [], workspaces: []),
+                paneSnippets: [:],
+                terminalOutputs: [:],
+                snapshotFailure: .apiRejected(
+                    code: "internal_error", message: "session snapshot unavailable")),
         ]
 
         static let terminalOutput = """
@@ -318,6 +374,7 @@
                 EventsSession(
                     subscriptions: subscriptions,
                     connect: {
+                        if let failure = connectFailures[host.id] { throw failure }
                         guard let profile = profiles[host.id] else {
                             throw TransportError.sshUnreachable(
                                 detail: "No demo profile for Host.")
@@ -429,6 +486,8 @@
         let snapshot: SessionSnapshot
         let paneSnippets: [String: String]
         let terminalOutputs: [String: String]
+        /// Connects, then fails every snapshot: a Host out of sync.
+        var snapshotFailure: TransportError?
     }
 
     private actor DemoScreenshotTransport: Transport {
@@ -461,7 +520,8 @@
         }
 
         func sessionSnapshot() async throws -> SessionSnapshot {
-            profile.snapshot
+            if let failure = profile.snapshotFailure { throw failure }
+            return profile.snapshot
         }
 
         func readPane(_ params: PaneReadParams) async throws -> PaneReadResult {
