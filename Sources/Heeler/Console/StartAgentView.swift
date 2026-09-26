@@ -295,6 +295,8 @@ struct StartWorkspacePicker: View {
     private enum Selection: Hashable {
         case existing(String)
         case newWorkspace
+        /// New Workspace: opens the directory browser, never selected.
+        case browse
     }
 
     let workspaces: [ConsoleWorkspace]
@@ -310,13 +312,6 @@ struct StartWorkspacePicker: View {
         newDirectory?.split(separator: "/").last.map(String.init) ?? "/"
     }
 
-    private var selectedTitle: String {
-        if isNewWorkspaceSelected {
-            return newDirectory == nil ? "Home" : directoryName
-        }
-        return workspaces.first { $0.id == selectedWorkspaceID }?.label ?? "None reported"
-    }
-
     private var selection: Binding<Selection?> {
         Binding(
             get: {
@@ -326,58 +321,42 @@ struct StartWorkspacePicker: View {
                 switch value {
                 case .existing(let id): onSelect(id)
                 case .newWorkspace: onSelectNewWorkspace()
+                case .browse: onNewWorkspace()
                 case nil: break
                 }
             })
     }
 
+    /// A menu picker, as the Host row above it is: the whole row opens it,
+    /// from the value at its trailing edge. New Workspace is its last
+    /// option, which browses instead of becoming the selection. It must be
+    /// the row itself: wrapped, the form draws it as a bare button.
     var body: some View {
-        Menu {
-            Picker("Workspace", selection: selection) {
-                if selectedWorkspaceID == nil && !isNewWorkspaceSelected {
-                    Text("None reported").tag(Selection?.none)
-                }
-                ForEach(workspaces) { workspace in
-                    Text(workspace.label).tag(Selection?.some(.existing(workspace.id)))
-                }
-                if newDirectory != nil {
-                    Text(directoryName).tag(Selection?.some(.newWorkspace))
-                } else if isNewWorkspaceSelected {
-                    Text("Home").tag(Selection?.some(.newWorkspace))
-                }
+        Picker(selection: selection) {
+            if selectedWorkspaceID == nil && !isNewWorkspaceSelected {
+                Text("None reported").tag(Selection?.none)
             }
-            .disabled(workspaces.isEmpty && newDirectory == nil)
-
+            ForEach(workspaces) { workspace in
+                Text(workspace.label).tag(Selection?.some(.existing(workspace.id)))
+            }
+            if newDirectory != nil {
+                Text(directoryName).tag(Selection?.some(.newWorkspace))
+            } else if isNewWorkspaceSelected {
+                Text("Home").tag(Selection?.some(.newWorkspace))
+            }
             Divider()
-            Button(action: onNewWorkspace) {
-                Label("New Workspace", systemImage: "folder.badge.plus")
-            }
-            .accessibilityIdentifier("new-workspace")
+            Label("New Workspace", systemImage: "folder.badge.plus")
+                .tag(Selection?.some(.browse))
+                .accessibilityIdentifier("new-workspace")
         } label: {
-            VStack(alignment: .trailing, spacing: 4) {
-                HStack(spacing: 12) {
-                    Text("Workspace")
-                        .foregroundStyle(Color.primary)
-                    Spacer(minLength: 12)
-                    Text(selectedTitle)
-                        .foregroundStyle(Color.secondary)
-                        .multilineTextAlignment(.trailing)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.secondary)
-                        .accessibilityHidden(true)
-                }
-                if isNewWorkspaceSelected, let newDirectory {
-                    Text(newDirectory)
-                        .font(.caption)
-                        .foregroundStyle(Color.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .multilineTextAlignment(.trailing)
-                }
+            Text("Workspace")
+            // The browsed directory in full, under the row's title.
+            if isNewWorkspaceSelected, let newDirectory {
+                Text(newDirectory)
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .contentShape(Rectangle())
         }
+        // The form's own picker style, not `.menu`, which draws a bare
+        // accent-colored value that only it opens.
         .menuOrder(.fixed)
         .disabled(!canBrowse)
         .accessibilityIdentifier("start-workspace-picker")
