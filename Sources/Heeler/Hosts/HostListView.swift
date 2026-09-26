@@ -89,7 +89,7 @@ struct HostListView: View {
     /// waits for `onDismiss` so the TOFU alert is not suppressed mid-transition
     /// (#359).
     @State private var pendingOnboardingHostID: Host.ID?
-    @State private var path: [Host.ID] = []
+    @State private var path: [HostRoute]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
@@ -110,6 +110,9 @@ struct HostListView: View {
         self.manualReconnectInFlightHostIDs = manualReconnectInFlightHostIDs
         self.retryConnection = retryConnection
         self.origin = origin
+        // On the stack from the first frame, so the requested detail never
+        // renders with the list's back button first.
+        _path = State(initialValue: Self.requestedRoute(initialHostID, in: store).map { [$0] } ?? [])
         _removal = State(initialValue: HostRemovalStore(store: store))
         _collapsedGroups = State(initialValue: HostHealthGroup.collapsed(in: .standard))
     }
@@ -170,7 +173,8 @@ struct HostListView: View {
                         .disabled(store.catalogLoadError != nil)
                 }
             }
-            .navigationDestination(for: Host.ID.self) { id in
+            .navigationDestination(for: HostRoute.self) { route in
+                let id = route.hostID
                 if let host = store.hosts.first(where: { $0.id == id }) {
                     // Keyed by the Host value: editing recreates the
                     // onboarding store so checks run against fresh settings.
@@ -182,7 +186,7 @@ struct HostListView: View {
                         isManualReconnectInFlight: manualReconnectInFlightHostIDs.contains(id),
                         retryConnection: retryAction(for: id))
                         .id(host)
-                        .modifier(ReturnToOrigin(origin: returnOrigin(for: id)))
+                        .modifier(ReturnToOrigin(origin: route.isRequested ? origin : nil))
                 } else {
                     ContentUnavailableView("Host removed", systemImage: "server.rack")
                 }
@@ -253,15 +257,17 @@ struct HostListView: View {
             } message: {
                 Text(removal.errorMessage ?? "")
             }
-            .task(id: initialHostID) {
-                guard
-                    path.isEmpty,
-                    let initialHostID,
-                    store.hosts.contains(where: { $0.id == initialHostID })
-                else { return }
-                path.append(initialHostID)
+            // A caller that keeps this view's identity across requests
+            // still lands on the new one.
+            .onChange(of: initialHostID) { _, id in
+                if let route = Self.requestedRoute(id, in: store) { path = [route] }
             }
         }
+    }
+
+    private static func requestedRoute(_ id: Host.ID?, in store: HostStore) -> HostRoute? {
+        guard let id, store.hosts.contains(where: { $0.id == id }) else { return nil }
+        return HostRoute(hostID: id, isRequested: true)
     }
 
     private var removalConfirmationPresented: Binding<Bool> {
@@ -302,7 +308,7 @@ struct HostListView: View {
                 // A Retry row opens the Host from everything but its button,
                 // which a whole-row link would swallow.
                 HStack(spacing: 12) {
-                    Button { path.append(host.id) } label: {
+                    Button { path.append(HostRoute(hostID: host.id)) } label: {
                         HostRowLabel(host: host, presentation: entry.presentation)
                             .contentShape(Rectangle())
                     }
@@ -316,7 +322,7 @@ struct HostListView: View {
                     }
                 }
             } else {
-                NavigationLink(value: host.id) {
+                NavigationLink(value: HostRoute(hostID: host.id)) {
                     HostRowLabel(host: host, presentation: entry.presentation)
                 }
             }
@@ -340,16 +346,10 @@ struct HostListView: View {
         }
     }
 
-    /// Only the detail opened on request, still the first thing pushed.
-    private func returnOrigin(for id: Host.ID) -> HostListOrigin? {
-        guard id == initialHostID, path.first == id else { return nil }
-        return origin
-    }
-
     private func navigateToPendingOnboardingHostIfNeeded() {
         guard let id = pendingOnboardingHostID else { return }
         pendingOnboardingHostID = nil
-        path.append(id)
+        path.append(HostRoute(hostID: id))
     }
 
     private func retryAction(
@@ -360,9 +360,17 @@ struct HostListView: View {
     }
 }
 
+/// One pushed Host detail. The one opened on request is marked in the route
+/// itself, not inferred from where it sits on the stack, so its detail knows
+/// where Back goes from its first render.
+private struct HostRoute: Hashable {
+    let hostID: Host.ID
+    var isRequested = false
+}
+
 /// The screen that opened a Host's detail from outside the Hosts list.
 struct HostListOrigin {
-    /// Names the destination for VoiceOver, e.g. "Agents".
+    /// Names the destination, e.g. "Agents".
     let title: String
     let goBack: () -> Void
 }
@@ -371,6 +379,7 @@ struct HostListOrigin {
 /// from somewhere else and backing out lands where the user started.
 private struct ReturnToOrigin: ViewModifier {
     let origin: HostListOrigin?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     func body(content: Content) -> some View {
         if let origin {
@@ -379,7 +388,16 @@ private struct ReturnToOrigin: ViewModifier {
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         Button(action: origin.goBack) {
-                            Image(systemName: "chevron.backward")
+                            // It leaves the tab, so on the iPad it names
+                            // where to, as "< Agents"; iPhone back buttons
+                            // are a bare chevron. Not a Label: the bar
+                            // shows a Label's icon alone.
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.backward")
+                                if horizontalSizeClass == .regular {
+                                    Text(origin.title)
+                                }
+                            }
                         }
                         .accessibilityLabel("Back to \(origin.title)")
                     }
