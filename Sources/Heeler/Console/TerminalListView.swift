@@ -158,7 +158,7 @@ struct TerminalListView: View {
         if !workspace.isCollapsed {
             let terminals = workspace.terminals
             ForEach(Array(terminals.enumerated()), id: \.element.id) { index, terminal in
-                terminalRow(terminal, showsTab: terminals.count > 1)
+                terminalRow(terminal, showsTab: terminals.count > 1, liftsCard: true)
                     .modifier(
                         TerminalCardRow(
                             isFirst: index == 0, isLast: false,
@@ -237,7 +237,11 @@ struct TerminalListView: View {
         isSidebarColumn && selection == .terminal(terminal.id)
     }
 
-    private func terminalRow(_ terminal: ConsoleTerminal, showsTab: Bool) -> some View {
+    /// `liftsCard`: a By Host row, whose card is a slice drawn inside a
+    /// wider plain-list cell, lifts that card, not the whole cell.
+    private func terminalRow(
+        _ terminal: ConsoleTerminal, showsTab: Bool, liftsCard: Bool = false
+    ) -> some View {
         NavigationLink(value: ConsoleSelection.terminal(terminal.id)) {
             TerminalRowView(terminal: terminal, showsTab: showsTab)
                 // Across the row, as an Agent's card is: the context menu
@@ -247,7 +251,7 @@ struct TerminalListView: View {
         }
         .hoverEffect(.highlight)
         .modifier(
-            ConsoleRowContextMenu {
+            ConsoleRowContextMenu(liftsCard: liftsCard) {
                 Section(
                     "\(terminal.displayTabTitle) · \(terminal.workspaceLabel ?? "Workspace") · \(terminal.hostName)"
                 ) {

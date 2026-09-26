@@ -198,20 +198,27 @@ final class ListRowFocusHaloView: UIView {
 /// A sidebar row's context menu. Lifting the list cell shows what the cell
 /// is beside the terminal: a clear background, so the row's text floats
 /// over the glass and past the sidebar's edge. The sidebar lifts a card of
-/// the row instead; compact width keeps the system's lifted row.
+/// the row instead; compact width keeps the system's lifted row, unless the
+/// row draws its own card inside a wider cell (`liftsCard`).
 struct ConsoleRowContextMenu<MenuItems: View, Preview: View>: ViewModifier {
+    private let liftsCard: Bool
     private let menuItems: MenuItems
     private let preview: Preview
     @Environment(\.isSidebarColumn) private var isSidebarColumn
     @State private var rowWidth: CGFloat?
 
-    init(@ViewBuilder menuItems: () -> MenuItems, @ViewBuilder preview: () -> Preview) {
+    init(
+        liftsCard: Bool = false,
+        @ViewBuilder menuItems: () -> MenuItems,
+        @ViewBuilder preview: () -> Preview
+    ) {
+        self.liftsCard = liftsCard
         self.menuItems = menuItems()
         self.preview = preview()
     }
 
     func body(content: Content) -> some View {
-        if isSidebarColumn {
+        if isSidebarColumn || liftsCard {
             content
                 // Measured from a background: reading the row's own
                 // geometry drops the list-row background and focus halo
