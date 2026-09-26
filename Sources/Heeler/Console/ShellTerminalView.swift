@@ -51,7 +51,7 @@ struct ShellTerminalView: View {
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     @Environment(\.detailTopChromeInset) private var topChromeInset
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.detailSurfaceEdges) private var surfaceEdges
 
     /// The status bar height of the window this terminal is in; see
     /// `AgentTerminalView.statusBarInset`.
@@ -240,12 +240,10 @@ struct ShellTerminalView: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }
-            // Vertical edges only in regular width: the leading one lies
-            // under the sidebar, whose material would take on the color.
             .background(
                 terminal.themes.selection(for: colorScheme)
                     .surfaceBackground(for: colorScheme),
-                ignoresSafeAreaEdges: horizontalSizeClass == .regular ? .vertical : .all
+                ignoresSafeAreaEdges: surfaceEdges
             )
             .ignoresSafeArea(.container, edges: .top)
             .toolbarColorScheme(

@@ -13,7 +13,8 @@ import UIKit
 /// The bar's glass also ignores `toolbarColorScheme(_:for: .tabBar)`, so
 /// over a dark terminal it renders a light glass on near-black: a flat gray
 /// pill with dark labels. The bar takes the terminal's chrome scheme here
-/// instead, as the status bar above it does.
+/// instead, as the status bar above it does, and gives it back when the
+/// list tab leaves the screen.
 struct ConsoleTabBarBridge: UIViewRepresentable {
     /// The scheme the floating bar renders in; nil follows the app.
     let chromeScheme: ColorScheme?
@@ -27,6 +28,12 @@ struct ConsoleTabBarBridge: UIViewRepresentable {
     }
 
     final class BridgeView: UIView {
+        /// The bridge that last styled each tab bar controller's chrome. A
+        /// tab switch can bring the arriving tab's bridge into the window
+        /// before the leaving one goes; only the owner resets the style.
+        private static let owners =
+            NSMapTable<UITabBarController, BridgeView>.weakToWeakObjects()
+
         var chromeScheme: ColorScheme? {
             didSet {
                 guard chromeScheme != oldValue else { return }
@@ -35,6 +42,7 @@ struct ConsoleTabBarBridge: UIViewRepresentable {
         }
 
         private var hasSettledSafeArea = false
+        private weak var styledController: UITabBarController?
 
         init() {
             super.init(frame: .zero)
@@ -49,9 +57,13 @@ struct ConsoleTabBarBridge: UIViewRepresentable {
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
-            guard window != nil else { return }
+            // Leaving for Hosts or Settings, whose bar follows the app.
+            guard window != nil else { return resetChromeScheme() }
             applyChromeScheme()
-            guard !hasSettledSafeArea else { return }
+            // The floating bar is regular width's; a compact bar sits at the
+            // bottom, outside the safe area in question.
+            guard !hasSettledSafeArea, traitCollection.horizontalSizeClass == .regular
+            else { return }
             hasSettledSafeArea = true
             // After the layout pass that attached this tab; toggling during
             // it leaves the stale inset in place.
@@ -99,6 +111,20 @@ struct ConsoleTabBarBridge: UIViewRepresentable {
                     chrome.overrideUserInterfaceStyle = style
                 }
             }
+            styledController = controller
+            Self.owners.setObject(self, forKey: controller)
+        }
+
+        private func resetChromeScheme() {
+            guard let controller = styledController,
+                Self.owners.object(forKey: controller) === self
+            else { return }
+            for chrome in controller.view.subviews
+            where chrome.overrideUserInterfaceStyle != .unspecified {
+                chrome.overrideUserInterfaceStyle = .unspecified
+            }
+            Self.owners.removeObject(forKey: controller)
+            styledController = nil
         }
     }
 }

@@ -23,6 +23,7 @@ struct WorkspaceTerminalDetailView: View {
     @State private var createFailure: String?
     @State private var retryID = 0
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.detailSurfaceEdges) private var surfaceEdges
 
     private var identity: ShellTerminalIdentity {
         ShellTerminalIdentity(paneID: terminal.paneID, tabID: terminal.tabID, terminalID: terminal.terminalID)
@@ -43,7 +44,7 @@ struct WorkspaceTerminalDetailView: View {
     private func terminalSurface(@ViewBuilder _ content: () -> some View) -> some View {
         ZStack {
             settings.themes.selection(for: colorScheme).surfaceBackground(for: colorScheme)
-                .ignoresSafeArea()
+                .ignoresSafeArea(edges: surfaceEdges)
             content()
         }
     }

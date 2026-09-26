@@ -340,6 +340,13 @@ struct ConsoleView: View {
         horizontalSizeClass == .regular ? terminalStatusBarColorScheme : nil
     }
 
+    /// Beside the sidebar, the detail's leading safe area lies under it,
+    /// and its material would take on a terminal's color there.
+    private func detailSurfaceEdges(for tab: ConsoleTab) -> Edge.Set {
+        horizontalSizeClass == .regular && splitVisibility(for: tab).isSidebarVisible != false
+            ? [.vertical, .trailing] : .all
+    }
+
     /// Output starts below the detail's bar row, or below the whole bar
     /// while it carries the Show Sidebar button.
     private func detailTopInset(for tab: ConsoleTab) -> CGFloat {
@@ -378,6 +385,7 @@ struct ConsoleView: View {
                         .environment(
                             \.detailTopChromeInset,
                             horizontalSizeClass == .regular ? detailTopInset(for: tab) : 0)
+                        .environment(\.detailSurfaceEdges, detailSurfaceEdges(for: tab))
                         .background {
                             if horizontalSizeClass == .regular {
                                 NavigationBarTopReader { detailBar = $0 }
@@ -408,11 +416,8 @@ struct ConsoleView: View {
         // runs: a terminal then reaches under the status bar and the
         // floating tab bar, while the columns' own bars still clear both.
         .ignoresSafeArea(.container, edges: horizontalSizeClass == .regular ? .top : [])
-        .background {
-            if horizontalSizeClass == .regular {
-                ConsoleTabBarBridge(chromeScheme: tabBarChromeScheme)
-            }
-        }
+        // In every width, so a window turning compact drops the style.
+        .background { ConsoleTabBarBridge(chromeScheme: tabBarChromeScheme) }
         // A pushed detail owns the whole iPhone screen, as it did before
         // the tab bar existed. Regular width keeps the bar to switch lists.
         .toolbarVisibility(
@@ -677,9 +682,12 @@ struct ConsoleView: View {
     /// that edge and the two disagree: the status bar spans both columns and
     /// takes one scheme, so white text over a dark terminal would vanish
     /// over a light sidebar. The detail then keeps the app's own band above
-    /// the terminal, the status bar and floating tab bar in it.
+    /// the terminal, the status bar and floating tab bar in it. An iPhone
+    /// wide enough for both columns shows no status bar in landscape and
+    /// keeps its tab bar at the bottom.
     private var terminalOwnsTopEdge: Bool {
         horizontalSizeClass != .regular
+            || UIDevice.current.userInterfaceIdiom != .pad
             || splitVisibility(for: currentTab).isSidebarVisible != true
             || stagedTerminalChromeScheme.map { $0 == colorScheme } ?? true
     }
@@ -827,7 +835,7 @@ struct ConsoleView: View {
             let theme = terminal.themes.selection(for: colorScheme)
             ZStack {
                 theme.surfaceBackground(for: colorScheme)
-                    .ignoresSafeArea()
+                    .ignoresSafeArea(edges: detailSurfaceEdges(for: currentTab))
                 TerminalStatusDialog(
                     glyph: .progress,
                     title: presentation.title,
@@ -1543,6 +1551,11 @@ extension EnvironmentValues {
     /// the tab bar sits at the bottom; the screens still clear the status bar
     /// themselves.
     @Entry var detailTopChromeInset: CGFloat = 0
+    /// The edges a detail screen's full-bleed surface fills past the safe
+    /// area. Beside a visible sidebar the leading one lies under the
+    /// sidebar; every other edge, an iPhone's landscape insets included, is
+    /// the surface's to fill.
+    @Entry var detailSurfaceEdges: Edge.Set = .all
     /// A Console list shown as the sidebar beside a detail column, where it
     /// draws its own selection, focus ring, and lifted rows, sits on the
     /// sidebar's glass, and keeps its search field in view.
