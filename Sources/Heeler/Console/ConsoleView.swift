@@ -59,6 +59,10 @@ struct ConsoleView: View {
     /// rebuilds the tab so it lands there even when that Host is already
     /// on its stack.
     @State private var hostsTabRequest: HostsTabRequest?
+    /// Bumped to rebuild the Hosts or Settings tab, taking down a sheet it
+    /// presented when a deep link carries the window off to an Agent.
+    @State private var hostsTabGeneration = 0
+    @State private var settingsTabGeneration = 0
     @State private var isStartingAgent = false
     @State private var connectionDetailRequest: ConnectionDetailRequest?
     /// The flat lists' summary opened: every Host problem in one sheet.
@@ -140,6 +144,7 @@ struct ConsoleView: View {
                         HostListOrigin(title: origin.title) { selectedTab.wrappedValue = origin }
                     })
                 .id(hostsTabRequest?.id)
+                .id(hostsTabGeneration)
             }
             Tab(value: ConsoleTab.settings) {
                 // SettingsView brings its own NavigationStack.
@@ -152,6 +157,7 @@ struct ConsoleView: View {
                     liveActivities: liveActivities,
                     console: console,
                     hosts: hosts.hosts)
+                .id(settingsTabGeneration)
             } label: {
                 // Outlined, as Terminals is: filled, the gear is the heaviest
                 // icon in the bar.
@@ -261,6 +267,15 @@ struct ConsoleView: View {
         // clearing here is a no-op for it.
         .onChange(of: notificationRouter.path) { old, path in
             guard !path.isEmpty else { return }
+            // Hosts and Settings present their own sheets, which cover the
+            // tab bar: one up now is theirs. Rebuilding the tab takes it
+            // down, as closing them used to when they were sheets.
+            let ownsPresentation = isStartingAgent || isStartingTerminal
+                || connectionDetailRequest != nil || isShowingHostIssues
+            if isPresentingOverConsole, !ownsPresentation {
+                if isHostsTabSelected { hostsTabGeneration += 1 }
+                if isSettingsTabSelected { settingsTabGeneration += 1 }
+            }
             showAgentsList(
                 parking: old.last.map { .agent($0) } ?? selectedTerminal.map { .terminal($0) })
             selectedTerminal = nil
@@ -613,14 +628,12 @@ struct ConsoleView: View {
                         ? filteredAgents.map(\.id)
                         : hostSections.filter { !$0.isCollapsed }.flatMap { $0.agents.map(\.id) },
                     isSearchFocused: focusedSearch != nil,
-                    // Tabs are navigation, not cover: only sheets are,
-                    // including the ones Hosts and Settings present, which
-                    // register nowhere.
+                    // Tabs are navigation, not cover: only sheets and alerts
+                    // are, including the ones Hosts, Settings and the
+                    // Terminals list present, which register nowhere.
                     isCovered: isStartingAgent || isStartingTerminal
                         || connectionDetailRequest != nil || isShowingHostIssues
-                        || (!currentTab.isList
-                            && sceneWindow?.window?.rootViewController?
-                                .presentedViewController != nil),
+                        || isPresentingOverConsole,
                     inputMode: inputMode.mode)
             },
             titles: ConsoleCommandTitles(
@@ -694,6 +707,15 @@ struct ConsoleView: View {
                     }
                 }
             })
+    }
+
+    /// Something the window presents over the Console that registers
+    /// nowhere: a sheet or alert from Hosts, Settings or a list. An active
+    /// search field presents on some layouts too, and is not cover.
+    private var isPresentingOverConsole: Bool {
+        guard let presented = sceneWindow?.window?.rootViewController?.presentedViewController
+        else { return false }
+        return !(presented is UISearchController)
     }
 
     private func selectAgent(_ id: ConsoleAgent.ID) {
