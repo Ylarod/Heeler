@@ -43,6 +43,26 @@ Entries reference the issue that motivated them.
   Can't Connect first, naming each problem beside a refresh button that
   retries, then Hosts still trying, then connected ones with their latency.
   (#316; PR #377)
+- On iPad, the Agents and Terminals tabs set their list beside the terminal
+  under the floating tab bar, each keeping its own selection and sidebar;
+  in portrait a pick returns to the terminal alone. The terminal reaches
+  the top of the window, and the status bar and tab bar take its colors,
+  except beside a sidebar of the other appearance, where a band in the
+  app's colors keeps them legible. Sidebar rows mark the selection and the
+  keyboard focus with a quiet rounded fill and ring instead of a blue band,
+  and long-pressing one lifts a card of it. An Agent opened from a
+  notification or from a shell always shows on the Agents tab. ⌘N opens
+  New Terminal on the Terminals tab, and the menu names each command for
+  the tab on screen. A shell's loading, failure, and closed states draw on
+  the terminal's own background.
+- On iPad, Hosts and Settings read in a centered column, a Host opened from
+  another tab goes back with a button naming that tab, and a Host's status
+  sheets and New Terminal open as centered forms sized to their content,
+  with Done.
+- The Hosts list marks a connected Host that cannot sync, and a Host with
+  Retry opens like every other row. A Host header shows a sync issue ahead
+  of loading, and the workspace drawer names shells as the Terminals list
+  does.
 - Agents search hides under the list's title until you pull the list down,
   and matches an Agent's Host and kind too. While searching, a Host without
   a match leaves the list even when it has a connection problem, and a
