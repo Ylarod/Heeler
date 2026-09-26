@@ -99,6 +99,47 @@ struct ConsoleHostSectionHeaderPresentationTests {
         #expect(tone(.suspended) == .paused)
     }
 
+    /// A connected Host whose snapshot failed is still awaiting one; the
+    /// header must read as its issue row does, not as a load under way.
+    @Test func aFailedSyncOutranksTheSnapshotStillAwaited() throws {
+        for noun in ["Agents", "Terminals"] {
+            let status = try #require(
+                ConsoleHostStatusPresentation(
+                    host: host, status: .connected, isAwaitingSnapshot: true,
+                    syncError: "Could not sync this Host. Retrying…", inventoryNoun: noun))
+            let readiness = ConsoleHostSectionHeaderPresentation.readiness(
+                connectionStatus: .connected, isAwaitingSnapshot: true,
+                statusSeverity: status.severity, isEmpty: true, inventoryNoun: noun)
+            #expect(readiness == HostReadiness(text: "Sync issue", tone: .warning))
+            #expect(readiness.text == status.status)
+            #expect(readiness.tone == status.tone)
+        }
+
+        let loading = try #require(
+            ConsoleHostStatusPresentation(
+                host: host, status: .connected, isAwaitingSnapshot: true, syncError: nil,
+                inventoryNoun: "Terminals"))
+        let readiness = ConsoleHostSectionHeaderPresentation.readiness(
+            connectionStatus: .connected, isAwaitingSnapshot: true,
+            statusSeverity: loading.severity, isEmpty: true, inventoryNoun: "Terminals")
+        #expect(readiness == HostReadiness(text: "Loading Terminals…", tone: .pending))
+        #expect(readiness.text == loading.status)
+        #expect(readiness.tone == loading.tone)
+    }
+
+    @Test func aSyncIssueHeaderKeepsItsSectionPresentationInOrder() throws {
+        let status = try #require(
+            ConsoleHostStatusPresentation(
+                host: host, status: .connected, isAwaitingSnapshot: true,
+                syncError: "Could not sync this Host. Retrying…"))
+        let header = ConsoleHostSectionHeaderPresentation(
+            section: section(
+                status: .connected, isAwaitingSnapshot: true, statusPresentation: status))
+        #expect(header.readiness == HostReadiness(text: "Sync issue", tone: .warning))
+        #expect(header.readiness.nameEmphasis == .full)
+        #expect(header.accessibilityLabel.hasPrefix("studio, Sync issue"))
+    }
+
     @Test func aHostNameRecedesAsItsConnectionFails() {
         #expect(HostReadiness(text: "Connected", tone: .connected).nameEmphasis == .full)
         #expect(HostReadiness(text: "Sync issue", tone: .warning).nameEmphasis == .full)
