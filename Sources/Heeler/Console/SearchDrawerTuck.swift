@@ -12,7 +12,9 @@ extension View {
     /// tuck assumes the iPhone's collapsing drawer: an iPad's field stays
     /// put at every width, a narrow window's list as much as a sidebar, and
     /// a sidebar keeps its field in view as iPad sidebars do. There the
-    /// tuck would only scroll the first row under the field.
+    /// tuck would only scroll the first row under the field. A narrow iPad
+    /// window's list starts on its large title instead, which UIKit lays out
+    /// collapsed when a tab switch first shows the list.
     func searchDrawerStartsTucked() -> some View {
         modifier(SearchDrawerTuck())
     }
@@ -23,18 +25,31 @@ private struct SearchDrawerTuck: ViewModifier {
 
     func body(content: Content) -> some View {
         content.background {
-            if !isSidebarColumn, UIDevice.current.userInterfaceIdiom == .phone {
-                SearchDrawerTucker()
+            if !isSidebarColumn {
+                SearchDrawerTucker(tucksField: UIDevice.current.userInterfaceIdiom == .phone)
             }
         }
     }
 }
 
 private struct SearchDrawerTucker: UIViewRepresentable {
-    func makeUIView(context: Context) -> TuckerView { TuckerView() }
+    /// Tucks the field; otherwise only puts back a collapsed large title.
+    let tucksField: Bool
+
+    func makeUIView(context: Context) -> TuckerView { TuckerView(tucksField: tucksField) }
     func updateUIView(_ view: TuckerView, context: Context) {}
 
     final class TuckerView: UIView {
+        private let tucksField: Bool
+
+        init(tucksField: Bool) {
+            self.tucksField = tucksField
+            super.init(frame: .zero)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+
         /// Search fields already tucked. Once per field, not per list: a
         /// list rebuilt later (a search ending, a presentation switch) must
         /// not hide a field the user pulled down, nor scroll against the
@@ -65,6 +80,14 @@ private struct SearchDrawerTucker: UIViewRepresentable {
             let top = -scrollView.adjustedContentInset.top
             // Only from the top: a list already scrolled has hidden it.
             guard scrollView.contentOffset.y <= top + 1 else { return }
+            guard tucksField else {
+                // Resting at its top, the list shows its large title, which
+                // is the bar's fitting size; a tab switch that first shows it
+                // leaves the bar inline until the list is pulled down.
+                controller.navigationController?.navigationBar.sizeToFit()
+                controller.navigationController?.view.setNeedsLayout()
+                return
+            }
             // Animated, so the bar follows the scroll: a jump past the field
             // reads as a scroll past the title and collapses both.
             scrollView.setContentOffset(
