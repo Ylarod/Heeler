@@ -8,6 +8,8 @@ struct HostOnboardingView: View {
     let catalog: HostStore
     let connectionStatus: EventsSessionStatus?
     let standingFailure: TransportError?
+    /// Why this connected Host's Agents could not be synced.
+    let syncIssue: String?
     /// True while Console is serving a Host-detail Reconnect press (the
     /// retry call plus the 1.2 s visual-feedback hold). Distinct from
     /// `EventsSessionStatus.reconnecting`.
@@ -23,12 +25,14 @@ struct HostOnboardingView: View {
         catalog: HostStore,
         connectionStatus: EventsSessionStatus? = nil,
         standingFailure: TransportError? = nil,
+        syncIssue: String? = nil,
         isManualReconnectInFlight: Bool = false,
         retryConnection: (@MainActor @Sendable () async -> Void)? = nil
     ) {
         self.catalog = catalog
         self.connectionStatus = connectionStatus
         self.standingFailure = standingFailure
+        self.syncIssue = syncIssue
         self.isManualReconnectInFlight = isManualReconnectInFlight
         self.retryConnection = retryConnection
         _store = State(initialValue: HostOnboardingStore(host: host))
@@ -64,9 +68,20 @@ struct HostOnboardingView: View {
                     .disabled(isManualReconnectInFlight)
                 } footer: {
                     if let footerMessage = connectionPresentation.footerMessage {
-                        Text(footerMessage)
-                            .foregroundStyle(.red)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        Group {
+                            if connectionPresentation.isSyncIssue {
+                                // Still connected: the Console's orange, not
+                                // a failure's red.
+                                let glyph = Text(Image(systemName: "arrow.trianglehead.2.clockwise"))
+                                    .foregroundStyle(HostConnectionTone.warning.tint)
+                                Text("\(glyph) \(footerMessage)")
+                                    .accessibilityLabel(footerMessage)
+                            } else {
+                                Text(footerMessage)
+                                    .foregroundStyle(.red)
+                            }
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
                 .animation(
@@ -218,6 +233,7 @@ struct HostOnboardingView: View {
         HostOnboardingConnectionPresentation(
             status: connectionStatus,
             standingFailure: standingFailure,
+            syncIssue: syncIssue,
             isManualReconnectInFlight: isManualReconnectInFlight)
     }
 
@@ -274,7 +290,8 @@ struct HostOnboardingView: View {
     }
 }
 
-/// Host detail footer copy, derived from Host Connection Status.
+/// Host detail footer copy, derived from Host Connection Status, or while
+/// connected from why the Host's Agents could not be synced.
 ///
 /// Automatic recovery shows the Explanation only — Summary and Detail, no
 /// Recovery Suggestion. A stopped Host shows the whole presentation. See
@@ -290,10 +307,14 @@ struct HostOnboardingConnectionPresentation: Equatable {
     /// manual Reconnect request does not change it.
     let connectionErrorMessage: String?
     let footerMessage: String?
+    /// The message is a connected Host's failing sync, not a lost
+    /// connection.
+    let isSyncIssue: Bool
 
     init(
         status: EventsSessionStatus?,
         standingFailure: TransportError? = nil,
+        syncIssue: String? = nil,
         isManualReconnectInFlight: Bool
     ) {
         switch status {
@@ -303,9 +324,12 @@ struct HostOnboardingConnectionPresentation: Equatable {
             connectionErrorMessage = failure.presentation.explanation
         case .failed(let failure):
             connectionErrorMessage = failure.presentation.message
-        case .connected, .suspended, .ended, nil:
+        case .connected:
+            connectionErrorMessage = syncIssue
+        case .suspended, .ended, nil:
             connectionErrorMessage = nil
         }
+        isSyncIssue = if case .connected = status { syncIssue != nil } else { false }
         footerMessage = isManualReconnectInFlight ? nil : connectionErrorMessage
     }
 }

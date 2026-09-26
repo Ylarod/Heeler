@@ -70,6 +70,8 @@ struct HostListView: View {
     private let connectionStatuses: [Host.ID: EventsSessionStatus]
     private let standingFailures: [Host.ID: TransportError]
     private let latencies: [Host.ID: Duration]
+    /// Why a connected Host's Agents could not be synced, per Host.
+    private let syncIssues: [Host.ID: String]
     /// Hosts whose Host-detail Reconnect request is in flight. Distinct from
     /// `EventsSessionStatus.reconnecting`.
     private let manualReconnectInFlightHostIDs: Set<Host.ID>
@@ -98,6 +100,7 @@ struct HostListView: View {
         connectionStatuses: [Host.ID: EventsSessionStatus] = [:],
         standingFailures: [Host.ID: TransportError] = [:],
         latencies: [Host.ID: Duration] = [:],
+        syncIssues: [Host.ID: String] = [:],
         manualReconnectInFlightHostIDs: Set<Host.ID> = [],
         retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
         origin: HostListOrigin? = nil
@@ -107,6 +110,7 @@ struct HostListView: View {
         self.connectionStatuses = connectionStatuses
         self.standingFailures = standingFailures
         self.latencies = latencies
+        self.syncIssues = syncIssues
         self.manualReconnectInFlightHostIDs = manualReconnectInFlightHostIDs
         self.retryConnection = retryConnection
         self.origin = origin
@@ -183,6 +187,7 @@ struct HostListView: View {
                         catalog: store,
                         connectionStatus: connectionStatuses[id],
                         standingFailure: standingFailures[id],
+                        syncIssue: syncIssues[id],
                         isManualReconnectInFlight: manualReconnectInFlightHostIDs.contains(id),
                         retryConnection: retryAction(for: id))
                         .id(host)
@@ -285,6 +290,7 @@ struct HostListView: View {
                     status: connectionStatuses[host.id],
                     standingFailure: standingFailures[host.id],
                     latency: latencies[host.id],
+                    syncIssue: syncIssues[host.id],
                     canRetry: retryConnection != nil))
         }
     }
@@ -498,7 +504,8 @@ private struct HostGroupHeader: View {
 struct HostRowPresentation: Equatable {
     let group: HostHealthGroup
     let tone: HostConnectionTone
-    /// Under the name: the address while connected, otherwise the state.
+    /// Under the name: the address while connected and in sync, otherwise
+    /// the state.
     let detail: String
     /// A stopped Host's reason reads in red.
     let isProblem: Bool
@@ -514,13 +521,17 @@ struct HostRowPresentation: Equatable {
         status: EventsSessionStatus?,
         standingFailure: TransportError?,
         latency: Duration?,
+        syncIssue: String? = nil,
         canRetry: Bool = true
     ) {
         let problem = HostConnectionDetailPresentation(
             host: host, status: status, standingFailure: standingFailure)
         let chip = HostConnectionPresentation(
             status: status, standingFailure: standingFailure, latency: latency)
-        tone = problem?.tone ?? chip.tone
+        // Connected but out of sync wears the Console's "Sync issue" look;
+        // the projection only reports a sync error while connected.
+        let isOutOfSync = if case .connected = status { syncIssue != nil } else { false }
+        tone = isOutOfSync ? .warning : problem?.tone ?? chip.tone
         isDialing = problem?.isDialing ?? false
         trailing = if case .connected = status { chip.title } else { nil }
         switch status {
@@ -551,7 +562,8 @@ struct HostRowPresentation: Equatable {
             if case .namedSession(let session) = host.socketLocation {
                 address += " · session \(session)"
             }
-            detail = address
+            // The reason itself is in Host detail, a tap away.
+            detail = isOutOfSync ? "Sync issue" : address
             isProblem = false
             offersRetry = false
         case .suspended, .ended:
