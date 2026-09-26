@@ -138,22 +138,44 @@ extension View {
 }
 
 private struct ConsoleSheetPage: ViewModifier {
-    private struct Height: Equatable {
-        let height: CGFloat
+    private struct Geometry: Equatable {
+        let content: CGFloat
+        let bottomInset: CGFloat
         let isPlaced: Bool
     }
 
     @Environment(ConsoleSheetFit.self) private var fit: ConsoleSheetFit?
+    @State private var measure = ConsoleSheetPageMeasure()
 
     func body(content: Content) -> some View {
-        content.onScrollGeometryChange(for: Height.self) { geometry in
-            Height(
-                height: geometry.contentSize.height + geometry.contentInsets.top
-                    + geometry.contentInsets.bottom,
+        content.onScrollGeometryChange(for: Geometry.self) { geometry in
+            Geometry(
+                content: geometry.contentSize.height + geometry.contentInsets.top,
+                bottomInset: geometry.contentInsets.bottom,
                 isPlaced: geometry.containerSize.height > 0)
         } action: { _, page in
-            fit?.report(page.height, isPlaced: page.isPlaced)
+            let height = measure.height(
+                content: page.content, bottomInset: page.bottomInset, isPlaced: page.isPlaced)
+            fit?.report(height, isPlaced: page.isPlaced)
         }
+    }
+}
+
+/// A page's height as its fitted form counts it. A software keyboard over
+/// the sheet adds its overlap to the page's bottom inset; counted, it would
+/// grow the sheet by the keyboard for good, and feed the keyboard's own
+/// layout of the sheet back into its size. So once the sheet places the
+/// page, only the least bottom inset it has had counts: its own bars and
+/// pinned controls, not the keyboard.
+@MainActor
+final class ConsoleSheetPageMeasure {
+    private var restingBottomInset: CGFloat?
+
+    func height(content: CGFloat, bottomInset: CGFloat, isPlaced: Bool) -> CGFloat {
+        guard isPlaced else { return content + bottomInset }
+        let resting = min(restingBottomInset ?? bottomInset, bottomInset)
+        restingBottomInset = resting
+        return content + resting
     }
 }
 

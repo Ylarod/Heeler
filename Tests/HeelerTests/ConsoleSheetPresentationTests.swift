@@ -72,6 +72,38 @@ struct ConsoleSheetPresentationTests {
         #expect(fit.height == 300)
     }
 
+    @MainActor @Test func sheetPageLeavesTheKeyboardOutOfItsHeight() {
+        let measure = ConsoleSheetPageMeasure()
+        // Unplaced, the window's insets pass through as they are.
+        #expect(measure.height(content: 300, bottomInset: 90, isPlaced: false) == 390)
+        // Placed: a pinned Retry Now counts.
+        #expect(measure.height(content: 300, bottomInset: 76, isPlaced: true) == 376)
+        // A keyboard overlapping the sheet does not, while up or after.
+        #expect(measure.height(content: 300, bottomInset: 76 + 212, isPlaced: true) == 376)
+        #expect(measure.height(content: 300, bottomInset: 76, isPlaced: true) == 376)
+        // The page's content still grows it under the keyboard.
+        #expect(measure.height(content: 340, bottomInset: 76 + 212, isPlaced: true) == 416)
+    }
+
+    @MainActor @Test func fittedFormDoesNotGrowByAKeyboardOverItsPage() {
+        let fit = ConsoleSheetFit()
+        let measure = ConsoleSheetPageMeasure()
+        fit.report(measure.height(content: 407, bottomInset: 20, isPlaced: false), isPlaced: false)
+        fit.contentLaidOut(447)
+        fit.report(measure.height(content: 407, bottomInset: 20, isPlaced: true), isPlaced: true)
+        let resting = fit.height
+        #expect(resting == 407)
+
+        for overlap in stride(from: 20, through: 240, by: 20) {
+            let page = measure.height(
+                content: 407, bottomInset: 20 + CGFloat(overlap), isPlaced: true)
+            fit.report(page, isPlaced: true)
+            #expect(fit.height == resting)
+        }
+        fit.report(measure.height(content: 407, bottomInset: 20, isPlaced: true), isPlaced: true)
+        #expect(fit.height == resting)
+    }
+
     @Test func attachLinksPopoverPresentsOnlyFromTheControlThatOpenedIt() {
         let chip = AttachLinksOrigin.composerChip
         let floating = AttachLinksOrigin.floatingButton
