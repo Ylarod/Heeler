@@ -109,6 +109,7 @@ struct ConsoleView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.sceneWindow) private var sceneWindow
     @State private var detailCrossfade = DetailCrossfade()
     @Environment(\.openWindow) private var openWindow
@@ -540,10 +541,32 @@ struct ConsoleView: View {
         }
     }
 
+    /// A filter is meaningless with a single Host.
+    private var filtersByHost: Bool { hosts.hosts.count > 1 }
+
+    /// At the largest text sizes a sidebar's bar cannot fit its title
+    /// beside three buttons, so the Host filter joins the presentation menu.
+    private var foldsHostFilter: Bool { filtersByHost && dynamicTypeSize >= .xxLarge }
+
+    private var hostFilterPicker: some View {
+        Picker("Host", selection: $hostFilter) {
+            Text("All Hosts").tag(Host.ID?.none)
+            ForEach(hosts.hosts) { host in
+                Text(host.displayName).tag(Host.ID?.some(host.id))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var foldedHostFilter: some View {
+        if foldsHostFilter {
+            Section("Filter by Host") { hostFilterPicker }
+        }
+    }
+
     @ToolbarContentBuilder
     private func toolbar(for tab: ConsoleTab) -> some ToolbarContent {
-        // A filter is meaningless with a single Host.
-        if hosts.hosts.count > 1 {
+        if filtersByHost, !foldsHostFilter {
             ToolbarItem(placement: .primaryAction) {
                 Menu(
                     "Filter by Host",
@@ -551,12 +574,7 @@ struct ConsoleView: View {
                         ? "line.3.horizontal.decrease.circle"
                         : "line.3.horizontal.decrease.circle.fill"
                 ) {
-                    Picker("Host", selection: $hostFilter) {
-                        Text("All Hosts").tag(Host.ID?.none)
-                        ForEach(hosts.hosts) { host in
-                            Text(host.displayName).tag(Host.ID?.some(host.id))
-                        }
-                    }
+                    hostFilterPicker
                 }
                 .hoverEffect(.highlight)
             }
@@ -569,6 +587,7 @@ struct ConsoleView: View {
                             Label(mode.title, systemImage: mode.systemImage).tag(mode)
                         }
                     }
+                    foldedHostFilter
                 } label: {
                     Label("Presentation", systemImage: listPresentation.mode.systemImage)
                 }
@@ -585,6 +604,7 @@ struct ConsoleView: View {
                             Label(mode.title, systemImage: mode.systemImage).tag(mode)
                         }
                     }
+                    foldedHostFilter
                 } label: {
                     Label("Presentation", systemImage: terminalPresentation.mode.systemImage)
                 }
