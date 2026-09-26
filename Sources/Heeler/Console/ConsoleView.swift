@@ -197,7 +197,8 @@ struct ConsoleView: View {
             }
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(
-                    horizontalSizeClass: horizontalSizeClass)))
+                    horizontalSizeClass: horizontalSizeClass),
+                fitsContent: true))
         }
         .sheet(item: $connectionDetailRequest) { request in
             if let host = hosts.hosts.first(where: { $0.id == request.id }),
@@ -423,6 +424,7 @@ struct ConsoleView: View {
                     // The sidebar column reports a compact size class even
                     // beside a detail, so the lists are told outright.
                     .environment(\.isSidebarColumn, presentation.usesRegularColumns)
+                    .environment(\.consoleListShowsDisclosure, !presentation.usesRegularColumns)
                     .navigationTitle(tab.title)
                     .navigationSplitViewColumnWidth(
                         min: presentation.sidebarWidth.minimum,
