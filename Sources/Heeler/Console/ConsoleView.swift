@@ -179,6 +179,7 @@ struct ConsoleView: View {
                     // as tapping the new row would, on the list that has it.
                     if currentTab != .agents { selectedTab.wrappedValue = .agents }
                     notificationRouter.path = [id]
+                    detailDidOpenFromSidebar()
                 }
                 .modifier(ConsoleSheetPresentationModifier(presentation: presentation))
             }
@@ -203,6 +204,7 @@ struct ConsoleView: View {
                 ) {
                     // A new shell lands in its terminal, as tapping its row would.
                     selectTerminal($0)
+                    detailDidOpenFromSidebar()
                 }
                 .modifier(ConsoleSheetPresentationModifier(
                     presentation: presentation, fitsContent: true))
@@ -519,7 +521,7 @@ struct ConsoleView: View {
                     filteredHostID: hostFilter,
                     searchQuery: terminalSearchText,
                     selection: selectedItem,
-                    onOpen: { selectTerminal($0) },
+                    onOpen: { openTerminal($0, from: .terminals, bySidebar: true) },
                     onOpenHost: { openHostIssue($0) },
                     onShowHostIssues: { isShowingHostIssues = true },
                     onNewTerminal: { isStartingTerminal = true })
@@ -702,12 +704,31 @@ struct ConsoleView: View {
                     }
                 case nil: clearSelection()
                 }
-                if selection != nil {
-                    withAnimation(reduceMotion ? nil : .snappy) {
-                        splitVisibilities[currentTab]?.selectionDidOpenDetail()
-                    }
-                }
+                if selection != nil { detailDidOpenFromSidebar() }
             })
+    }
+
+    /// A pick in portrait hides the sidebar shown for it, whether a row
+    /// was tapped or something made from the sidebar opened.
+    private func detailDidOpenFromSidebar() {
+        withAnimation(reduceMotion ? nil : .snappy) {
+            splitVisibilities[currentTab]?.selectionDidOpenDetail()
+        }
+    }
+
+    /// A shell made from `tab` (its list's New Terminal row, or the drawer
+    /// of a shell it shows) opens there. Made after the user moved to the
+    /// other list, it waits as `tab`'s pick instead of replacing what that
+    /// list shows.
+    private func openTerminal(
+        _ terminal: ConsoleTerminal, from tab: ConsoleTab, bySidebar: Bool = false
+    ) {
+        if shownListTab == tab {
+            selectTerminal(terminal)
+            if bySidebar, currentTab == tab { detailDidOpenFromSidebar() }
+        } else if horizontalSizeClass == .regular, !terminal.isAgent {
+            rememberedSelections[tab] = .terminal(terminal)
+        }
     }
 
     /// Something the window presents over the Console that registers
@@ -864,7 +885,7 @@ struct ConsoleView: View {
                 settings: terminal,
                 activity: activity,
                 onSelectAgent: { selectAgent($0) },
-                onSelectTerminal: { selectTerminal($0) },
+                onSelectTerminal: { openTerminal($0, from: tab) },
                 // The tab too: a tab switch remounts this in the next tab's
                 // split view, and the leaving one must let the terminal go.
                 isSelected: {
