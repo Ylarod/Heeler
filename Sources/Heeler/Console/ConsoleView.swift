@@ -54,7 +54,7 @@ struct ConsoleView: View {
     /// Each list tab's last selection. In regular width both lists sit
     /// beside their own detail, so a list tab comes back to what it showed
     /// rather than to the other list's pick.
-    @State private var rememberedSelections: [ConsoleTab: ConsoleSelection] = [:]
+    @State private var rememberedSelections: [ConsoleTab: ParkedSelection] = [:]
     /// A request to open the Hosts tab on one Host's detail. Each request
     /// rebuilds the tab so it lands there even when that Host is already
     /// on its stack.
@@ -158,6 +158,11 @@ struct ConsoleView: View {
                     .environment(\.symbolVariants, .none)
             }
         }
+        // `lastListTab` is every window's; this window keeps the list tab it
+        // opened on even when another window picks a different one.
+        .onAppear {
+            if listTab == nil { listTab = shownListTab }
+        }
         // The detail's actions can present these even while the sidebar is hidden.
         .sheet(isPresented: $isStartingAgent) {
             // StartAgentView brings its own NavigationStack.
@@ -247,8 +252,10 @@ struct ConsoleView: View {
         // the Console's sheets covers it. The only other push a sheet can
         // cause is the new-agent flow's, which dismisses itself first, so
         // clearing here is a no-op for it.
-        .onChange(of: notificationRouter.path) { _, path in
+        .onChange(of: notificationRouter.path) { old, path in
             guard !path.isEmpty else { return }
+            showAgentsList(
+                parking: old.last.map { .agent($0) } ?? selectedTerminal.map { .terminal($0) })
             selectedTerminal = nil
             // Hosts and Settings have no detail column; the Agent shows on
             // its list tab.
@@ -281,41 +288,83 @@ struct ConsoleView: View {
             get: {
                 if isHostsTabSelected { return .hosts }
                 if isSettingsTabSelected { return .settings }
-                return listTab ?? ConsoleTab(rawValue: sceneListTab) ?? lastListTab
+                return shownListTab
             },
             set: { tab in
-                // The list tab on screen, or under Hosts or Settings.
-                let leavingList = listTab ?? ConsoleTab(rawValue: sceneListTab) ?? lastListTab
+                let leavingList = shownListTab
                 isHostsTabSelected = tab == .hosts
                 isSettingsTabSelected = tab == .settings
                 guard tab.isList else { return }
                 if tab != leavingList, horizontalSizeClass == .regular {
                     swapListSelection(from: leavingList, to: tab)
                 }
-                listTab = tab
-                sceneListTab = tab.rawValue
-                lastListTab = tab
+                pinListTab(tab)
             })
     }
 
     private var currentTab: ConsoleTab { selectedTab.wrappedValue }
 
+    /// The list tab on screen, or under Hosts or Settings.
+    private var shownListTab: ConsoleTab {
+        listTab ?? ConsoleTab(rawValue: sceneListTab) ?? lastListTab
+    }
+
+    private func pinListTab(_ tab: ConsoleTab) {
+        listTab = tab
+        sceneListTab = tab.rawValue
+        lastListTab = tab
+    }
+
+    /// An Agent shows on the Agents list, whatever brought it on stage: the
+    /// Terminals list has no row for it. The list it replaces keeps what it
+    /// showed, as a tab switch would park it.
+    private func showAgentsList(parking parked: ParkedSelection?) {
+        let shown = shownListTab
+        guard shown != .agents else { return }
+        if horizontalSizeClass == .regular { rememberedSelections[shown] = parked }
+        pinListTab(.agents)
+    }
+
+    /// What the detail shows, as a list tab parks it.
+    private var parkedSelection: ParkedSelection? {
+        if let id = notificationRouter.path.last { return .agent(id) }
+        return selectedTerminal.map { .terminal($0) }
+    }
+
     /// Parks the leaving list's selection and puts back the arriving one's,
-    /// if what it showed is still there. No crossfade: the detail column
+    /// if what it showed may still be there. No crossfade: the detail column
     /// belongs to the other tab's split view.
     private func swapListSelection(from leaving: ConsoleTab, to arriving: ConsoleTab) {
-        rememberedSelections[leaving] = selectedItem.wrappedValue
+        rememberedSelections[leaving] = parkedSelection
         switch rememberedSelections[arriving] {
-        case .agent(let id) where console.agents.contains(where: { $0.id == id }):
+        case .agent(let id)
+        where console.agents.contains(where: { $0.id == id }) || isUnreported(id):
             selectedTerminal = nil
             notificationRouter.path = [id]
-        case .terminal(let id):
+        case .terminal(let parked) where isRestorable(parked):
             notificationRouter.path = []
-            selectedTerminal = console.terminals.first(where: { $0.id == id })
+            selectedTerminal = console.terminals.first(where: { $0.id == parked.id }) ?? parked
         default:
             notificationRouter.path = []
             selectedTerminal = nil
         }
+    }
+
+    /// A shell that has since started an Agent shows on the Agents list
+    /// instead, so the Terminals list does not come back to it.
+    private func isRestorable(_ parked: ConsoleTerminal) -> Bool {
+        if let live = console.terminals.first(where: { $0.id == parked.id }) {
+            return !live.isAgent
+        }
+        return isUnreported(ConsoleAgent.ID(hostID: parked.hostID, paneID: parked.paneID))
+    }
+
+    /// A pane missing from the lists only because its Host has not reported
+    /// since (paused, reconnecting, failed, loading) rather than because it
+    /// went. The detail keeps such a selection through a reconnect; a tab
+    /// switch in the meantime must too.
+    private func isUnreported(_ id: ConsoleAgent.ID) -> Bool {
+        MissingAgentPresentation(agentID: id, console: console, hosts: hosts).cause != .paneGone
     }
 
     private func splitVisibility(for tab: ConsoleTab) -> ConsoleSplitVisibilityState {
@@ -556,9 +605,14 @@ struct ConsoleView: View {
                         ? filteredAgents.map(\.id)
                         : hostSections.filter { !$0.isCollapsed }.flatMap { $0.agents.map(\.id) },
                     isSearchFocused: focusedSearch != nil,
-                    // Tabs are navigation, not cover: only sheets are.
+                    // Tabs are navigation, not cover: only sheets are,
+                    // including the ones Hosts and Settings present, which
+                    // register nowhere.
                     isCovered: isStartingAgent || isStartingTerminal
-                        || connectionDetailRequest != nil || isShowingHostIssues,
+                        || connectionDetailRequest != nil || isShowingHostIssues
+                        || (!currentTab.isList
+                            && sceneWindow?.window?.rootViewController?
+                                .presentedViewController != nil),
                     inputMode: inputMode.mode)
             },
             titles: ConsoleCommandTitles(
@@ -636,6 +690,7 @@ struct ConsoleView: View {
 
     private func selectAgent(_ id: ConsoleAgent.ID) {
         changeSelection {
+            showAgentsList(parking: parkedSelection)
             selectedTerminal = nil
             notificationRouter.path = [id]
         }
@@ -1543,6 +1598,14 @@ private struct ConsoleHostStatusCountPills: View {
 enum ConsoleSelection: Hashable {
     case agent(ConsoleAgent.ID)
     case terminal(ConsoleTerminal.ID)
+}
+
+/// What a list tab showed when the other list took the stage.
+private enum ParkedSelection {
+    case agent(ConsoleAgent.ID)
+    /// The terminal itself, not its id: a reconnecting Host lists none of
+    /// its terminals, and the tab still comes back to this one.
+    case terminal(ConsoleTerminal)
 }
 
 extension EnvironmentValues {
