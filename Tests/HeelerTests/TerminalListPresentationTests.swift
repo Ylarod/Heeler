@@ -34,13 +34,14 @@ struct TerminalListProjectionTests {
         workspaces: [Host.ID: [ConsoleWorkspace]] = [:], agents: [ConsoleAgent] = [],
         statuses: [Host.ID: EventsSessionStatus] = [:],
         awaiting: Set<Host.ID> = [],
+        syncErrors: [Host.ID: String] = [:],
         collapsedWorkspaces: Set<TerminalWorkspaceGroup.ID> = [],
         collapsedHosts: Set<Host.ID> = []
     ) -> TerminalListProjection {
         TerminalListProjection(
             hosts: hosts, terminals: terminals, workspacesByHost: workspaces, agents: agents,
             hostStatuses: statuses, hostStandingFailures: [:], hostsAwaitingSnapshot: awaiting,
-            hostSyncErrors: [:], collapsedWorkspaces: collapsedWorkspaces,
+            hostSyncErrors: syncErrors, collapsedWorkspaces: collapsedWorkspaces,
             collapsedHosts: collapsedHosts)
     }
 
@@ -205,6 +206,20 @@ struct TerminalListProjectionTests {
         let host = Host.fixture()
         let group = projection(hosts: [host], statuses: [host.id: .connected]).hostGroups().first
         #expect(group?.readiness.text == "No Terminals")
+    }
+
+    @Test func aHostWhoseSyncFailedReadsAsASyncIssueUnderItsOwnHeader() throws {
+        let host = Host.fixture(name: "mini")
+        let group = try #require(
+            projection(
+                hosts: [host], statuses: [host.id: .connected], awaiting: [host.id],
+                syncErrors: [host.id: "Could not sync this Host. Retrying…"]
+            ).hostGroups().first)
+        #expect(group.readiness == HostReadiness(text: "Sync issue", tone: .warning))
+        let issue = try #require(group.issue)
+        #expect(issue.tone == group.readiness.tone)
+        #expect(issue.message == "mini: Could not sync this Host. Retrying…")
+        #expect(issue.sectionMessage == "Could not sync this Host. Retrying…")
     }
 }
 

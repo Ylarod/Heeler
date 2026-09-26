@@ -15,6 +15,9 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
     let hostID: Host.ID
     let hostName: String
     let message: String
+    /// `message` for a row under the Host's own section header, which
+    /// already names it: a failure without the "studio: " before it.
+    let sectionMessage: String
     let systemImage: String
     let severity: Severity
     let navigates: Bool
@@ -40,6 +43,8 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
         hostID = host.id
         hostName = host.displayName
         isConnected = if case .connected = status { true } else { false }
+        // What follows a "studio: " prefix, where the message has one.
+        var unprefixed: String?
         switch status {
         case .suspended:
             message = "Connection to \(host.displayName) is paused."
@@ -51,6 +56,7 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
             if let standingFailure {
                 (message, systemImage, severity, navigates) = Self.failed(
                     standingFailure, hostName: host.displayName)
+                unprefixed = standingFailure.presentation.message
                 (tone, self.status) = Self.cannotConnect
             } else {
                 message = "Connecting to \(host.displayName)…"
@@ -68,11 +74,13 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
         case .failed(let failure):
             (message, systemImage, severity, navigates) = Self.failed(
                 failure, hostName: host.displayName)
+            unprefixed = failure.presentation.message
             (tone, self.status) = Self.cannotConnect
         case .connected:
             if let syncError {
                 (message, systemImage, severity, navigates) = Self.syncError(
                     syncError, hostName: host.displayName)
+                unprefixed = syncError
                 (tone, self.status) = Self.syncIssue
             } else if isAwaitingSnapshot {
                 message = "Loading \(inventoryNoun) from \(host.displayName)…"
@@ -87,11 +95,13 @@ struct ConsoleHostStatusPresentation: Equatable, Identifiable {
             if let syncError {
                 (message, systemImage, severity, navigates) = Self.syncError(
                     syncError, hostName: host.displayName)
+                unprefixed = syncError
                 (tone, self.status) = Self.syncIssue
             } else {
                 return nil
             }
         }
+        sectionMessage = unprefixed ?? message
     }
 
     private static let cannotConnect: (HostConnectionTone, String) = (.unavailable, "Can't connect")

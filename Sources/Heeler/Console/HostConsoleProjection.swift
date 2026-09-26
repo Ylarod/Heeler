@@ -961,14 +961,16 @@ final class HostConsoleProjection {
         return nil
     }
 
+    /// Names no inventory: the one snapshot feeds both the Agents and the
+    /// Terminals tab, and each shows this under its own list.
     private static func snapshotErrorMessage(_ error: any Error) -> String {
         switch error {
         case TransportError.timedOut:
-            "The Host did not answer while syncing Agents. Retrying…"
+            "The Host did not answer while syncing. Retrying…"
         case let apiError as HerdrAPIError:
             "herdr rejected the Console sync: \(apiError.message). Retrying…"
         default:
-            "Could not sync this Host's Agents. Retrying…"
+            "Could not sync this Host. Retrying…"
         }
     }
 

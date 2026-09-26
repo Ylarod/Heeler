@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// One Host condition as a list row, shared by the Agents and Terminals
-/// lists so a Host reads the same in both. A row that navigates opens the
-/// Host in the Hosts tab.
+/// One Host condition as a row in its Host's section, shared by the Agents
+/// and Terminals lists so a Host reads the same in both. The header above
+/// names the Host, so the row does not repeat it; VoiceOver still hears the
+/// whole sentence. A row that navigates opens the Host in the Hosts tab.
 struct ConsoleHostIssueRow: View {
     let issue: ConsoleHostStatusPresentation
     let onOpenHost: (Host.ID) -> Void
@@ -22,10 +23,11 @@ struct ConsoleHostIssueRow: View {
         HStack(spacing: 8) {
             Image(systemName: issue.systemImage)
                 .foregroundStyle(tint)
-            Text(issue.message)
+            Text(issue.sectionMessage)
                 .font(.footnote)
                 .foregroundStyle(issue.isCritical ? Color.red : Color.secondary)
                 .lineLimit(2)
+                .accessibilityLabel(issue.message)
             Spacer(minLength: 0)
             if issue.navigates {
                 ConsoleListRowChevron()
