@@ -11,6 +11,7 @@ struct ConsoleHostIssueRow: View {
         if issue.navigates {
             Button { onOpenHost(issue.hostID) } label: { label }
                 .buttonStyle(.plain)
+                .hoverEffect(.highlight)
                 .accessibilityHint("Opens this Host's settings.")
         } else {
             label
@@ -27,11 +28,10 @@ struct ConsoleHostIssueRow: View {
                 .lineLimit(2)
             Spacer(minLength: 0)
             if issue.navigates {
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                ConsoleListRowChevron()
             }
         }
+        .contentShape(Rectangle())
     }
 
     private var tint: Color {
@@ -94,11 +94,7 @@ struct ConsoleHostIssueList: View {
                     }
                 }
                 Spacer(minLength: 0)
-                // The list's own disclosure color, as on the rows below.
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                    .frame(width: 12)
+                ConsoleListRowChevron()
             }
             .padding(.vertical, 12)
             .contentShape(Rectangle())
@@ -137,13 +133,22 @@ struct ConsoleHostIssuesSheet<Detail: View>: View {
                     Button { onOpenHost(issue.hostID) } label: {
                         HStack {
                             row(issue)
-                            Image(systemName: "chevron.right")
-                                .font(.footnote.weight(.semibold))
+                            // Drawn as the list draws the pushing rows' own,
+                            // so every row in the sheet discloses alike: a
+                            // hierarchical style takes the glass sheet's
+                            // vibrancy as theirs does, and theirs sits this
+                            // far in from the row's edge.
+                            Image(systemName: "chevron.forward")
+                                .font(.body.weight(.semibold))
+                                .imageScale(.small)
                                 .foregroundStyle(.tertiary)
+                                .padding(.trailing, 1.5)
+                                .accessibilityHidden(true)
                         }
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .hoverEffect(.highlight)
                     .accessibilityHint("Opens this Host in the Hosts tab.")
                 } else {
                     row(issue)
@@ -226,10 +231,7 @@ struct ConsoleHostIssueCompactRow: View {
                 .foregroundStyle(Color.secondary)
                 .lineLimit(1)
             // Every row keeps the chevron's width, so statuses line up.
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color(uiColor: .tertiaryLabel))
-                .frame(width: 12)
+            ConsoleListRowChevron()
                 .opacity(issue.navigates ? 1 : 0)
         }
         .padding(.vertical, 12)
@@ -237,4 +239,31 @@ struct ConsoleHostIssueCompactRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(issue.message)
     }
+}
+
+/// The chevron a Console list row draws for itself when it opens a sheet or
+/// another tab instead of pushing, in the list's own disclosure color. Only
+/// where the list's NavigationLink rows show theirs; see
+/// `consoleListShowsDisclosure`.
+struct ConsoleListRowChevron: View {
+    @Environment(\.consoleListShowsDisclosure) private var showsDisclosure
+
+    var body: some View {
+        if showsDisclosure {
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                .frame(width: 12)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+extension EnvironmentValues {
+    /// Whether a Console list's NavigationLink rows show disclosure
+    /// chevrons, as a collapsed split view's pushing list does. An expanded
+    /// split view's sidebar marks the selected row instead, so a drawn
+    /// chevron there would be the list's only one. The sidebar's own size
+    /// class is compact either way, so the split view's owner says which.
+    @Entry var consoleListShowsDisclosure = true
 }
