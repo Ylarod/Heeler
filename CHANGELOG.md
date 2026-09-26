@@ -77,6 +77,9 @@ Entries reference the issue that motivated them.
   network hiccup; it now stops before authenticating. A pairing command
   that ends without answering is reported as such rather than as a network
   hiccup. (#358; PR #376)
+- Rotating a Max iPhone or resizing an iPad window no longer rebuilds an
+  open sheet such as Start Agent, which dropped what was typed in it and
+  any page pushed inside it.
 
 ## [0.1.10] - 2026-09-23
 
