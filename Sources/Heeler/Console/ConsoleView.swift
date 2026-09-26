@@ -3,7 +3,9 @@ import SwiftUI
 /// The Console home screen (#8): a bottom tab bar over Agents across every
 /// Host (flat or grouped by Host, #245), their ordinary shell Terminals
 /// grouped by Workspace or Host (#316), and one Search across both. Host
-/// management (#14) lives behind the toolbar button. Every tab is its own
+/// management (#14) and Settings are tabs too. An iPad beside its sidebar
+/// has no tab bar: the sidebar switches lists at its top and opens Hosts
+/// and Settings as sheets from its bottom. Every tab is its own
 /// split view, but they share one selection and only the selected tab
 /// mounts the detail column, so a terminal is never attached twice. In
 /// regular width a list tab swaps its own last selection back in when it
@@ -45,19 +47,22 @@ struct ConsoleView: View {
     @State private var listTab: ConsoleTab?
     @State private var isHostsTabSelected = false
     @State private var isSettingsTabSelected = false
+    /// Hosts and Settings where the sidebar navigates instead of a tab bar.
+    @State private var isShowingHostsSheet = false
+    @State private var isShowingSettingsSheet = false
     @State private var isStartingTerminal = false
     @State private var terminalPresentation = TerminalListPresentationStore()
     /// Where the detail column's navigation bar sits, from the column's top
-    /// edge. In regular width it starts just below the floating tab bar; see
+    /// edge. In regular width it starts just below the status bar; see
     /// `detailTopChromeInset`.
     @State private var detailBar = NavigationBarBand()
     /// Each list tab's last selection. In regular width both lists sit
     /// beside their own detail, so a list tab comes back to what it showed
     /// rather than to the other list's pick.
     @State private var rememberedSelections: [ConsoleTab: ParkedSelection] = [:]
-    /// A request to open the Hosts tab on one Host's detail. Each request
-    /// rebuilds the tab so it lands there even when that Host is already
-    /// on its stack.
+    /// A request to open Hosts, as a tab or a sheet, on one Host's detail.
+    /// Each request rebuilds the list so it lands there even when that Host
+    /// is already on its stack.
     @State private var hostsTabRequest: HostsTabRequest?
     /// Bumped to rebuild the Hosts or Settings tab, taking down a sheet it
     /// presented when a deep link carries the window off to an Agent.
@@ -82,6 +87,8 @@ struct ConsoleView: View {
     @State private var terminalSearchText = ""
     @State private var isAgentSearchPresented = false
     @State private var isTerminalSearchPresented = false
+    /// Lists whose search an iPad's sidebar has open at its foot.
+    @State private var openSidebarSearches: Set<ConsoleTab> = []
     /// The list whose search field has focus.
     @FocusState private var focusedSearch: ConsoleTab?
     @State private var commandRegistry = ConsoleCommandRegistry()
@@ -131,34 +138,15 @@ struct ConsoleView: View {
                     .environment(\.symbolVariants, .none)
             }
             Tab(ConsoleTab.hosts.title, systemImage: "server.rack", value: ConsoleTab.hosts) {
-                // HostListView brings its own NavigationStack.
-                HostListView(
-                    store: hosts,
-                    initialHostID: hostsTabRequest?.hostID,
-                    connectionStatuses: console.hostStatuses,
-                    standingFailures: console.hostStandingFailures,
-                    latencies: console.hostLatencies,
-                    syncIssues: console.hostSyncErrors,
-                    manualReconnectInFlightHostIDs: manualReconnectInFlightHostIDs,
-                    retryConnection: { await reconnectHost($0) },
+                hostList(
                     origin: hostsTabRequest?.origin.map { origin in
                         HostListOrigin(title: origin.title) { selectedTab.wrappedValue = origin }
                     })
-                .id(hostsTabRequest?.id)
                 .id(hostsTabGeneration)
             }
             Tab(value: ConsoleTab.settings) {
-                // SettingsView brings its own NavigationStack.
-                SettingsView(
-                    terminal: terminal,
-                    appearance: appearance,
-                    pushRegistration: pushRegistration,
-                    notificationPreferences: notificationPreferences,
-                    relaySettings: relaySettings,
-                    liveActivities: liveActivities,
-                    console: console,
-                    hosts: hosts.hosts)
-                .id(settingsTabGeneration)
+                settingsView()
+                    .id(settingsTabGeneration)
             } label: {
                 // Outlined, as Terminals is: filled, the gear is the heaviest
                 // icon in the bar.
@@ -234,6 +222,18 @@ struct ConsoleView: View {
         .sheet(isPresented: $isShowingHostIssues) {
             ConsoleSheetContent(sheetPresentation) { hostIssuesSheet(presentation: $0) }
         }
+        .sheet(isPresented: $isShowingHostsSheet, onDismiss: { hostsTabRequest = nil }) {
+            ConsoleSheetContent(sheetPresentation) { presentation in
+                hostList(onDone: { isShowingHostsSheet = false })
+                    .modifier(ConsoleSheetPresentationModifier(presentation: presentation))
+            }
+        }
+        .sheet(isPresented: $isShowingSettingsSheet) {
+            ConsoleSheetContent(sheetPresentation) { presentation in
+                settingsView(onDone: { isShowingSettingsSheet = false })
+                    .modifier(ConsoleSheetPresentationModifier(presentation: presentation))
+            }
+        }
         // Retries answered, the Host no longer failing, drop what they saw.
         .onChange(of: hostIssuesSheetExplained) { _, explained in
             hostIssuesLastFailures = hostIssuesLastFailures.filter { explained.contains($0.key) }
@@ -277,7 +277,23 @@ struct ConsoleView: View {
         // A Host opened on request belongs to that one visit: once the user
         // leaves the Hosts tab, it reopens on its list.
         .onChange(of: isHostsTabSelected) { _, isSelected in
-            if !isSelected { hostsTabRequest = nil }
+            if !isSelected, !isShowingHostsSheet { hostsTabRequest = nil }
+        }
+        // A window widening past the tab bar carries Hosts or Settings over
+        // into their sheet, over the list tab beneath them.
+        .onChange(of: usesSidebarNavigation) { _, usesSidebar in
+            guard usesSidebar else { return }
+            if isHostsTabSelected {
+                hostsTabRequest = hostsTabRequest.map {
+                    HostsTabRequest(hostID: $0.hostID, origin: nil)
+                }
+                isShowingHostsSheet = true
+                isHostsTabSelected = false
+            }
+            if isSettingsTabSelected {
+                isShowingSettingsSheet = true
+                isSettingsTabSelected = false
+            }
         }
         // A filter pointing at a removed Host would silently hide every
         // Agent; fall back to All Hosts instead.
@@ -315,6 +331,105 @@ struct ConsoleView: View {
 
     private var currentTab: ConsoleTab { selectedTab.wrappedValue }
 
+    /// An iPad beside its sidebar navigates from the sidebar instead of a
+    /// tab bar. An iPhone, and an iPad window too narrow for a sidebar, keep
+    /// the tab bar.
+    private var usesSidebarNavigation: Bool {
+        horizontalSizeClass == .regular && UIDevice.current.userInterfaceIdiom == .pad
+    }
+
+    /// Hosts, as a tab or a sheet. HostListView brings its own
+    /// NavigationStack.
+    private func hostList(
+        origin: HostListOrigin? = nil, onDone: (@MainActor () -> Void)? = nil
+    ) -> some View {
+        HostListView(
+            store: hosts,
+            initialHostID: hostsTabRequest?.hostID,
+            connectionStatuses: console.hostStatuses,
+            standingFailures: console.hostStandingFailures,
+            latencies: console.hostLatencies,
+            syncIssues: console.hostSyncErrors,
+            manualReconnectInFlightHostIDs: manualReconnectInFlightHostIDs,
+            retryConnection: { await reconnectHost($0) },
+            origin: origin,
+            onDone: onDone)
+        .id(hostsTabRequest?.id)
+    }
+
+    /// Settings, as a tab or a sheet. SettingsView brings its own
+    /// NavigationStack.
+    private func settingsView(onDone: (@MainActor () -> Void)? = nil) -> some View {
+        SettingsView(
+            terminal: terminal,
+            appearance: appearance,
+            pushRegistration: pushRegistration,
+            notificationPreferences: notificationPreferences,
+            relaySettings: relaySettings,
+            liveActivities: liveActivities,
+            console: console,
+            hosts: hosts.hosts,
+            onDone: onDone)
+    }
+
+    /// The sidebar's switch between the two lists, standing in for the tab
+    /// bar.
+    private var listSwitcher: some View {
+        Picker(
+            "List",
+            selection: Binding(get: { shownListTab }, set: { switchList(to: $0) })
+        ) {
+            Text(ConsoleTab.agents.title).tag(ConsoleTab.agents)
+            Text(ConsoleTab.terminals.title).tag(ConsoleTab.terminals)
+        }
+        .pickerStyle(.segmented)
+        .fixedSize()
+    }
+
+    private func switchList(to tab: ConsoleTab) {
+        guard tab != currentTab else { return }
+        let leaving = splitVisibility(for: currentTab)
+        selectedTab.wrappedValue = tab
+        splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
+            .keepSidebar(from: leaving)
+    }
+
+    /// A sidebar's search stays open while it still filters, as when a
+    /// narrow window's field left a query behind.
+    private func isSidebarSearchOpen(_ tab: ConsoleTab) -> Bool {
+        openSidebarSearches.contains(tab)
+            || !(tab == .terminals ? terminalSearchText : agentSearchText).isEmpty
+    }
+
+    private func openSidebarSearch(_ tab: ConsoleTab) {
+        withAnimation(reduceMotion ? nil : .snappy) { _ = openSidebarSearches.insert(tab) }
+    }
+
+    /// Closing a search drops its query, as a search field's Cancel does.
+    private func closeSidebarSearch(_ tab: ConsoleTab) {
+        withAnimation(reduceMotion ? nil : .snappy) {
+            openSidebarSearches.remove(tab)
+            if tab == .terminals { terminalSearchText = "" } else { agentSearchText = "" }
+        }
+        if focusedSearch == tab { focusedSearch = nil }
+    }
+
+    private func showHosts() {
+        if usesSidebarNavigation {
+            isShowingHostsSheet = true
+        } else {
+            selectedTab.wrappedValue = .hosts
+        }
+    }
+
+    private func showSettings() {
+        if usesSidebarNavigation {
+            isShowingSettingsSheet = true
+        } else {
+            selectedTab.wrappedValue = .settings
+        }
+    }
+
     /// The list tab on screen, or under Hosts or Settings.
     private var shownListTab: ConsoleTab {
         listTab ?? ConsoleTab(rawValue: sceneListTab) ?? lastListTab
@@ -341,11 +456,12 @@ struct ConsoleView: View {
     /// the new-agent flow's, which dismisses itself first, so clearing here
     /// is a no-op for it.
     private func bringAgentForward(parking parked: ParkedSelection?) {
-        // Hosts and Settings present their own sheets, which cover the tab
-        // bar: one up now is theirs. Rebuilding the tab takes it down, as
-        // closing them used to when they were sheets.
+        // Hosts and Settings tabs present their own sheets, which cover the
+        // tab bar: one up now is theirs. Rebuilding the tab takes it down,
+        // as closing them does where they are sheets.
         let ownsPresentation = isStartingAgent || isStartingTerminal
             || connectionDetailRequest != nil || isShowingHostIssues
+            || isShowingHostsSheet || isShowingSettingsSheet
         if isPresentingOverConsole, !ownsPresentation {
             if isHostsTabSelected { hostsTabGeneration += 1 }
             if isSettingsTabSelected { settingsTabGeneration += 1 }
@@ -360,6 +476,8 @@ struct ConsoleView: View {
         isStartingTerminal = false
         connectionDetailRequest = nil
         isShowingHostIssues = false
+        isShowingHostsSheet = false
+        isShowingSettingsSheet = false
     }
 
     /// What the detail shows, as a list tab parks it.
@@ -420,10 +538,18 @@ struct ConsoleView: View {
             })
     }
 
-    /// The floating tab bar follows the terminal on stage, as the status
-    /// bar does; it sits at the bottom, clear of it, in compact width.
+    /// A wide iPhone's tab bar follows the terminal on stage, as the status
+    /// bar does; in compact width the terminal is pushed clear of it.
     private var tabBarChromeScheme: ColorScheme? {
         horizontalSizeClass == .regular ? terminalStatusBarColorScheme : nil
+    }
+
+    /// A pushed detail owns the whole iPhone screen, as it did before the
+    /// tab bar existed. A wide iPhone keeps the bar to switch lists; an
+    /// iPad's sidebar switches them itself.
+    private var hidesTabBar: Bool {
+        usesSidebarNavigation
+            || (horizontalSizeClass == .compact && selectedItem.wrappedValue != nil)
     }
 
     /// Beside the sidebar, the detail's leading safe area lies under it,
@@ -463,12 +589,16 @@ struct ConsoleView: View {
                         min: presentation.sidebarWidth.minimum,
                         ideal: presentation.sidebarWidth.ideal,
                         max: presentation.sidebarWidth.maximum)
+                    .navigationBarTitleDisplayMode(usesSidebarNavigation ? .inline : .automatic)
                     .toolbar { toolbar(for: tab) }
-                    .background {
-                        if presentation.usesRegularColumns {
-                            SidebarTabBarClearance(containerSize: geometry.size)
-                        }
+                    .bottomBar {
+                        if usesSidebarNavigation { sidebarFooter(for: tab) }
                     }
+                    // iPadOS 27 draws the system's button on its own glass;
+                    // the sidebar has a bare one beside its others, and the
+                    // detail one to bring the sidebar back. Removed here, it
+                    // leaves the whole split view.
+                    .toolbar(removing: usesSidebarNavigation ? .sidebarToggle : nil)
             } detail: {
                 // Every tab keeps its split view alive; only the selected one
                 // may mount the detail, or a terminal would attach twice.
@@ -479,6 +609,21 @@ struct ConsoleView: View {
                             horizontalSizeClass == .regular ? detailTopInset(for: tab) : 0)
                         .environment(\.detailSurfaceEdges, detailSurfaceEdges(for: tab))
                         .environment(\.revealDetailSidebar, sidebarReveal(for: tab))
+                        .toolbar {
+                            if usesSidebarNavigation,
+                                splitVisibility(for: tab).isSidebarVisible == false
+                            {
+                                ToolbarItem(placement: .topBarLeading) {
+                                    Button("Show Sidebar", systemImage: "sidebar.left") {
+                                        withAnimation(reduceMotion ? nil : .snappy) {
+                                            splitVisibilities[
+                                                tab, default: ConsoleSplitVisibilityState()
+                                            ].showSidebar()
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         .background {
                             if horizontalSizeClass == .regular {
                                 NavigationBarTopReader { detailBar = $0 }
@@ -497,6 +642,7 @@ struct ConsoleView: View {
             }
             // Keep structural identity stable across rotation and size-class changes.
             .navigationSplitViewStyle(.automatic)
+
             // The detail column swapping its content dissolves from the
             // leaving screen to the arriving one; see `DetailCrossfade`.
             .environment(\.detailCrossfade, detailCrossfade)
@@ -506,17 +652,14 @@ struct ConsoleView: View {
             }
         }
         // Up to the window's top edge, as a split view alone in a window
-        // runs: a terminal then reaches under the status bar and the
-        // floating tab bar, while the columns' own bars still clear both.
+        // runs: a terminal then reaches under the status bar, while the
+        // columns' own bars still clear it.
         .ignoresSafeArea(.container, edges: horizontalSizeClass == .regular ? .top : [])
         // In every width, so a window turning compact drops the style.
-        .background { ConsoleTabBarBridge(chromeScheme: tabBarChromeScheme) }
-        // A pushed detail owns the whole iPhone screen, as it did before
-        // the tab bar existed. Regular width keeps the bar to switch lists.
-        .toolbarVisibility(
-            horizontalSizeClass == .compact && selectedItem.wrappedValue != nil
-                ? .hidden : .automatic,
-            for: .tabBar)
+        .background {
+            ConsoleTabBarBridge(chromeScheme: tabBarChromeScheme, hidesBar: hidesTabBar)
+        }
+        .toolbarVisibility(hidesTabBar ? .hidden : .automatic, for: .tabBar)
     }
 
     @ViewBuilder
@@ -524,10 +667,9 @@ struct ConsoleView: View {
         switch tab {
         case .agents:
             content
-                .searchable(
+                .modifier(ConsoleListSearch(
                     text: $agentSearchText, isPresented: $isAgentSearchPresented,
-                    placement: .navigationBarDrawer(displayMode: .automatic),
-                    prompt: "Search Agents")
+                    prompt: "Search Agents", showsField: !usesSidebarNavigation))
                 .searchFocused($focusedSearch, equals: .agents)
         case .terminals:
             if hosts.hosts.isEmpty {
@@ -544,10 +686,9 @@ struct ConsoleView: View {
                     onOpenHost: { openHostIssue($0) },
                     onShowHostIssues: { isShowingHostIssues = true },
                     onNewTerminal: { isStartingTerminal = true })
-                .searchable(
+                .modifier(ConsoleListSearch(
                     text: $terminalSearchText, isPresented: $isTerminalSearchPresented,
-                    placement: .navigationBarDrawer(displayMode: .automatic),
-                    prompt: "Search Terminals")
+                    prompt: "Search Terminals", showsField: !usesSidebarNavigation))
                 .searchFocused($focusedSearch, equals: .terminals)
             }
         case .hosts, .settings:
@@ -579,53 +720,62 @@ struct ConsoleView: View {
         }
     }
 
+    private var hostFilterMenu: some View {
+        Menu(
+            "Filter by Host",
+            systemImage: hostFilter == nil
+                ? "line.3.horizontal.decrease.circle"
+                : "line.3.horizontal.decrease.circle.fill"
+        ) {
+            hostFilterPicker
+        }
+        .hoverEffect(.highlight)
+    }
+
+    @ViewBuilder
+    private func presentationMenu(for tab: ConsoleTab) -> some View {
+        if tab == .terminals {
+            Menu {
+                Picker("Terminal presentation", selection: terminalPresentationBinding) {
+                    ForEach(TerminalListPresentationMode.allCases) { mode in
+                        Label(mode.title, systemImage: mode.systemImage).tag(mode)
+                    }
+                }
+                foldedHostFilter
+            } label: {
+                Label("Presentation", systemImage: terminalPresentation.mode.systemImage)
+            }
+            .hoverEffect(.highlight)
+            .accessibilityLabel("Terminal list presentation")
+            .accessibilityValue(terminalPresentation.mode.title)
+        } else {
+            Menu {
+                Picker("Presentation", selection: presentationModeBinding) {
+                    ForEach(ConsoleListPresentationMode.allCases) { mode in
+                        Label(mode.title, systemImage: mode.systemImage).tag(mode)
+                    }
+                }
+                foldedHostFilter
+            } label: {
+                Label("Presentation", systemImage: listPresentation.mode.systemImage)
+            }
+            .hoverEffect(.highlight)
+            .accessibilityLabel("Agent list presentation")
+            .accessibilityValue(listPresentation.mode.title)
+        }
+    }
+
     @ToolbarContentBuilder
     private func toolbar(for tab: ConsoleTab) -> some ToolbarContent {
-        if filtersByHost, !foldsHostFilter {
-            ToolbarItem(placement: .primaryAction) {
-                Menu(
-                    "Filter by Host",
-                    systemImage: hostFilter == nil
-                        ? "line.3.horizontal.decrease.circle"
-                        : "line.3.horizontal.decrease.circle.fill"
-                ) {
-                    hostFilterPicker
-                }
-                .hoverEffect(.highlight)
+        if usesSidebarNavigation {
+            // The list's menus sit at the sidebar's foot; see `sidebarFooter`.
+            ToolbarItem(placement: .principal) { listSwitcher }
+        } else {
+            if filtersByHost, !foldsHostFilter {
+                ToolbarItem(placement: .primaryAction) { hostFilterMenu }
             }
-        }
-        if !hosts.hosts.isEmpty, tab == .agents {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Picker("Presentation", selection: presentationModeBinding) {
-                        ForEach(ConsoleListPresentationMode.allCases) { mode in
-                            Label(mode.title, systemImage: mode.systemImage).tag(mode)
-                        }
-                    }
-                    foldedHostFilter
-                } label: {
-                    Label("Presentation", systemImage: listPresentation.mode.systemImage)
-                }
-                .hoverEffect(.highlight)
-                .accessibilityLabel("Agent list presentation")
-                .accessibilityValue(listPresentation.mode.title)
-            }
-        }
-        if !hosts.hosts.isEmpty, tab == .terminals {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Picker("Terminal presentation", selection: terminalPresentationBinding) {
-                        ForEach(TerminalListPresentationMode.allCases) { mode in
-                            Label(mode.title, systemImage: mode.systemImage).tag(mode)
-                        }
-                    }
-                    foldedHostFilter
-                } label: {
-                    Label("Presentation", systemImage: terminalPresentation.mode.systemImage)
-                }
-                .hoverEffect(.highlight)
-                .accessibilityLabel("Terminal list presentation")
-                .accessibilityValue(terminalPresentation.mode.title)
+            if !hosts.hosts.isEmpty {
+                ToolbarItem(placement: .primaryAction) { presentationMenu(for: tab) }
             }
         }
         if !hosts.hosts.isEmpty {
@@ -642,7 +792,50 @@ struct ConsoleView: View {
                     .hoverEffect(.highlight)
                 }
             }
+            .sidebarItemBackground(usesSidebarNavigation ? .hidden : .automatic)
         }
+        if usesSidebarNavigation {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Hide Sidebar", systemImage: "sidebar.left") {
+                    withAnimation(reduceMotion ? nil : .snappy) {
+                        splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
+                            .hideSidebar()
+                    }
+                }
+                .hoverEffect(.highlight)
+            }
+            .sidebarItemBackground(.hidden)
+        }
+    }
+
+    /// An iPad sidebar's foot, standing in for the tab bar and the list's
+    /// menus: Hosts and Settings on one side, search and the menus on the
+    /// other. Search takes the whole foot while open.
+    @ViewBuilder
+    private func sidebarFooter(for tab: ConsoleTab) -> some View {
+        HStack(spacing: 4) {
+            if isSidebarSearchOpen(tab) {
+                SidebarSearchField(
+                    text: tab == .terminals ? $terminalSearchText : $agentSearchText,
+                    prompt: tab == .terminals ? "Search Terminals" : "Search Agents",
+                    focus: $focusedSearch, tab: tab
+                ) { closeSidebarSearch(tab) }
+            } else {
+                Button(ConsoleTab.hosts.title, systemImage: "server.rack") { showHosts() }
+                Button(ConsoleTab.settings.title, systemImage: "gearshape") { showSettings() }
+                Spacer(minLength: 0)
+                if !hosts.hosts.isEmpty {
+                    Button("Search", systemImage: "magnifyingglass") { openSidebarSearch(tab) }
+                }
+                if filtersByHost, !foldsHostFilter { hostFilterMenu }
+                if !hosts.hosts.isEmpty { presentationMenu(for: tab) }
+            }
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(SidebarFooterButtonStyle())
+        .menuStyle(.button)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
     }
 
     private var terminalPresentationBinding: Binding<TerminalListPresentationMode> {
@@ -673,6 +866,7 @@ struct ConsoleView: View {
                     // Terminals list present, which register nowhere.
                     isCovered: isStartingAgent || isStartingTerminal
                         || connectionDetailRequest != nil || isShowingHostIssues
+                        || isShowingHostsSheet || isShowingSettingsSheet
                         || isPresentingOverConsole,
                     inputMode: inputMode.mode,
                     navigationAnchor: agentsListAnchor)
@@ -700,7 +894,9 @@ struct ConsoleView: View {
                 if horizontalSizeClass == .regular {
                     splitVisibilities[tab, default: ConsoleSplitVisibilityState()].showSidebar()
                 }
-                if tab == .terminals {
+                if usesSidebarNavigation {
+                    openSidebarSearch(tab)
+                } else if tab == .terminals {
                     isTerminalSearchPresented = true
                 } else {
                     isAgentSearchPresented = true
@@ -715,7 +911,7 @@ struct ConsoleView: View {
                     isStartingAgent = true
                 }
             },
-            settings: { selectedTab.wrappedValue = .settings },
+            settings: { showSettings() },
             hosts: { presentHosts() },
             closeAgent: { clearSelection() })
     }
@@ -836,9 +1032,8 @@ struct ConsoleView: View {
     /// that edge and the two disagree: the status bar spans both columns and
     /// takes one scheme, so white text over a dark terminal would vanish
     /// over a light sidebar. The detail then keeps the app's own band above
-    /// the terminal, the status bar and floating tab bar in it. An iPhone
-    /// wide enough for both columns shows no status bar in landscape and
-    /// keeps its tab bar at the bottom.
+    /// the terminal, with the status bar in it. An iPhone wide enough for
+    /// both columns shows no status bar in landscape.
     private var terminalOwnsTopEdge: Bool {
         horizontalSizeClass != .regular
             || UIDevice.current.userInterfaceIdiom != .pad
@@ -1443,13 +1638,15 @@ struct ConsoleView: View {
         }
     }
 
-    /// Switches to the Hosts tab, on one Host's detail when `id` is given.
+    /// Opens Hosts, on one Host's detail when `id` is given. A sheet
+    /// closes back where it was opened, so only the tab names its origin.
     private func presentHosts(_ id: Host.ID? = nil) {
         if let id {
             hostsTabRequest = HostsTabRequest(
-                hostID: id, origin: currentTab == .hosts ? nil : currentTab)
+                hostID: id,
+                origin: usesSidebarNavigation || currentTab == .hosts ? nil : currentTab)
         }
-        selectedTab.wrappedValue = .hosts
+        showHosts()
     }
 
     private func reconnectHost(_ id: Host.ID) async {
@@ -1457,6 +1654,144 @@ struct ConsoleView: View {
         await console.retryHost(id)
         try? await Task.sleep(for: .milliseconds(1_200))
         manualReconnectInFlightHostIDs.remove(id)
+    }
+}
+
+private extension ToolbarContent {
+    /// The glass a toolbar item shares with its neighbors; before iOS 26
+    /// items draw none.
+    @ToolbarContentBuilder
+    func sidebarItemBackground(_ visibility: Visibility) -> some ToolbarContent {
+        if #available(iOS 26.0, *) {
+            sharedBackgroundVisibility(visibility)
+        } else {
+            self
+        }
+    }
+}
+
+/// A list's search field under its title. An iPad's sidebar searches from
+/// its foot instead; see `SidebarSearchField`.
+private struct ConsoleListSearch: ViewModifier {
+    @Binding var text: String
+    @Binding var isPresented: Bool
+    let prompt: LocalizedStringKey
+    let showsField: Bool
+
+    func body(content: Content) -> some View {
+        if showsField {
+            content
+                .searchable(
+                    text: $text, isPresented: $isPresented,
+                    placement: .navigationBarDrawer(displayMode: .automatic), prompt: prompt)
+        } else {
+            content
+        }
+    }
+}
+
+/// An iPad sidebar's search, open at its foot in place of the buttons
+/// there: the field takes the width, and a close button beside it puts the
+/// buttons back. The field takes focus as it opens.
+private struct SidebarSearchField: View {
+    @Binding var text: String
+    let prompt: LocalizedStringKey
+    var focus: FocusState<ConsoleTab?>.Binding
+    let tab: ConsoleTab
+    let onClose: () -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                TextField(prompt, text: $text)
+                    .textFieldStyle(.plain)
+                    .focused(focus, equals: tab)
+                    .submitLabel(.search)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .onKeyPress(.escape) {
+                        onClose()
+                        return .handled
+                    }
+                if !text.isEmpty {
+                    Button("Clear", systemImage: "xmark.circle.fill") { text = "" }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 12)
+            // As tall as the close button beside it.
+            .frame(minHeight: 40, maxHeight: .infinity)
+            .modifier(SidebarSearchGlass(shape: .capsule))
+            SidebarSearchCloseButton(action: onClose)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .task { focus.wrappedValue = tab }
+    }
+}
+
+/// The system's close button, round on its own glass beside the field.
+private struct SidebarSearchCloseButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        if #available(iOS 26.0, *) {
+            Button(role: .close, action: action)
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .controlSize(.large)
+        } else {
+            Button("Close Search", systemImage: "xmark", action: action)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+                .controlSize(.large)
+        }
+    }
+}
+
+/// The glass under the open search's field.
+private struct SidebarSearchGlass<S: Shape>: ViewModifier {
+    let shape: S
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(.regular.interactive(), in: shape)
+        } else {
+            content.background(.fill.tertiary, in: shape)
+        }
+    }
+}
+
+/// A sidebar foot's buttons and menus: bare symbols, as bar buttons draw
+/// them, each with a bar button's hit area.
+private struct SidebarFooterButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .imageScale(.large)
+            .foregroundStyle(.primary)
+            .frame(width: 44, height: 44)
+            .contentShape(.rect)
+            // Round, as a bar button's pointer highlight is.
+            .contentShape(.hoverEffect, .circle)
+            .opacity(configuration.isPressed ? 0.35 : 1)
+            .hoverEffect(.highlight)
+    }
+}
+
+extension View {
+    /// Content pinned to the bottom edge that the list scrolls under, with
+    /// the system's scroll edge effect where there is one.
+    @ViewBuilder
+    fileprivate func bottomBar(@ViewBuilder _ content: () -> some View) -> some View {
+        if #available(iOS 26.0, *) {
+            safeAreaBar(edge: .bottom, content: content)
+        } else {
+            safeAreaInset(edge: .bottom) { content().background(.bar) }
+        }
     }
 }
 
@@ -1733,9 +2068,8 @@ private enum ParkedSelection {
 
 extension EnvironmentValues {
     /// How far a full-bleed detail screen must start below the detail
-    /// column's top edge to clear the Console's floating tab bar. Zero where
-    /// the tab bar sits at the bottom; the screens still clear the status bar
-    /// themselves.
+    /// column's top edge to clear the chrome above its navigation bar. Zero
+    /// in compact width; the screens still clear the status bar themselves.
     @Entry var detailTopChromeInset: CGFloat = 0
     /// The edges a detail screen's full-bleed surface fills past the safe
     /// area. Beside a visible sidebar the leading one lies under the
@@ -1744,7 +2078,8 @@ extension EnvironmentValues {
     @Entry var detailSurfaceEdges: Edge.Set = .all
     /// A Console list shown as the sidebar beside a detail column, where it
     /// draws its own selection, focus ring, and lifted rows, sits on the
-    /// sidebar's glass, and keeps its search field in view.
+    /// sidebar's glass, and keeps its search field in view, or on an iPad
+    /// searches from the sidebar's foot.
     @Entry var isSidebarColumn = false
     /// Brings out the sidebar beside an iPad's detail column. A detail's
     /// edge swipe calls it in place of going back; nil where the detail has
@@ -1758,9 +2093,8 @@ struct NavigationBarBand: Equatable {
     var bottom: CGFloat = 0
 }
 
-/// Reports where the enclosing navigation bar sits within its column. The
-/// Console's regular-width tab bar floats above the detail column's bar,
-/// and SwiftUI exposes neither frame.
+/// Reports where the enclosing navigation bar sits within its column, a
+/// frame SwiftUI does not expose.
 private struct NavigationBarTopReader: UIViewRepresentable {
     let onChange: @MainActor (NavigationBarBand) -> Void
 

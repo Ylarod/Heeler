@@ -39,7 +39,8 @@ enum SettingsAgentListDestination: String, Sendable {
     }
 }
 
-/// The Settings tab's root: a shallow menu into Agent fields, appearance and notifications.
+/// The Settings tab's root, or on iPad a sheet's: a shallow menu into Agent
+/// fields, appearance and notifications.
 /// Keeping it a menu means the per-Host notification rows can grow without
 /// pushing the appearance controls out of reach, and vice versa.
 struct SettingsView: View {
@@ -51,6 +52,9 @@ struct SettingsView: View {
     let liveActivities: HostLiveActivityCoordinator
     let console: ConsoleStore
     let hosts: [Host]
+    /// Closes Settings where it is presented as a sheet, as on iPad; nil
+    /// where it is a tab.
+    var onDone: (@MainActor () -> Void)? = nil
 
     static let agentListDestination = SettingsAgentListDestination.fields
 
@@ -144,6 +148,13 @@ struct SettingsView: View {
             }
             .readableColumnPage()
             .navigationTitle("Settings")
+            .toolbar {
+                if let onDone {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done", action: onDone)
+                    }
+                }
+            }
         }
         // Covers every pushed page too.
         .readableColumn()

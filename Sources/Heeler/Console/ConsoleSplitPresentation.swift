@@ -86,6 +86,24 @@ struct ConsoleSplitVisibilityState {
         userVisibility = appliedPresentation?.defaultVisibility == .all ? nil : .all
     }
 
+    /// The sidebar's own hide button, standing in for the system's.
+    mutating func hideSidebar() {
+        visibility = .detailOnly
+        reportedSidebarVisibility = nil
+        userVisibility = appliedPresentation?.defaultVisibility == .detailOnly ? nil : .detailOnly
+    }
+
+    /// A list switched to from inside a visible sidebar keeps the sidebar
+    /// out, even on its first showing: the switch was made there, and the
+    /// arriving list must not vanish under the tap.
+    mutating func keepSidebar(from leaving: ConsoleSplitVisibilityState) {
+        guard leaving.isSidebarVisible == true else { return }
+        if appliedPresentation == nil, let presentation = leaving.appliedPresentation {
+            update(from: presentation)
+        }
+        showSidebar()
+    }
+
     /// A pick from the sidebar that portrait shows only on request returns
     /// to the detail alone, as a pick on iPhone pushes to it: side by side,
     /// the terminal would keep only what the sidebar leaves of the width.

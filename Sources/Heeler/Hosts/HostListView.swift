@@ -79,6 +79,9 @@ struct HostListView: View {
     /// Where `initialHostID` was opened from. Its detail's back button goes
     /// back there instead of to this list.
     private let origin: HostListOrigin?
+    /// Closes the list where it is presented as a sheet, as on iPad; nil
+    /// where it is a tab.
+    private let onDone: (@MainActor () -> Void)?
     @State private var removal: HostRemovalStore
     @State private var isAddingHost = false
     @State private var editingHost: Host?
@@ -103,7 +106,8 @@ struct HostListView: View {
         syncIssues: [Host.ID: String] = [:],
         manualReconnectInFlightHostIDs: Set<Host.ID> = [],
         retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
-        origin: HostListOrigin? = nil
+        origin: HostListOrigin? = nil,
+        onDone: (@MainActor () -> Void)? = nil
     ) {
         self.store = store
         self.initialHostID = initialHostID
@@ -114,6 +118,7 @@ struct HostListView: View {
         self.manualReconnectInFlightHostIDs = manualReconnectInFlightHostIDs
         self.retryConnection = retryConnection
         self.origin = origin
+        self.onDone = onDone
         // On the stack from the first frame, so the requested detail never
         // renders with the list's back button first.
         _path = State(initialValue: Self.requestedRoute(initialHostID, in: store).map { [$0] } ?? [])
@@ -167,6 +172,11 @@ struct HostListView: View {
             }
             .navigationTitle("Hosts")
             .toolbar {
+                if let onDone {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done", action: onDone)
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button("Scan to Pair", systemImage: "qrcode.viewfinder") {
                         isScanningToPair = true
