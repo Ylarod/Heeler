@@ -133,6 +133,7 @@ struct ConsoleView: View {
                     connectionStatuses: console.hostStatuses,
                     standingFailures: console.hostStandingFailures,
                     latencies: console.hostLatencies,
+                    syncIssues: console.hostSyncErrors,
                     manualReconnectInFlightHostIDs: manualReconnectInFlightHostIDs,
                     retryConnection: { await reconnectHost($0) },
                     origin: hostsTabRequest?.origin.map { origin in
