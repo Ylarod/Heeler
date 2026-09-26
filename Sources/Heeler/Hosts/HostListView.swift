@@ -312,30 +312,23 @@ struct HostListView: View {
     @ViewBuilder
     private func row(for entry: HostListEntry) -> some View {
         let host = entry.host
-        Group {
-            if entry.presentation.offersRetry {
-                // A Retry row opens the Host from everything but its button,
-                // which a whole-row link would swallow.
-                HStack(spacing: 12) {
-                    Button { path.append(HostRoute(hostID: host.id)) } label: {
-                        HostRowLabel(host: host, presentation: entry.presentation)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens this Host.")
-                    HostRetryButton(
-                        isBusy: entry.presentation.isDialing
-                            || manualReconnectInFlightHostIDs.contains(host.id)
-                    ) {
+        let isRetrying =
+            entry.presentation.offersRetry
+            && (entry.presentation.isDialing || manualReconnectInFlightHostIDs.contains(host.id))
+        // Every row is a link, so each one gets the chevron, press highlight
+        // and pointer hover; a borderless Retry keeps its own target in it,
+        // and VoiceOver offers it as one of the row's actions.
+        NavigationLink(value: HostRoute(hostID: host.id)) {
+            HStack(spacing: 12) {
+                HostRowLabel(host: host, presentation: entry.presentation)
+                if entry.presentation.offersRetry {
+                    HostRetryButton(isBusy: isRetrying) {
                         if let retry = retryAction(for: host.id) { Task { await retry() } }
                     }
                 }
-            } else {
-                NavigationLink(value: HostRoute(hostID: host.id)) {
-                    HostRowLabel(host: host, presentation: entry.presentation)
-                }
             }
         }
+        .accessibilityValue(isRetrying ? "Connecting" : "")
         .listRowBackground(ListCard.fill)
         // Every removal asks first. No `.destructive` role: List would
         // animate the row out while the confirmation is still up.
@@ -614,7 +607,9 @@ private struct HostRetryButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        // Inert while busy but still hit: a tap on the spinner must not fall
+        // through to the row's link and open the Host.
+        Button { if !isBusy { action() } } label: {
             // Hidden, not removed, while busy: the button keeps its size.
             // Small and light: a stopped Host's reason is the row's point,
             // and three prominent buttons in a row shout over it.
@@ -634,9 +629,10 @@ private struct HostRetryButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
-        .allowsHitTesting(!isBusy)
-        .accessibilityLabel(isBusy ? "Connecting" : "Retry")
-        .accessibilityAddTraits(isBusy ? .updatesFrequently : [])
+        .accessibilityLabel("Retry")
+        // The row says "Connecting" instead of offering an action that
+        // would do nothing.
+        .accessibilityHidden(isBusy)
     }
 
     // On the light card the dark palette's pairing reads as disabled: the
