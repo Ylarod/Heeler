@@ -57,6 +57,24 @@ struct AgentNotificationRouterTests {
         router.open(AgentNotificationTarget(hostID: hostID, paneID: "wV:p1"))
 
         #expect(router.path == [ConsoleAgent.ID(hostID: hostID, paneID: "wV:p1")])
+        #expect(router.repeatLandings == 0)
+    }
+
+    /// A tap on the Agent the path already shows, from Settings say, leaves
+    /// the path as it was, which the Console cannot observe; the landing
+    /// count is what tells it to bring that Agent forward.
+    @Test func tapOnThePresentedAgentCountsARepeatLanding() {
+        let router = AgentNotificationRouter()
+        let hostID = UUID()
+        let agentID = ConsoleAgent.ID(hostID: hostID, paneID: "wV:p1")
+        router.agentsDidChange([consoleAgent(hostID: hostID, paneID: "wV:p1")])
+        router.path = [agentID]
+
+        router.open(AgentNotificationTarget(hostID: hostID, paneID: "wV:p1"))
+        router.open(AgentNotificationTarget(hostID: hostID, paneID: "wV:p1"))
+
+        #expect(router.path == [agentID])
+        #expect(router.repeatLandings == 2)
     }
 
     /// The killed-state launch path: the tap arrives before any Host has

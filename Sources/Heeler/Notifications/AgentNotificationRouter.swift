@@ -17,6 +17,11 @@ final class AgentNotificationRouter {
     /// A tap still waiting for its pane to appear in the Console.
     private(set) var pendingTarget: AgentNotificationTarget?
 
+    /// Counts taps that land on the Agent the path already shows. The path
+    /// does not change for them, so the Console watches this instead to
+    /// bring that Agent forward from another tab or from under a sheet.
+    private(set) var repeatLandings = 0
+
     /// Whether the Console's latest Agent list has this row, as last fed
     /// through `agentsDidChange`.
     func isKnownAgent(_ id: ConsoleAgent.ID) -> Bool {
@@ -46,7 +51,11 @@ final class AgentNotificationRouter {
             return
         }
         if knownAgentIDs.contains(target.agentID) {
-            path = [target.agentID]
+            if path == [target.agentID] {
+                repeatLandings += 1
+            } else {
+                path = [target.agentID]
+            }
         } else {
             path = []
             pendingTarget = target

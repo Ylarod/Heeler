@@ -264,32 +264,15 @@ struct ConsoleView: View {
             }
         }
         .animation(.snappy, value: bannerStore.banner)
-        // A notification deep link must land on Agent detail even when one of
-        // the Console's sheets covers it. The only other push a sheet can
-        // cause is the new-agent flow's, which dismisses itself first, so
-        // clearing here is a no-op for it.
         .onChange(of: notificationRouter.path) { old, path in
             guard !path.isEmpty else { return }
-            // Hosts and Settings present their own sheets, which cover the
-            // tab bar: one up now is theirs. Rebuilding the tab takes it
-            // down, as closing them used to when they were sheets.
-            let ownsPresentation = isStartingAgent || isStartingTerminal
-                || connectionDetailRequest != nil || isShowingHostIssues
-            if isPresentingOverConsole, !ownsPresentation {
-                if isHostsTabSelected { hostsTabGeneration += 1 }
-                if isSettingsTabSelected { settingsTabGeneration += 1 }
-            }
-            showAgentsList(
+            bringAgentForward(
                 parking: old.last.map { .agent($0) } ?? selectedTerminal.map { .terminal($0) })
-            selectedTerminal = nil
-            // Hosts and Settings have no detail column; the Agent shows on
-            // its list tab.
-            isHostsTabSelected = false
-            isSettingsTabSelected = false
-            isStartingAgent = false
-            isStartingTerminal = false
-            connectionDetailRequest = nil
-            isShowingHostIssues = false
+        }
+        // A deep link to the Agent already on the path leaves it unchanged,
+        // and must still come forward from Hosts, Settings or a sheet.
+        .onChange(of: notificationRouter.repeatLandings) {
+            bringAgentForward(parking: parkedSelection)
         }
         // A Host opened on request belongs to that one visit: once the user
         // leaves the Hosts tab, it reopens on its list.
@@ -351,6 +334,32 @@ struct ConsoleView: View {
         guard shown != .agents else { return }
         if horizontalSizeClass == .regular { rememberedSelections[shown] = parked }
         pinListTab(.agents)
+    }
+
+    /// Lands the path's Agent on Agent detail, even when one of the
+    /// Console's sheets covers it. The only other push a sheet can cause is
+    /// the new-agent flow's, which dismisses itself first, so clearing here
+    /// is a no-op for it.
+    private func bringAgentForward(parking parked: ParkedSelection?) {
+        // Hosts and Settings present their own sheets, which cover the tab
+        // bar: one up now is theirs. Rebuilding the tab takes it down, as
+        // closing them used to when they were sheets.
+        let ownsPresentation = isStartingAgent || isStartingTerminal
+            || connectionDetailRequest != nil || isShowingHostIssues
+        if isPresentingOverConsole, !ownsPresentation {
+            if isHostsTabSelected { hostsTabGeneration += 1 }
+            if isSettingsTabSelected { settingsTabGeneration += 1 }
+        }
+        showAgentsList(parking: parked)
+        selectedTerminal = nil
+        // Hosts and Settings have no detail column; the Agent shows on its
+        // list tab.
+        isHostsTabSelected = false
+        isSettingsTabSelected = false
+        isStartingAgent = false
+        isStartingTerminal = false
+        connectionDetailRequest = nil
+        isShowingHostIssues = false
     }
 
     /// What the detail shows, as a list tab parks it.
