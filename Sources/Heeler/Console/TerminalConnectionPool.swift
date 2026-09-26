@@ -98,15 +98,9 @@ final class TerminalConnectionPool {
                 guard entry.ownerID == nil || entry.ownerID == ownerID else {
                     throw Failure.alreadyVisible
                 }
-                entry.expiry?.cancel()
-                entry.expiry = nil
-                entry.ownerID = ownerID
-                entry.selectionID = selectionID
-                entry.isPresented = isPresented
-                entry.idleSince = nil
-                entry.idleID = nil
-                budget.touch(key: budgetKey(key), ownerID: entry.retentionID)
-                entry.store.transportGenerationDidChange(generation)
+                claim(
+                    entry, key: key, ownerID: ownerID, selectionID: selectionID,
+                    generation: generation, isPresented: isPresented)
                 return entry
             }
             while entries.keys.filter({ $0.hostID == hostID }).count >= maximumShellsPerHost {
@@ -155,6 +149,44 @@ final class TerminalConnectionPool {
         } onCancel: {
             task.cancel()
         }
+    }
+
+    /// Claims a pooled pipeline at once for an owner coming back to it, as
+    /// `select` would once its turn came, so a screen returning to a
+    /// retained terminal draws it from its first frame instead of a moment
+    /// of Opening Terminal. Nil when nothing is pooled for the target or
+    /// another owner holds it; `select` then decides. Safe beside queued
+    /// mutations: expiry and teardown re-check the owner before removing an
+    /// entry, and a removal that wins leaves the screen to `select` again.
+    func reclaim(
+        hostID: Host.ID,
+        identity: ShellTerminalIdentity,
+        ownerID: UUID,
+        generation: UInt64?,
+        isPresented: @escaping @MainActor () -> Bool = { true }
+    ) -> Entry? {
+        let key = Key(hostID: hostID, identity: identity)
+        guard let entry = entries[key], entry.ownerID == nil || entry.ownerID == ownerID
+        else { return nil }
+        claim(
+            entry, key: key, ownerID: ownerID, selectionID: UUID(), generation: generation,
+            isPresented: isPresented)
+        return entry
+    }
+
+    private func claim(
+        _ entry: Entry, key: Key, ownerID: UUID, selectionID: UUID, generation: UInt64?,
+        isPresented: @escaping @MainActor () -> Bool
+    ) {
+        entry.expiry?.cancel()
+        entry.expiry = nil
+        entry.ownerID = ownerID
+        entry.selectionID = selectionID
+        entry.isPresented = isPresented
+        entry.idleSince = nil
+        entry.idleID = nil
+        budget.touch(key: budgetKey(key), ownerID: entry.retentionID)
+        entry.store.transportGenerationDidChange(generation)
     }
 
     /// Deselecting stops accepting user input but preserves the renderer and

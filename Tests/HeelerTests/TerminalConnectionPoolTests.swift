@@ -54,6 +54,43 @@ struct TerminalConnectionPoolTests {
         await pool.suspend()
     }
 
+    @Test func aReturningScreenReclaimsItsPooledPipelineAtOnce() async throws {
+        var date = Date(timeIntervalSince1970: 1_000)
+        let pool = TerminalConnectionPool(now: { date })
+        let probe = PoolSessionProbe()
+        let host = UUID()
+        let shell = identity("one")
+        #expect(pool.reclaim(hostID: host, identity: shell, ownerID: UUID(), generation: 1) == nil)
+
+        let leaving = UUID()
+        let entry = try await pool.select(
+            hostID: host, identity: shell, ownerID: leaving,
+            generation: 1, runTerminal: runner(probe))
+        // Held by a screen still showing it: only `select` may say why not.
+        #expect(pool.reclaim(hostID: host, identity: shell, ownerID: UUID(), generation: 1) == nil)
+
+        pool.release(hostID: host, identity: shell, ownerID: leaving)
+        let returning = UUID()
+        #expect(
+            pool.reclaim(hostID: host, identity: shell, ownerID: returning, generation: 1)
+                === entry)
+        // Claimed, so idle expiry keeps it and another window cannot take it.
+        date = date.addingTimeInterval(600)
+        await pool.expireIdle()
+        #expect(pool.entries.count == 1)
+        await #expect(throws: TerminalConnectionPool.Failure.self) {
+            try await pool.select(
+                hostID: host, identity: shell, ownerID: UUID(),
+                generation: 1, runTerminal: runner(probe))
+        }
+        // The screen's own `select` then finds the same pipeline.
+        let confirmed = try await pool.select(
+            hostID: host, identity: shell, ownerID: returning,
+            generation: 1, runTerminal: runner(probe))
+        #expect(confirmed === entry)
+        await pool.suspend()
+    }
+
     @Test func idleExpiryDoesNotCloseTheVisibleTerminal() async throws {
         var date = Date(timeIntervalSince1970: 1_000)
         let pool = TerminalConnectionPool(maximumShellsPerHost: 2, now: { date })

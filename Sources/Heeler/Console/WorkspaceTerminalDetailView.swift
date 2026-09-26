@@ -121,6 +121,9 @@ struct WorkspaceTerminalDetailView: View {
         // terminal, so no state before it (the first frames of a push show
         // Opening Terminal even for a pooled connection) flashes the bar's.
         .navigationBarBackButtonHidden(true)
+        // A terminal left for another tab or screen comes back pooled:
+        // claimed before the first frame, it never shows Opening Terminal.
+        .onAppear { reclaimPooledEntry() }
         .task(id: LoadIdentity(
             identity: identity,
             generation: console.hostConnectionGenerations[terminal.hostID],
@@ -215,6 +218,14 @@ struct WorkspaceTerminalDetailView: View {
         let generation: UInt64?
         let activation: UInt64
         let retry: Int
+    }
+
+    private func reclaimPooledEntry() {
+        guard entry == nil, !isMissing else { return }
+        entry = console.terminalConnections.reclaim(
+            hostID: terminal.hostID, identity: identity, ownerID: ownerID,
+            generation: console.hostConnectionGenerations[terminal.hostID],
+            isPresented: { isSelected() })
     }
 
     private func load() async {
