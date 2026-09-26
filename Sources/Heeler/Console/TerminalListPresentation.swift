@@ -94,18 +94,23 @@ struct TerminalHostGroup: Identifiable, Equatable {
 /// What one shell row shows. An idle shell's terminal title is its
 /// directory, so shells side by side in one directory would read alike: a
 /// Tab the user named leads the row, and a card holding several shells
-/// names each row's Tab beside its path.
+/// names each row's Tab beside its path. The Workspace drawer names shells
+/// by the same rules, so one shell reads alike one tap apart.
 struct TerminalRowPresentation: Equatable {
     let title: String
     let subtitle: String
+    /// The shell's Tab, for a surface that shows it beside the title; nil
+    /// when the title already is the Tab's name.
+    let tab: String?
 
     init(terminal: ConsoleTerminal, showsWorkspace: Bool = false, showsTab: Bool = false) {
         let namedTitle = terminal.paneLabel.flatMap { $0.isEmpty ? nil : $0 }
         title = namedTitle ?? terminal.customTabLabel ?? terminal.displayTitle
         let titleIsTab = namedTitle == nil && terminal.customTabLabel != nil
+        tab = titleIsTab ? nil : terminal.displayTabTitle
         var parts: [String] = []
         if showsWorkspace { parts.append(terminal.workspaceLabel ?? terminal.hostName) }
-        if showsTab && !titleIsTab { parts.append(terminal.displayTabTitle) }
+        if showsTab, let tab { parts.append(tab) }
         parts.append(terminal.displayCwd.isEmpty ? "Path unavailable" : terminal.displayCwd)
         subtitle = parts.joined(separator: " · ")
     }

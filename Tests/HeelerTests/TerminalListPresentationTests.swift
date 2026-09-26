@@ -313,6 +313,31 @@ struct TerminalRowPresentationTests {
         #expect(row.subtitle == "api · Tab \u{201C}logs\u{201D} · ~/app")
     }
 
+    @Test func theTabBesideTheTitleIsLeftOutWhenTheTitleIsTheTab() {
+        #expect(TerminalRowPresentation(terminal: shell(tabLabel: "logs")).tab == nil)
+        #expect(TerminalRowPresentation(terminal: shell()).tab == "Tab 2")
+        #expect(
+            TerminalRowPresentation(terminal: shell(tabLabel: "logs", paneLabel: "tail")).tab
+                == "Tab \u{201C}logs\u{201D}")
+    }
+
+    /// One shell reads alike in the Terminals list and, one tap on, in the
+    /// Workspace drawer.
+    @MainActor @Test func theWorkspaceDrawerNamesShellsAsTheListDoes() {
+        let named = WorkspaceTerminalDrawer.rowName(for: shell(tabLabel: "logs", title: "zsh"))
+        #expect(named.title == "logs")
+        #expect(named.tab == nil)
+
+        let unnamed = WorkspaceTerminalDrawer.rowName(for: shell())
+        #expect(unnamed.title == "~/app")
+        #expect(unnamed.tab == "Tab 2")
+
+        let labelled = WorkspaceTerminalDrawer.rowName(
+            for: shell(tabLabel: "logs", paneLabel: "tail"))
+        #expect(labelled.title == "tail")
+        #expect(labelled.tab == "Tab \u{201C}logs\u{201D}")
+    }
+
     @Test func closeMessagesNameTheTabAndWorkspace() {
         #expect(TerminalCloseScope.tab.message(for: shell()) == "Closes Tab 2 in api.")
         #expect(

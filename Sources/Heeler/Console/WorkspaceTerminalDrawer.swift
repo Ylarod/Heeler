@@ -217,8 +217,19 @@ struct WorkspaceTerminalDrawer: View {
         .accessibilityLabel("Workspace terminals")
     }
 
+    /// A row's name and the Tab beside it. Shells are named as the
+    /// Terminals list names them (`TerminalRowPresentation`), so one shell
+    /// reads alike one tap apart; the Tab is left out when the name already
+    /// is the Tab's.
+    static func rowName(for terminal: ConsoleTerminal) -> (title: String, tab: String?) {
+        guard !terminal.isAgent else { return (terminal.displayTitle, terminal.displayTabTitle) }
+        let row = TerminalRowPresentation(terminal: terminal)
+        return (row.title, row.tab)
+    }
+
     private func row(_ item: ConsoleTerminal) -> some View {
         let selected = item.paneID == selectedPaneID
+        let name = Self.rowName(for: item)
         return Button {
             // Collapse first: a retained Agent surface survives the switch
             // and would otherwise come back with the panel still open.
@@ -232,16 +243,18 @@ struct WorkspaceTerminalDrawer: View {
                     .font(.system(size: 13, weight: .semibold))
                     .frame(width: 18)
                     .accessibilityHidden(true)
-                Text(item.displayTitle)
+                Text(name.title)
                     .font(.subheadline)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 4)
-                Text(item.displayTabTitle)
-                    .font(.caption)
-                    .foregroundStyle(palette.foreground.opacity(0.6))
-                    .lineLimit(1)
-                    .layoutPriority(1)
+                if let tab = name.tab {
+                    Text(tab)
+                        .font(.caption)
+                        .foregroundStyle(palette.foreground.opacity(0.6))
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                }
             }
             .padding(.horizontal, 10)
             .frame(height: Self.rowHeight)
@@ -252,8 +265,8 @@ struct WorkspaceTerminalDrawer: View {
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
-        .accessibilityLabel("\(item.isAgent ? "Agent" : "Terminal"), \(item.displayTitle)")
-        .accessibilityValue(item.displayTabTitle)
+        .accessibilityLabel("\(item.isAgent ? "Agent" : "Terminal"), \(name.title)")
+        .accessibilityValue(name.tab ?? "")
         .accessibilityHint(selected ? "" : item.displayCwd)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
