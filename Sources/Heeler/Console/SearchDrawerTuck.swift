@@ -8,10 +8,11 @@ extension View {
     /// hidden, so this scrolls the list by the field's height once, the
     /// state a short upward scroll leaves it in.
     ///
-    /// A sidebar beside a detail keeps its field in view instead, as iPad
-    /// sidebars do: there is room for it, and the tuck, which assumes the
-    /// iPhone's collapsing drawer, would scroll the first row under a field
-    /// that stays put.
+    /// Only an iPhone's list starts tucked, and not beside a detail. The
+    /// tuck assumes the iPhone's collapsing drawer: an iPad's field stays
+    /// put at every width, a narrow window's list as much as a sidebar, and
+    /// a sidebar keeps its field in view as iPad sidebars do. There the
+    /// tuck would only scroll the first row under the field.
     func searchDrawerStartsTucked() -> some View {
         modifier(SearchDrawerTuck())
     }
@@ -22,7 +23,9 @@ private struct SearchDrawerTuck: ViewModifier {
 
     func body(content: Content) -> some View {
         content.background {
-            if !isSidebarColumn { SearchDrawerTucker() }
+            if !isSidebarColumn, UIDevice.current.userInterfaceIdiom == .phone {
+                SearchDrawerTucker()
+            }
         }
     }
 }
