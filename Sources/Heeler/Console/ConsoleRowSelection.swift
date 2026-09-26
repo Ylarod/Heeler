@@ -68,60 +68,95 @@ struct ConsoleSidebarListTint: ViewModifier {
 struct ListRowFocusHalo<S: Shape>: UIViewRepresentable {
     let shape: S
 
-    func makeUIView(context: Context) -> HaloView {
-        HaloView()
+    func makeUIView(context: Context) -> ListRowFocusHaloView {
+        ListRowFocusHaloView()
     }
 
-    func updateUIView(_ view: HaloView, context: Context) {
+    func updateUIView(_ view: ListRowFocusHaloView, context: Context) {
         let shape = shape
         view.makePath = { shape.path(in: $0).cgPath }
     }
+}
 
-    final class HaloView: UIView {
-        var makePath: ((CGRect) -> CGPath)? {
-            didSet { setNeedsLayout() }
-        }
+final class ListRowFocusHaloView: UIView {
+    /// The cell's own effect, from before any halo replaced it, which a
+    /// reused cell goes back to when it next holds a row without a halo.
+    private final class OriginalEffect {
+        let effect: UIFocusEffect?
+        init(_ effect: UIFocusEffect?) { self.effect = effect }
+    }
 
-        init() {
-            super.init(frame: .zero)
-            isUserInteractionEnabled = false
-            isAccessibilityElement = false
-        }
+    private static let originalEffects =
+        NSMapTable<UICollectionViewCell, OriginalEffect>.weakToStrongObjects()
 
-        @available(*, unavailable)
-        required init?(coder: NSCoder) {
-            fatalError("init(coder:) is unavailable")
-        }
+    var makePath: ((CGRect) -> CGPath)? {
+        didSet { setNeedsLayout() }
+    }
 
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
+    /// The cell this view shaped, and the effect it set there.
+    private weak var shapedCell: UICollectionViewCell?
+    private weak var shapedEffect: UIFocusEffect?
+
+    init() {
+        super.init(frame: .zero)
+        isUserInteractionEnabled = false
+        isAccessibilityElement = false
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is unavailable")
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil {
+            releaseHalo()
+        } else {
             applyHalo()
         }
+    }
 
-        override func layoutSubviews() {
-            super.layoutSubviews()
-            applyHalo()
-        }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        applyHalo()
+    }
 
-        private var cell: UICollectionViewCell? {
-            var view = superview
-            while let current = view {
-                if let cell = current as? UICollectionViewCell { return cell }
-                view = current.superview
-            }
-            return nil
+    private var cell: UICollectionViewCell? {
+        var view = superview
+        while let current = view {
+            if let cell = current as? UICollectionViewCell { return cell }
+            view = current.superview
         }
+        return nil
+    }
 
-        /// The halo takes the cell's coordinate space.
-        private func applyHalo() {
-            guard window != nil, let makePath, let cell, !bounds.isEmpty else { return }
-            let origin = convert(bounds.origin, to: cell)
-            var transform = CGAffineTransform(translationX: origin.x, y: origin.y)
-            guard let path = makePath(CGRect(origin: .zero, size: bounds.size))
-                .copy(using: &transform)
-            else { return }
-            cell.focusEffect = UIFocusHaloEffect(path: UIBezierPath(cgPath: path))
+    /// The halo takes the cell's coordinate space.
+    private func applyHalo() {
+        guard window != nil, let makePath, let cell, !bounds.isEmpty else { return }
+        let origin = convert(bounds.origin, to: cell)
+        var transform = CGAffineTransform(translationX: origin.x, y: origin.y)
+        guard let path = makePath(CGRect(origin: .zero, size: bounds.size))
+            .copy(using: &transform)
+        else { return }
+        if shapedCell !== cell { releaseHalo() }
+        // Recorded once per cell, before any halo: a row arriving in a
+        // reused cell can shape it before the leaving row lets go.
+        if Self.originalEffects.object(forKey: cell) == nil {
+            Self.originalEffects.setObject(OriginalEffect(cell.focusEffect), forKey: cell)
         }
+        let effect = UIFocusHaloEffect(path: UIBezierPath(cgPath: path))
+        cell.focusEffect = effect
+        shapedCell = cell
+        shapedEffect = effect
+    }
+
+    private func releaseHalo() {
+        if let shapedCell, let shapedEffect, shapedCell.focusEffect === shapedEffect {
+            shapedCell.focusEffect = Self.originalEffects.object(forKey: shapedCell)?.effect
+        }
+        shapedCell = nil
+        shapedEffect = nil
     }
 }
 
