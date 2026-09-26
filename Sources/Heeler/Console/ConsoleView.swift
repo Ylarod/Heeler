@@ -729,7 +729,6 @@ struct ConsoleView: View {
         ) {
             hostFilterPicker
         }
-        .hoverEffect(.highlight)
     }
 
     @ViewBuilder
@@ -745,7 +744,6 @@ struct ConsoleView: View {
             } label: {
                 Label("Presentation", systemImage: terminalPresentation.mode.systemImage)
             }
-            .hoverEffect(.highlight)
             .accessibilityLabel("Terminal list presentation")
             .accessibilityValue(terminalPresentation.mode.title)
         } else {
@@ -759,7 +757,6 @@ struct ConsoleView: View {
             } label: {
                 Label("Presentation", systemImage: listPresentation.mode.systemImage)
             }
-            .hoverEffect(.highlight)
             .accessibilityLabel("Agent list presentation")
             .accessibilityValue(listPresentation.mode.title)
         }
@@ -772,10 +769,14 @@ struct ConsoleView: View {
             ToolbarItem(placement: .principal) { listSwitcher }
         } else {
             if filtersByHost, !foldsHostFilter {
-                ToolbarItem(placement: .primaryAction) { hostFilterMenu }
+                ToolbarItem(placement: .primaryAction) {
+                    hostFilterMenu.hoverEffect(.highlight)
+                }
             }
             if !hosts.hosts.isEmpty {
-                ToolbarItem(placement: .primaryAction) { presentationMenu(for: tab) }
+                ToolbarItem(placement: .primaryAction) {
+                    presentationMenu(for: tab).hoverEffect(.highlight)
+                }
             }
         }
         if !hosts.hosts.isEmpty {
@@ -784,12 +785,12 @@ struct ConsoleView: View {
                     Button("New Terminal", systemImage: "plus") {
                         isStartingTerminal = true
                     }
-                    .hoverEffect(.highlight)
+                    .modifier(SidebarBarButton(isInSidebar: usesSidebarNavigation))
                 } else {
                     Button("New Agent", systemImage: "plus") {
                         isStartingAgent = true
                     }
-                    .hoverEffect(.highlight)
+                    .modifier(SidebarBarButton(isInSidebar: usesSidebarNavigation))
                 }
             }
             .sidebarItemBackground(usesSidebarNavigation ? .hidden : .automatic)
@@ -802,7 +803,7 @@ struct ConsoleView: View {
                             .hideSidebar()
                     }
                 }
-                .hoverEffect(.highlight)
+                .buttonStyle(SidebarIconButtonStyle())
             }
             .sidebarItemBackground(.hidden)
         }
@@ -827,12 +828,18 @@ struct ConsoleView: View {
                 if !hosts.hosts.isEmpty {
                     Button("Search", systemImage: "magnifyingglass") { openSidebarSearch(tab) }
                 }
-                if filtersByHost, !foldsHostFilter { hostFilterMenu }
-                if !hosts.hosts.isEmpty { presentationMenu(for: tab) }
+                // A menu's pointer target is its own, not its button
+                // style's label, so it takes the round highlight here.
+                if filtersByHost, !foldsHostFilter {
+                    hostFilterMenu.roundPointerHighlight()
+                }
+                if !hosts.hosts.isEmpty {
+                    presentationMenu(for: tab).roundPointerHighlight()
+                }
             }
         }
         .labelStyle(.iconOnly)
-        .buttonStyle(SidebarFooterButtonStyle())
+        .buttonStyle(SidebarIconButtonStyle())
         .menuStyle(.button)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -1766,19 +1773,42 @@ private struct SidebarSearchGlass<S: Shape>: ViewModifier {
     }
 }
 
-/// A sidebar foot's buttons and menus: bare symbols, as bar buttons draw
-/// them, each with a bar button's hit area.
-private struct SidebarFooterButtonStyle: ButtonStyle {
+/// A bar button, drawn in an iPad's sidebar as the sidebar's own icons are.
+/// A plain toolbar button is bridged to a UIKit bar item, which ignores
+/// SwiftUI's hover modifiers and picks its pointer effect per symbol (a
+/// highlight for `plus`, a lens for `sidebar.left`); a styled one stays
+/// SwiftUI's, with the sidebar's round highlight.
+private struct SidebarBarButton: ViewModifier {
+    let isInSidebar: Bool
+
+    func body(content: Content) -> some View {
+        if isInSidebar {
+            content.buttonStyle(SidebarIconButtonStyle())
+        } else {
+            content.hoverEffect(.highlight)
+        }
+    }
+}
+
+/// An iPad sidebar's bare buttons and menus, in its bar and at its foot:
+/// symbols as bar buttons draw them, each with a bar button's hit area.
+private struct SidebarIconButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .imageScale(.large)
             .foregroundStyle(.primary)
             .frame(width: 44, height: 44)
             .contentShape(.rect)
-            // Round, as a bar button's pointer highlight is.
-            .contentShape(.hoverEffect, .circle)
             .opacity(configuration.isPressed ? 0.35 : 1)
-            .hoverEffect(.highlight)
+            .roundPointerHighlight()
+    }
+}
+
+extension View {
+    /// The pointer highlight every icon in an iPad sidebar takes: round,
+    /// as a bare bar button's is.
+    fileprivate func roundPointerHighlight() -> some View {
+        contentShape(.hoverEffect, .circle).hoverEffect(.highlight)
     }
 }
 
