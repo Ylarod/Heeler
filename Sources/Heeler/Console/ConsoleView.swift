@@ -166,16 +166,16 @@ struct ConsoleView: View {
         }
         // The detail's actions can present these even while the sidebar is hidden.
         .sheet(isPresented: $isStartingAgent) {
-            // StartAgentView brings its own NavigationStack.
-            StartAgentView(hosts: hosts.hosts, console: console) { id in
-                // A fresh launch lands in its own terminal, exactly
-                // as tapping the new row would, on the list that has it.
-                if currentTab != .agents { selectedTab.wrappedValue = .agents }
-                notificationRouter.path = [id]
+            ConsoleSheetContent(sheetPresentation) { presentation in
+                // StartAgentView brings its own NavigationStack.
+                StartAgentView(hosts: hosts.hosts, console: console) { id in
+                    // A fresh launch lands in its own terminal, exactly
+                    // as tapping the new row would, on the list that has it.
+                    if currentTab != .agents { selectedTab.wrappedValue = .agents }
+                    notificationRouter.path = [id]
+                }
+                .modifier(ConsoleSheetPresentationModifier(presentation: presentation))
             }
-            .modifier(ConsoleSheetPresentationModifier(
-                presentation: ConsoleSheetPresentation(
-                    horizontalSizeClass: horizontalSizeClass)))
         }
         // An Agent row asks here before closing its tab.
         .alert(tabCloseDialogTitle, isPresented: tabCloseDialogPresented) {
@@ -190,37 +190,40 @@ struct ConsoleView: View {
             Text(tabCloseError ?? "")
         }
         .sheet(isPresented: $isStartingTerminal) {
-            // NewTerminalView brings its own NavigationStack.
-            NewTerminalView(hosts: hosts.hosts, console: console, initialHostID: hostFilter) {
-                // A new shell lands in its terminal, as tapping its row would.
-                selectTerminal($0)
+            ConsoleSheetContent(sheetPresentation) { presentation in
+                // NewTerminalView brings its own NavigationStack.
+                NewTerminalView(
+                    hosts: hosts.hosts, console: console, initialHostID: hostFilter
+                ) {
+                    // A new shell lands in its terminal, as tapping its row would.
+                    selectTerminal($0)
+                }
+                .modifier(ConsoleSheetPresentationModifier(
+                    presentation: presentation, fitsContent: true))
             }
-            .modifier(ConsoleSheetPresentationModifier(
-                presentation: ConsoleSheetPresentation(
-                    horizontalSizeClass: horizontalSizeClass),
-                fitsContent: true))
         }
         .sheet(item: $connectionDetailRequest) { request in
-            if let host = hosts.hosts.first(where: { $0.id == request.id }),
-                let detail = connectionDetail(for: request)
-            {
-                HostConnectionDetailView(
-                    presentation: detail,
-                    host: host,
-                    catalog: hosts,
-                    sheetPresentation: ConsoleSheetPresentation(
-                        horizontalSizeClass: horizontalSizeClass),
-                    isRetryInFlight: manualReconnectInFlightHostIDs.contains(host.id)
-                ) {
-                    // Holds the sheet open through the retry's dial, which a
-                    // reconnecting Host makes without a standing failure.
-                    connectionDetailRequest?.lastFailure = detail.failure
-                    Task { await reconnectHost(host.id) }
+            ConsoleSheetContent(sheetPresentation) { presentation in
+                if let host = hosts.hosts.first(where: { $0.id == request.id }),
+                    let detail = connectionDetail(for: request)
+                {
+                    HostConnectionDetailView(
+                        presentation: detail,
+                        host: host,
+                        catalog: hosts,
+                        sheetPresentation: presentation,
+                        isRetryInFlight: manualReconnectInFlightHostIDs.contains(host.id)
+                    ) {
+                        // Holds the sheet open through the retry's dial, which a
+                        // reconnecting Host makes without a standing failure.
+                        connectionDetailRequest?.lastFailure = detail.failure
+                        Task { await reconnectHost(host.id) }
+                    }
                 }
             }
         }
         .sheet(isPresented: $isShowingHostIssues) {
-            hostIssuesSheet
+            ConsoleSheetContent(sheetPresentation) { hostIssuesSheet(presentation: $0) }
         }
         // Retries answered, the Host no longer failing, drop what they saw.
         .onChange(of: hostIssuesSheetExplained) { _, explained in
@@ -1259,9 +1262,15 @@ struct ConsoleView: View {
         }
     }
 
-    private var hostIssuesSheet: some View {
-        let sheetPresentation = ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)
-        return ConsoleHostIssuesSheet(
+    /// How the Console's sheets present, resolved against this view.
+    private var sheetPresentation: ConsoleSheetPresentation {
+        ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)
+    }
+
+    private func hostIssuesSheet(presentation sheetPresentation: ConsoleSheetPresentation)
+        -> some View
+    {
+        ConsoleHostIssuesSheet(
             issues: filteredHostIssues,
             explained: hostIssuesSheetExplained,
             sheetPresentation: sheetPresentation,

@@ -10,6 +10,29 @@ enum ConsoleSheetPresentation: Equatable {
     }
 }
 
+/// A sheet's content under the presentation resolved when it opened. The
+/// presenting view's size class can change under an open sheet (a Max
+/// iPhone rotating, an iPad window resized); following it would move the
+/// sheet's modifiers to their other branch and rebuild its content, losing
+/// a pushed page, an open Edit form, and what was typed there. The next
+/// sheet opens under the new size class.
+struct ConsoleSheetContent<Content: View>: View {
+    @State private var presentation: ConsoleSheetPresentation
+    private let content: (ConsoleSheetPresentation) -> Content
+
+    init(
+        _ presentation: ConsoleSheetPresentation,
+        @ViewBuilder content: @escaping (ConsoleSheetPresentation) -> Content
+    ) {
+        _presentation = State(initialValue: presentation)
+        self.content = content
+    }
+
+    var body: some View {
+        content(presentation)
+    }
+}
+
 struct ConsoleSheetPresentationModifier: ViewModifier {
     let presentation: ConsoleSheetPresentation
     /// A short destination's form shrinks to its content, which reports its
