@@ -14,7 +14,8 @@ Entries reference the issue that motivated them.
   the toolbar's Hosts and Settings buttons, and a Host opened from a Host
   problem in another tab goes back to that tab. An iPad beside its sidebar
   has no tab bar: the sidebar switches between Agents and Terminals at its
-  top, and opens Hosts and Settings as sheets from buttons at its foot.
+  top or with a sideways swipe off the rows, and opens Hosts and Settings as
+  sheets from buttons at its foot.
   Terminals lists every Host's shell panes as one collapsible card per
   Workspace, By Workspace or By Host, sharing the Agents tab's Host filter.
   A shell in a named tab is listed by that name, and shells sharing a card

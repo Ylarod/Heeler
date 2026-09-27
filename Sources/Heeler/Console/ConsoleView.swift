@@ -711,6 +711,9 @@ struct ConsoleView: View {
                 sidebar(for: .agents).modifier(SidebarListShown(isShown: tab == .agents))
                 sidebar(for: .terminals).modifier(SidebarListShown(isShown: tab == .terminals))
             }
+            .sidebarListSwipe { direction in
+                switchList(to: direction == .next ? .terminals : .agents)
+            }
             .topBar { listSwitcher }
         } else {
             sidebar(for: tab)
