@@ -23,7 +23,7 @@ enum ConsoleListPresentationMode: String, CaseIterable, Identifiable, Sendable {
     var systemImage: String {
         switch self {
         case .flat: "list.bullet"
-        case .grouped: "server.rack"
+        case .grouped: "list.bullet.indent"
         }
     }
 }

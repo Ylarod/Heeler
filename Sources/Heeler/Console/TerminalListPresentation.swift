@@ -47,7 +47,7 @@ enum TerminalListPresentationMode: String, CaseIterable, Identifiable, Sendable 
     var systemImage: String {
         switch self {
         case .byWorkspace: "rectangle.3.group"
-        case .byHost: "server.rack"
+        case .byHost: "list.bullet.indent"
         }
     }
 }
