@@ -12,7 +12,7 @@ extension View {
     /// tuck assumes the iPhone's collapsing drawer: an iPad's field stays
     /// put at every width, where the tuck would only scroll the first row
     /// under the field, and a sidebar keeps its field in view or, on an
-    /// iPad, pulls its own below its list switch. A narrow iPad
+    /// iPad, tucks it with `sidebarSearchDrawer(following:)`. A narrow iPad
     /// window's list starts on its large title instead, which UIKit lays out
     /// collapsed when a tab switch first shows the list.
     func searchDrawerStartsTucked() -> some View {

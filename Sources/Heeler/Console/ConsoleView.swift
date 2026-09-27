@@ -87,10 +87,6 @@ struct ConsoleView: View {
     @State private var terminalSearchText = ""
     @State private var isAgentSearchPresented = false
     @State private var isTerminalSearchPresented = false
-    /// Lists whose search an iPad's sidebar has open at its foot.
-    @State private var openSidebarSearches: Set<ConsoleTab> = []
-    /// The sidebar search ⌘F opened, whose field takes focus as it appears.
-    @State private var sidebarSearchFocusRequest: ConsoleTab?
     /// The list whose search field has focus.
     @FocusState private var focusedSearch: ConsoleTab?
     @State private var commandRegistry = ConsoleCommandRegistry()
@@ -407,71 +403,12 @@ struct ConsoleView: View {
         .pickerStyle(.segmented)
     }
 
-    /// What sits below an iPad sidebar's bar: the list switch, and the
-    /// search field once pulled into view or opened with ⌘F.
-    private func sidebarHeader(for tab: ConsoleTab) -> some View {
-        VStack(spacing: 8) {
-            listSwitcher
-            if isSidebarSearchOpen(tab) {
-                SidebarSearchField(
-                    text: tab == .terminals ? $terminalSearchText : $agentSearchText,
-                    prompt: tab == .terminals ? "Search Terminals" : "Search Agents",
-                    focus: $focusedSearch, tab: tab,
-                    focusesOnAppear: sidebarSearchFocusRequest == tab
-                ) { closeSidebarSearch(tab) }
-                .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .padding(.horizontal)
-        .padding(.bottom, 2)
-        // Once only: a field shown again later, as after a switch to the
-        // other list and back, leaves the cursor where it is.
-        .onChange(of: focusedSearch) { _, focused in
-            if focused != nil, focused == sidebarSearchFocusRequest {
-                sidebarSearchFocusRequest = nil
-            }
-        }
-    }
-
     private func switchList(to tab: ConsoleTab) {
         guard tab != currentTab else { return }
         let leaving = splitVisibility(for: currentTab)
         selectedTab.wrappedValue = tab
         splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
             .keepSidebar(from: leaving)
-    }
-
-    /// A sidebar's search stays open while it still filters, as when a
-    /// narrow window's field left a query behind.
-    private func isSidebarSearchOpen(_ tab: ConsoleTab) -> Bool {
-        openSidebarSearches.contains(tab)
-            || !(tab == .terminals ? terminalSearchText : agentSearchText).isEmpty
-    }
-
-    /// Opens a sidebar's search. A pull on the list only shows the field,
-    /// as an iPhone's list does; ⌘F also puts the cursor in it.
-    private func openSidebarSearch(_ tab: ConsoleTab, focusing: Bool = false) {
-        if focusing { sidebarSearchFocusRequest = tab }
-        withAnimation(reduceMotion ? nil : .snappy) { _ = openSidebarSearches.insert(tab) }
-    }
-
-    /// A list scrolled on past its top puts an idle search away again: an
-    /// empty field the user is not typing in.
-    private func tuckSidebarSearch(_ tab: ConsoleTab) {
-        guard openSidebarSearches.contains(tab), focusedSearch != tab,
-            (tab == .terminals ? terminalSearchText : agentSearchText).isEmpty
-        else { return }
-        closeSidebarSearch(tab)
-    }
-
-    /// Closing a search drops its query, as a search field's Cancel does.
-    private func closeSidebarSearch(_ tab: ConsoleTab) {
-        if sidebarSearchFocusRequest == tab { sidebarSearchFocusRequest = nil }
-        withAnimation(reduceMotion ? nil : .snappy) {
-            openSidebarSearches.remove(tab)
-            if tab == .terminals { terminalSearchText = "" } else { agentSearchText = "" }
-        }
-        if focusedSearch == tab { focusedSearch = nil }
     }
 
     private func showHosts() {
@@ -743,25 +680,37 @@ struct ConsoleView: View {
     /// out of sight and out of reach: a split view whose sidebar swaps its
     /// list rebuilds the whole column, its bar included, which lands the
     /// switch's sliding thumb at once.
+    ///
+    /// The switch sits above the lists rather than over them, so rows never
+    /// scroll beneath it: pinned over a list, as an inset or a scroll edge
+    /// bar, it needs a backdrop of its own, and a scroll edge bar also
+    /// keeps the search field from being pulled into view.
     @ViewBuilder
     private func sidebarLists(showing tab: ConsoleTab) -> some View {
         if usesSidebarNavigation {
-            ZStack {
-                ForEach([ConsoleTab.agents, .terminals], id: \.self) { list in
-                    sidebar(for: list)
-                        // Each list's own: a scroll modifier reaches only the
-                        // first scroll view below it.
-                        .modifier(
-                            SidebarSearchPull(
-                                onPull: { openSidebarSearch(list) },
-                                onScrollAway: { tuckSidebarSearch(list) }))
-                        .modifier(SidebarListShown(isShown: tab == list))
+            VStack(spacing: 0) {
+                listSwitcher
+                    .padding(.horizontal)
+                    .padding(.bottom, 6)
+                ZStack {
+                    ForEach([ConsoleTab.agents, .terminals], id: \.self) { list in
+                        sidebar(for: list)
+                            .modifier(SidebarListShown(isShown: tab == list))
+                    }
+                }
+                .sidebarListSwipe { direction in
+                    switchList(to: direction == .next ? .terminals : .agents)
                 }
             }
-            .sidebarListSwipe { direction in
-                switchList(to: direction == .next ? .terminals : .agents)
-            }
-            .topBar { sidebarHeader(for: tab) }
+            // One field for both lists, searching the one on show.
+            .searchable(
+                text: tab == .terminals ? $terminalSearchText : $agentSearchText,
+                isPresented: tab == .terminals
+                    ? $isTerminalSearchPresented : $isAgentSearchPresented,
+                placement: .navigationBarDrawer(displayMode: .automatic),
+                prompt: tab == .terminals ? "Search Terminals" : "Search Agents")
+            .searchFocused($focusedSearch, equals: tab)
+            .sidebarSearchDrawer(following: tab)
         } else {
             sidebar(for: tab)
         }
@@ -774,8 +723,8 @@ struct ConsoleView: View {
             content
                 .modifier(ConsoleListSearch(
                     text: $agentSearchText, isPresented: $isAgentSearchPresented,
+                    focus: $focusedSearch, tab: .agents,
                     prompt: "Search Agents", showsField: !usesSidebarNavigation))
-                .searchFocused($focusedSearch, equals: .agents)
         case .terminals:
             if hosts.hosts.isEmpty {
                 noHostsView
@@ -793,8 +742,8 @@ struct ConsoleView: View {
                     onNewTerminal: { isStartingTerminal = true })
                 .modifier(ConsoleListSearch(
                     text: $terminalSearchText, isPresented: $isTerminalSearchPresented,
+                    focus: $focusedSearch, tab: .terminals,
                     prompt: "Search Terminals", showsField: !usesSidebarNavigation))
-                .searchFocused($focusedSearch, equals: .terminals)
             }
         case .hosts, .settings:
             // These tabs show their own screens, not a split view.
@@ -988,9 +937,7 @@ struct ConsoleView: View {
                 if horizontalSizeClass == .regular {
                     splitVisibilities[tab, default: ConsoleSplitVisibilityState()].showSidebar()
                 }
-                if usesSidebarNavigation {
-                    openSidebarSearch(tab, focusing: true)
-                } else if tab == .terminals {
+                if tab == .terminals {
                     isTerminalSearchPresented = true
                 } else {
                     isAgentSearchPresented = true
@@ -1772,11 +1719,13 @@ private extension ToolbarContent {
     }
 }
 
-/// A list's search field under its title. An iPad's sidebar pulls its own
-/// into view below its list switch instead; see `SidebarSearchPull`.
+/// A list's search field under its title. An iPad's sidebar keeps one
+/// field for both its lists instead; see `sidebarLists(showing:)`.
 private struct ConsoleListSearch: ViewModifier {
     @Binding var text: String
     @Binding var isPresented: Bool
+    var focus: FocusState<ConsoleTab?>.Binding
+    let tab: ConsoleTab
     let prompt: LocalizedStringKey
     let showsField: Bool
 
@@ -1786,117 +1735,10 @@ private struct ConsoleListSearch: ViewModifier {
                 .searchable(
                     text: $text, isPresented: $isPresented,
                     placement: .navigationBarDrawer(displayMode: .automatic), prompt: prompt)
+                .searchFocused(focus, equals: tab)
         } else {
             content
         }
-    }
-}
-
-/// An iPad sidebar's search field, drawn as the system's: a filled capsule
-/// with a magnifying glass, the prompt, and a clear button. While in use a
-/// close button beside it puts the search away.
-private struct SidebarSearchField: View {
-    @Binding var text: String
-    let prompt: LocalizedStringKey
-    var focus: FocusState<ConsoleTab?>.Binding
-    let tab: ConsoleTab
-    let focusesOnAppear: Bool
-    let onClose: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-                TextField(prompt, text: $text)
-                    .textFieldStyle(.plain)
-                    .focused(focus, equals: tab)
-                    .submitLabel(.search)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .onKeyPress(.escape) {
-                        onClose()
-                        return .handled
-                    }
-                if !text.isEmpty {
-                    Button("Clear", systemImage: "xmark.circle.fill") { text = "" }
-                        .labelStyle(.iconOnly)
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, 12)
-            // As tall as the close button, so the list stays put as it comes.
-            .frame(height: 46)
-            .background(Color(uiColor: .tertiarySystemFill), in: .capsule)
-            if focus.wrappedValue == tab || !text.isEmpty {
-                SidebarSearchCloseButton(action: onClose)
-                    .transition(.scale.combined(with: .opacity))
-            }
-        }
-        .animation(
-            reduceMotion ? nil : .snappy, value: focus.wrappedValue == tab || !text.isEmpty)
-        .task { if focusesOnAppear { focus.wrappedValue = tab } }
-    }
-}
-
-/// The system's close button, round on its own glass beside the field.
-private struct SidebarSearchCloseButton: View {
-    let action: () -> Void
-
-    var body: some View {
-        if #available(iOS 26.0, *) {
-            Button(role: .close, action: action)
-                .labelStyle(.iconOnly)
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-                .controlSize(.large)
-        } else {
-            Button("Close Search", systemImage: "xmark", action: action)
-                .labelStyle(.iconOnly)
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.circle)
-                .controlSize(.large)
-        }
-    }
-}
-
-/// Shows an iPad sidebar's search as an iPhone's list does: pulling the
-/// list down past its top brings the field into view, and scrolling on into
-/// the list puts it away again. Only the user's own scrolling counts: the
-/// field arriving or leaving moves the list's insets too.
-private struct SidebarSearchPull: ViewModifier {
-    let onPull: () -> Void
-    let onScrollAway: () -> Void
-    @State private var isScrolledByUser = false
-
-    /// How far past its top a list is pulled to show the field, and how far
-    /// into it one is scrolled to put the field away.
-    private static let pullDistance: CGFloat = 44
-    private static let scrollDistance: CGFloat = 24
-
-    private enum Reach { case pulled, top, scrolled }
-
-    func body(content: Content) -> some View {
-        content
-            .onScrollPhaseChange { _, phase in
-                isScrolledByUser = phase == .tracking || phase == .interacting
-                    || phase == .decelerating
-            }
-            .onScrollGeometryChange(for: Reach.self) { geometry in
-                let offset = geometry.contentOffset.y + geometry.contentInsets.top
-                if offset <= -Self.pullDistance { return .pulled }
-                return offset >= Self.scrollDistance ? .scrolled : .top
-            } action: { _, reach in
-                guard isScrolledByUser else { return }
-                switch reach {
-                case .pulled: onPull()
-                case .scrolled: onScrollAway()
-                case .top: break
-                }
-            }
     }
 }
 
@@ -1972,17 +1814,6 @@ extension View {
 }
 
 extension View {
-    /// Content pinned below the navigation bar that the list scrolls under,
-    /// with the system's scroll edge effect where there is one.
-    @ViewBuilder
-    fileprivate func topBar(@ViewBuilder _ content: () -> some View) -> some View {
-        if #available(iOS 26.0, *) {
-            safeAreaBar(edge: .top, content: content)
-        } else {
-            safeAreaInset(edge: .top) { content().background(.bar) }
-        }
-    }
-
     /// Content pinned to the bottom edge that the list scrolls under, with
     /// the system's scroll edge effect where there is one.
     @ViewBuilder
