@@ -7,6 +7,8 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-09-28
+
 ### Added
 
 - The Console has Agents, Terminals, Hosts, and Settings tabs in a bottom
