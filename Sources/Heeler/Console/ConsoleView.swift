@@ -686,9 +686,6 @@ struct ConsoleView: View {
                         .modifier(SidebarListShown(isShown: tab == list))
                 }
             }
-            .sidebarListSwipe { direction in
-                switchList(to: direction == .next ? .terminals : .agents)
-            }
             // One field for both lists, searching the one on show.
             .searchable(
                 text: tab == .terminals ? $terminalSearchText : $agentSearchText,
