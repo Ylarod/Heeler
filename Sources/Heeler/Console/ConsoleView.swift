@@ -51,6 +51,9 @@ struct ConsoleView: View {
     @State private var isShowingHostsSheet = false
     @State private var isShowingSettingsSheet = false
     @State private var isShowingListMenu = false
+    /// Where the sidebar's title sits in the window, for its choices to
+    /// point at.
+    @State private var listMenuTitleFrame: CGRect?
     @State private var isStartingTerminal = false
     @State private var terminalPresentation = TerminalListPresentationStore()
     /// Where the detail column's navigation bar sits, from the column's top
@@ -171,7 +174,8 @@ struct ConsoleView: View {
                     notificationRouter.path = [id]
                     detailDidOpenFromSidebar()
                 }
-                .modifier(ConsoleSheetPresentationModifier(presentation: presentation))
+                .modifier(ConsoleSheetPresentationModifier(
+                    presentation: presentation, fitsContent: true))
             }
         }
         // An Agent row asks here before closing its tab.
@@ -689,7 +693,9 @@ struct ConsoleView: View {
             // frame, which lingers as a rectangle around a bare title for
             // about a second and a half after it closes.
             .overlay {
-                GeometryReader { _ in
+                GeometryReader { proxy in
+                    let anchor = SidebarListMenu.anchor(
+                        under: listMenuTitleFrame, in: proxy.frame(in: .global))
                     Color.clear
                         .frame(width: 1, height: 1)
                         .popover(isPresented: $isShowingListMenu, arrowEdge: .top) {
@@ -697,7 +703,7 @@ struct ConsoleView: View {
                                 shown: tab, lists: [.agents, .terminals],
                                 isPresented: $isShowingListMenu, select: switchList(to:))
                         }
-                        .position(x: SidebarListMenu.anchorLeading, y: SidebarListMenu.anchorTop)
+                        .position(anchor)
                 }
                 // Measured from the column's top, under the bar.
                 .ignoresSafeArea(.container, edges: .top)
@@ -819,7 +825,8 @@ struct ConsoleView: View {
         if usesSidebarNavigation {
             ToolbarItem(placement: .topBarLeading) {
                 SidebarListMenu(
-                    shown: tab, lists: [.agents, .terminals], isPresented: $isShowingListMenu)
+                    shown: tab, lists: [.agents, .terminals],
+                    isPresented: $isShowingListMenu, frame: $listMenuTitleFrame)
             }
             .sidebarItemBackground(.hidden)
         }
@@ -1770,11 +1777,18 @@ private struct SidebarListMenu: View {
     /// Every list the menu switches between.
     let lists: [ConsoleTab]
     @Binding var isPresented: Bool
+    /// The button's frame in the window.
+    @Binding var frame: CGRect?
 
-    /// Where the choices point from, in the sidebar column: under the
-    /// title's name, just above the bar's bottom edge.
-    static let anchorLeading: CGFloat = 44
-    static let anchorTop: CGFloat = 40
+    /// Where the choices point from, in a sidebar column whose frame in the
+    /// window is `column`: under the title, just above its bottom edge. The
+    /// bar sits lower in a floating sidebar (iPadOS 26) than in one flush
+    /// with the top (iPadOS 27), so it follows the title's own frame, with
+    /// a guess for the pass before the title reports one.
+    static func anchor(under title: CGRect?, in column: CGRect) -> CGPoint {
+        guard let title, !title.isEmpty else { return CGPoint(x: 44, y: 40) }
+        return CGPoint(x: title.midX - column.minX, y: title.maxY - column.minY - 4)
+    }
 
     var body: some View {
         // As wide as the widest title throughout: the bar lays its items
@@ -1792,6 +1806,9 @@ private struct SidebarListMenu: View {
                 .contentShape(.hoverEffect, Capsule().inset(by: 4))
                 .hoverEffect(.highlight)
                 .accessibilityHint("Switches between Agents and Terminals")
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+                    frame = $0
+                }
         }
     }
 }
