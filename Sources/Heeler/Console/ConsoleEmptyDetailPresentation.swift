@@ -81,6 +81,7 @@ struct ConsoleEmptyDetailPresentation: Equatable {
 struct ConsoleEmptyDetailView: View {
     let presentation: ConsoleEmptyDetailPresentation
     let perform: (ConsoleEmptyDetailPresentation.Action) -> Void
+    @ScaledMetric(relativeTo: .body) private var minimumActionWidth: CGFloat = 200
 
     var body: some View {
         ContentUnavailableView {
@@ -101,8 +102,13 @@ struct ConsoleEmptyDetailView: View {
                                 .accessibilityHidden(true)
                         }
                     }
+                    // One width for the stack, so the buttons line up.
+                    .frame(minWidth: minimumActionWidth)
                 }
                 .buttonStyle(.bordered)
+                // The view draws its actions small, sized for a phone; a
+                // detail column as wide as an iPad's wants them full size.
+                .controlSize(.large)
                 .disabled(!presentation.isEnabled(action))
                 .hoverEffect(.highlight)
             }
