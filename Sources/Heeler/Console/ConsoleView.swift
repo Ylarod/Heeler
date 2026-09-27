@@ -593,7 +593,9 @@ struct ConsoleView: View {
                         max: presentation.sidebarWidth.maximum)
                     .navigationBarTitleDisplayMode(usesSidebarNavigation ? .inline : .automatic)
                     .toolbar { toolbar(for: tab) }
-                    .modifier(SidebarTitleMenu(isShown: usesSidebarNavigation) { listMenu })
+                    // `toolbar(for:)` puts the list's title at the bar's
+                    // leading edge itself.
+                    .toolbar(removing: usesSidebarNavigation ? .title : nil)
                     .bottomBar {
                         if usesSidebarNavigation { sidebarFooter(for: tab) }
                     }
@@ -803,20 +805,32 @@ struct ConsoleView: View {
 
     @ToolbarContentBuilder
     private func toolbar(for tab: ConsoleTab) -> some ToolbarContent {
+        // An iPad sidebar's title, always at the bar's leading edge: the
+        // bar's own title centers itself wherever it fits, so it would move
+        // as the list, and the title's width, changes.
+        if usesSidebarNavigation {
+            ToolbarItem(placement: .topBarLeading) {
+                Menu { listMenu } label: { SidebarListTitle(title: tab.title) }
+                    .menuStyle(.button)
+                    // A style of its own keeps the label SwiftUI's: bridged
+                    // to a bar button, it would show only its image.
+                    .buttonStyle(SidebarListTitleButtonStyle())
+                    .accessibilityHint("Switches between Agents and Terminals")
+            }
+            .sidebarItemBackground(.hidden)
+        }
         if filtersByHost, !foldsHostFilter {
             ToolbarItem(placement: .primaryAction) {
                 hostFilterMenu.modifier(SidebarBarMenu(isInSidebar: usesSidebarNavigation))
             }
             .sidebarItemBackground(usesSidebarNavigation ? .hidden : .automatic)
         }
-        // Beside an iPad's sidebar the presentation menu sits at its foot;
-        // see `sidebarFooter`.
-        if !usesSidebarNavigation {
-            if !hosts.hosts.isEmpty {
-                ToolbarItem(placement: .primaryAction) {
-                    presentationMenu(for: tab).hoverEffect(.highlight)
-                }
+        if !hosts.hosts.isEmpty {
+            ToolbarItem(placement: .primaryAction) {
+                presentationMenu(for: tab)
+                    .modifier(SidebarBarMenu(isInSidebar: usesSidebarNavigation))
             }
+            .sidebarItemBackground(usesSidebarNavigation ? .hidden : .automatic)
         }
         if !hosts.hosts.isEmpty {
             ToolbarItem(placement: .primaryAction) {
@@ -831,37 +845,24 @@ struct ConsoleView: View {
             }
             .sidebarItemBackground(usesSidebarNavigation ? .hidden : .automatic)
         }
-        if usesSidebarNavigation {
-            ToolbarItem(placement: .primaryAction) {
-                Button("Hide Sidebar", systemImage: "sidebar.left") {
-                    withAnimation(reduceMotion ? nil : .snappy) {
-                        splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
-                            .hideSidebar()
-                    }
-                }
-                .buttonStyle(SidebarIconButtonStyle())
-            }
-            .sidebarItemBackground(.hidden)
-        }
     }
 
-    /// An iPad sidebar's foot, standing in for the tab bar and the list's
-    /// menu: Hosts and Settings on one side, the presentation menu on the
-    /// other.
+    /// An iPad sidebar's foot, standing in for the tab bar: Hosts and
+    /// Settings, and the button that hides the sidebar, which the bar has
+    /// no room for beside a window's controls.
     private func sidebarFooter(for tab: ConsoleTab) -> some View {
         HStack(spacing: 4) {
             Button(ConsoleTab.hosts.title, systemImage: "server.rack") { showHosts() }
             Button(ConsoleTab.settings.title, systemImage: "gearshape") { showSettings() }
             Spacer(minLength: 0)
-            // A menu's pointer target is its own, not its button style's
-            // label, so it takes the round highlight here.
-            if !hosts.hosts.isEmpty {
-                presentationMenu(for: tab).roundPointerHighlight()
+            Button("Hide Sidebar", systemImage: "sidebar.left") {
+                withAnimation(reduceMotion ? nil : .snappy) {
+                    splitVisibilities[tab, default: ConsoleSplitVisibilityState()].hideSidebar()
+                }
             }
         }
         .labelStyle(.iconOnly)
         .buttonStyle(SidebarIconButtonStyle())
-        .menuStyle(.button)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
     }
@@ -1737,7 +1738,7 @@ private struct SidebarBarButton: ViewModifier {
 
     func body(content: Content) -> some View {
         if isInSidebar {
-            content.buttonStyle(SidebarIconButtonStyle())
+            content.buttonStyle(SidebarIconButtonStyle(width: SidebarIconButtonStyle.barWidth))
         } else {
             content.hoverEffect(.highlight)
         }
@@ -1753,7 +1754,7 @@ private struct SidebarBarMenu: ViewModifier {
         if isInSidebar {
             content
                 .labelStyle(.iconOnly)
-                .buttonStyle(SidebarIconButtonStyle())
+                .buttonStyle(SidebarIconButtonStyle(width: SidebarIconButtonStyle.barWidth))
                 .menuStyle(.button)
                 .roundPointerHighlight()
         } else {
@@ -1762,18 +1763,37 @@ private struct SidebarBarMenu: ViewModifier {
     }
 }
 
-/// The list menu under an iPad sidebar's title. Only there: an empty title
-/// menu still draws its chevron.
-private struct SidebarTitleMenu<Menu: View>: ViewModifier {
-    let isShown: Bool
-    @ViewBuilder let menu: () -> Menu
+/// An iPad sidebar's title as the label of its list menu, drawn as the bar's
+/// own title menu: the list's name and a chevron in a small disc.
+private struct SidebarListTitle: View {
+    let title: String
 
-    func body(content: Content) -> some View {
-        if isShown {
-            content.toolbarTitleMenu(content: menu)
-        } else {
-            content
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.headline)
+                .lineLimit(1)
+                .fixedSize()
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.secondary)
+                .frame(width: 18, height: 18)
+                .background(Color(uiColor: .tertiarySystemFill), in: .circle)
+                .accessibilityHidden(true)
         }
+        .foregroundStyle(.primary)
+        // In line with the rows' own leading edge, as the bar's title is.
+        .padding(.leading, 12)
+        .frame(minHeight: 44)
+        .contentShape(.rect)
+        .contentShape(.hoverEffect, .capsule)
+        .hoverEffect(.highlight)
+    }
+}
+
+private struct SidebarListTitleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? 0.35 : 1)
     }
 }
 
@@ -1794,11 +1814,16 @@ private struct SidebarListShown: ViewModifier {
 /// An iPad sidebar's bare buttons and menus, in its bar and at its foot:
 /// symbols as bar buttons draw them, each with a bar button's hit area.
 private struct SidebarIconButtonStyle: ButtonStyle {
+    /// Narrower in the bar, which holds the list's title beside three of
+    /// them and, in a window, the window's controls.
+    var width: CGFloat = 44
+    static let barWidth: CGFloat = 38
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .imageScale(.large)
             .foregroundStyle(.primary)
-            .frame(width: 44, height: 44)
+            .frame(width: width, height: 44)
             .contentShape(.rect)
             .opacity(configuration.isPressed ? 0.35 : 1)
             .roundPointerHighlight()

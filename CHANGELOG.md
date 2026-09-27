@@ -50,8 +50,9 @@ Entries reference the issue that motivated them.
   keeping its own selection and sidebar; in portrait a pick returns to the
   terminal alone, and swiping in from the terminal's left edge brings the
   list back out instead of closing the terminal. The sidebar's buttons
-  stand bare on it, its list menus sit at its foot, and its search field,
-  as on an iPhone, stays out of sight until a list is pulled down. The terminal
+  stand bare on it, its list menus sit in its bar beside the list's title,
+  the button that hides it sits at its foot, and its search field, as on
+  an iPhone, stays out of sight until a list is pulled down. The terminal
   reaches the top of the window, and the status bar takes its colors,
   except beside a sidebar of the other appearance, where a band in the
   app's colors keeps it legible. Sidebar rows mark the
