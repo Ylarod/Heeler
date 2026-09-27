@@ -391,7 +391,9 @@ struct ConsoleView: View {
     }
 
     /// The sidebar's switch between the two lists, standing in for the tab
-    /// bar.
+    /// bar. A row of its own below the bar, as wide as the sidebar: the bar
+    /// row also carries a window's controls and the sidebar's buttons, and a
+    /// narrow window leaves the switch no room between them.
     private var listSwitcher: some View {
         Picker(
             "List",
@@ -401,7 +403,8 @@ struct ConsoleView: View {
             Text(ConsoleTab.terminals.title).tag(ConsoleTab.terminals)
         }
         .pickerStyle(.segmented)
-        .fixedSize()
+        .padding(.horizontal)
+        .padding(.bottom, 8)
     }
 
     private func switchList(to tab: ConsoleTab) {
@@ -626,6 +629,8 @@ struct ConsoleView: View {
                     // detail one to bring the sidebar back. Removed here, it
                     // leaves the whole split view.
                     .toolbar(removing: usesSidebarNavigation ? .sidebarToggle : nil)
+                    // The switch below the bar already names the list.
+                    .toolbar(removing: usesSidebarNavigation ? .title : nil)
             } detail: {
                 // Every tab keeps its split view alive; only the selected one
                 // may mount the detail, or a terminal would attach twice.
@@ -706,6 +711,7 @@ struct ConsoleView: View {
                 sidebar(for: .agents).modifier(SidebarListShown(isShown: tab == .agents))
                 sidebar(for: .terminals).modifier(SidebarListShown(isShown: tab == .terminals))
             }
+            .topBar { listSwitcher }
         } else {
             sidebar(for: tab)
         }
@@ -813,10 +819,9 @@ struct ConsoleView: View {
 
     @ToolbarContentBuilder
     private func toolbar(for tab: ConsoleTab) -> some ToolbarContent {
-        if usesSidebarNavigation {
-            // The list's menus sit at the sidebar's foot; see `sidebarFooter`.
-            ToolbarItem(placement: .principal) { listSwitcher }
-        } else {
+        // Beside an iPad's sidebar the list's menus sit at its foot; see
+        // `sidebarFooter`.
+        if !usesSidebarNavigation {
             if filtersByHost, !foldsHostFilter {
                 ToolbarItem(placement: .primaryAction) {
                     hostFilterMenu.hoverEffect(.highlight)
@@ -1875,6 +1880,17 @@ extension View {
 }
 
 extension View {
+    /// Content pinned below the navigation bar that the list scrolls under,
+    /// with the system's scroll edge effect where there is one.
+    @ViewBuilder
+    fileprivate func topBar(@ViewBuilder _ content: () -> some View) -> some View {
+        if #available(iOS 26.0, *) {
+            safeAreaBar(edge: .top, content: content)
+        } else {
+            safeAreaInset(edge: .top) { content().background(.bar) }
+        }
+    }
+
     /// Content pinned to the bottom edge that the list scrolls under, with
     /// the system's scroll edge effect where there is one.
     @ViewBuilder
