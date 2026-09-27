@@ -810,7 +810,11 @@ struct ConsoleView: View {
         // as the list, and the title's width, changes.
         if usesSidebarNavigation {
             ToolbarItem(placement: .topBarLeading) {
-                Menu { listMenu } label: { SidebarListTitle(title: tab.title) }
+                Menu { listMenu } label: {
+                    SidebarListTitle(
+                        title: tab.title,
+                        titles: [ConsoleTab.agents.title, ConsoleTab.terminals.title])
+                }
                     .menuStyle(.button)
                     // A style of its own keeps the label SwiftUI's: bridged
                     // to a bar button, it would show only its image.
@@ -1767,8 +1771,28 @@ private struct SidebarBarMenu: ViewModifier {
 /// own title menu: the list's name and a chevron in a small disc.
 private struct SidebarListTitle: View {
     let title: String
+    /// Every title the menu switches between.
+    let titles: [String]
 
     var body: some View {
+        // As wide as the widest title throughout: the bar lays its items
+        // out again only a while after a title changes, so a wider one
+        // would be clipped, and the menu would fold back onto a frame
+        // that no longer fits it.
+        ZStack(alignment: .leading) {
+            ForEach(titles, id: \.self) { label($0).hidden() }
+            label(title)
+        }
+        .foregroundStyle(.primary)
+        // In line with the rows' own leading edge, as the bar's title is.
+        .padding(.leading, 12)
+        .frame(minHeight: 44)
+        .contentShape(.rect)
+        .contentShape(.hoverEffect, .capsule)
+        .hoverEffect(.highlight)
+    }
+
+    private func label(_ title: String) -> some View {
         HStack(spacing: 8) {
             Text(title)
                 .font(.headline)
@@ -1781,13 +1805,6 @@ private struct SidebarListTitle: View {
                 .background(Color(uiColor: .tertiarySystemFill), in: .circle)
                 .accessibilityHidden(true)
         }
-        .foregroundStyle(.primary)
-        // In line with the rows' own leading edge, as the bar's title is.
-        .padding(.leading, 12)
-        .frame(minHeight: 44)
-        .contentShape(.rect)
-        .contentShape(.hoverEffect, .capsule)
-        .hoverEffect(.highlight)
     }
 }
 
