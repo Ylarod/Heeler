@@ -404,7 +404,7 @@ struct ConsoleView: View {
         }
         .pickerStyle(.segmented)
         .padding(.horizontal)
-        .padding(.bottom, 8)
+        .padding(.bottom, 2)
     }
 
     private func switchList(to tab: ConsoleTab) {
@@ -819,14 +819,15 @@ struct ConsoleView: View {
 
     @ToolbarContentBuilder
     private func toolbar(for tab: ConsoleTab) -> some ToolbarContent {
-        // Beside an iPad's sidebar the list's menus sit at its foot; see
-        // `sidebarFooter`.
-        if !usesSidebarNavigation {
-            if filtersByHost, !foldsHostFilter {
-                ToolbarItem(placement: .primaryAction) {
-                    hostFilterMenu.hoverEffect(.highlight)
-                }
+        if filtersByHost, !foldsHostFilter {
+            ToolbarItem(placement: .primaryAction) {
+                hostFilterMenu.modifier(SidebarBarMenu(isInSidebar: usesSidebarNavigation))
             }
+            .sidebarItemBackground(usesSidebarNavigation ? .hidden : .automatic)
+        }
+        // Beside an iPad's sidebar the presentation menu sits at its foot;
+        // see `sidebarFooter`.
+        if !usesSidebarNavigation {
             if !hosts.hosts.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
                     presentationMenu(for: tab).hoverEffect(.highlight)
@@ -861,8 +862,8 @@ struct ConsoleView: View {
     }
 
     /// An iPad sidebar's foot, standing in for the tab bar and the list's
-    /// menus: Hosts and Settings on one side, search and the menus on the
-    /// other. Search takes the whole foot while open.
+    /// menu: Hosts and Settings on one side, search and the presentation
+    /// menu on the other. Search takes the whole foot while open.
     @ViewBuilder
     private func sidebarFooter(for tab: ConsoleTab) -> some View {
         HStack(spacing: 4) {
@@ -881,9 +882,6 @@ struct ConsoleView: View {
                 }
                 // A menu's pointer target is its own, not its button
                 // style's label, so it takes the round highlight here.
-                if filtersByHost, !foldsHostFilter {
-                    hostFilterMenu.roundPointerHighlight()
-                }
                 if !hosts.hosts.isEmpty {
                     presentationMenu(for: tab).roundPointerHighlight()
                 }
@@ -1339,6 +1337,12 @@ struct ConsoleView: View {
         }
         ForEach(filteredAgents) { agent in
             agentRow(agent)
+                // Right under an iPad sidebar's list switch, a rule over
+                // the first row would crowd it.
+                .listRowSeparator(
+                    usesSidebarNavigation && visibleHostIssues.isEmpty
+                        && agent.id == filteredAgents.first?.id ? .hidden : .automatic,
+                    edges: .top)
         }
     }
 
@@ -1837,6 +1841,24 @@ private struct SidebarBarButton: ViewModifier {
     func body(content: Content) -> some View {
         if isInSidebar {
             content.buttonStyle(SidebarIconButtonStyle())
+        } else {
+            content.hoverEffect(.highlight)
+        }
+    }
+}
+
+/// `SidebarBarButton` for a menu, whose pointer target is its own rather
+/// than its button style's label.
+private struct SidebarBarMenu: ViewModifier {
+    let isInSidebar: Bool
+
+    func body(content: Content) -> some View {
+        if isInSidebar {
+            content
+                .labelStyle(.iconOnly)
+                .buttonStyle(SidebarIconButtonStyle())
+                .menuStyle(.button)
+                .roundPointerHighlight()
         } else {
             content.hoverEffect(.highlight)
         }
