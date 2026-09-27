@@ -25,9 +25,14 @@ Entries reference the issue that motivated them.
   terminal to close it after confirming, or long-press it to open another in
   its Workspace or copy its path. Pull the Terminals list down to search it
   by Host, Workspace, tab, title, or directory. (#316; PR #377)
+- A Shell Terminal's input row ends in a keyboard button, as the Agent
+  switcher does: it hides the keyboard, the Keys keyboard included, and
+  brings the system keyboard back.
 
 ### Changed
 
+- By Host, in the Agents and Terminals presentation menus, shows an
+  indented list instead of the server glyph Hosts uses.
 - A Host's connection state reads at a glance: Host headers in the Agents
   and Terminals tabs lead with a server glyph instead of a line of text, and
   a badge on its corner marks the state: green once connected, an open ring

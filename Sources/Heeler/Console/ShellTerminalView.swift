@@ -203,6 +203,8 @@ struct ShellTerminalView: View {
                         get: { keyboardMode },
                         set: { setKeyboardMode($0) }),
                     paste: { keyboardControl.paste($0) },
+                    isKeyboardUp: isKeyboardShown,
+                    toggleKeyboard: toggleKeyboard,
                     more: ShellTerminalMoreMenu(
                         title: title,
                         backTitle: backTitle,
@@ -364,6 +366,32 @@ struct ShellTerminalView: View {
             if restoresSystemKeyboard, !keyboardControl.isFirstResponder {
                 keyboardControl.requestKeyboard()
             }
+        }
+    }
+
+    /// The keyboard toggle's glyph: the Keys dock counts as a keyboard, and
+    /// a measured inset covers UIKit's show before first responder lands.
+    private var isKeyboardShown: Bool {
+        isKeyboardUpForHandoff || keyboardInset.height > 0
+    }
+
+    /// Hides whichever keyboard is up, Keys included, or raises the system
+    /// one, as the Agent switcher's toggle does.
+    private func toggleKeyboard() {
+        if keyboardMode == .controls {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                keyboardMode = .text
+            }
+            // Not `prepareKeyboardMode(.text)`: nothing is coming back up.
+            keyboardInset.resumeHeightCapture()
+            keyboardControl.setKeyboardMode(.text)
+            keyboardControl.dismissKeyboard()
+        } else if keyboardControl.isKeyboardUp {
+            keyboardControl.dismissKeyboard()
+        } else {
+            keyboardControl.requestKeyboard()
         }
     }
 
@@ -533,6 +561,8 @@ struct ShellTerminalMoreMenu: View {
 struct ShellTerminalInputRow: View {
     @Binding var mode: TerminalKeyboardMode
     let paste: (String) -> Void
+    let isKeyboardUp: Bool
+    let toggleKeyboard: () -> Void
     let more: ShellTerminalMoreMenu
     /// Matches the Composer chrome's small glyphs, or the row's icons read as
     /// borrowed from a different set.
@@ -543,6 +573,10 @@ struct ShellTerminalInputRow: View {
     private var sizeClass: InputShortcutStripPresentation.SizeClass {
         horizontalSizeClass == .regular ? .regular : .compact
     }
+
+    /// Both sides as wide as the wider one, so the mode control stays
+    /// centered.
+    private static let sideWidth = InputChromeLayout.shellAccessoryButtonWidth * 2
 
     var body: some View {
         HStack(spacing: 0) {
@@ -559,6 +593,7 @@ struct ShellTerminalInputRow: View {
             .frame(
                 width: InputChromeLayout.shellAccessoryButtonWidth,
                 height: InputChromeLayout.shortcutRowHeight)
+            .frame(width: Self.sideWidth, alignment: .leading)
 
             Spacer(minLength: 4)
 
@@ -573,7 +608,11 @@ struct ShellTerminalInputRow: View {
 
             // A line break without submitting (Shift+Enter) lives on the Keys
             // keyboard; the row keeps only what Text mode cannot do itself.
-            more
+            HStack(spacing: 0) {
+                more
+                keyboardToggle
+            }
+            .frame(width: Self.sideWidth, alignment: .trailing)
         }
         .padding(.horizontal, 8)
         .frame(height: 48)
@@ -583,6 +622,21 @@ struct ShellTerminalInputRow: View {
                 .frame(height: 1 / max(displayScale, 1))
         }
         .background(Color(uiColor: .secondarySystemBackground))
+    }
+
+    private var keyboardToggle: some View {
+        Button(action: toggleKeyboard) {
+            Image(systemName: isKeyboardUp ? "keyboard.chevron.compact.down" : "keyboard")
+                .font(.system(size: Self.glyphPointSize))
+                .foregroundStyle(Color(uiColor: .label))
+                .contentTransition(.symbolEffect(.replace))
+                .frame(
+                    width: InputChromeLayout.shellAccessoryButtonWidth,
+                    height: InputChromeLayout.shortcutRowHeight)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isKeyboardUp ? "Dismiss keyboard" : "Show keyboard")
     }
 }
 
