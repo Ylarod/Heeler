@@ -9,10 +9,13 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- The Console has Agents, Terminals, Hosts, and Settings tabs, a bottom tab
-  bar on iPhone and a top one on iPad, and reopens the list tab last shown.
-  Hosts and Settings replace the toolbar's Hosts and Settings buttons, and a
-  Host opened from a Host problem in another tab goes back to that tab.
+- The Console has Agents, Terminals, Hosts, and Settings tabs in a bottom
+  tab bar, and reopens the list tab last shown. Hosts and Settings replace
+  the toolbar's Hosts and Settings buttons, and a Host opened from a Host
+  problem in another tab goes back to that tab. An iPad beside its sidebar
+  has no tab bar: the sidebar switches between Agents and Terminals from a
+  menu on its title, and opens Hosts and Settings as sheets from buttons at
+  its foot.
   Terminals lists every Host's shell panes as one collapsible card per
   Workspace, By Workspace or By Host, sharing the Agents tab's Host filter.
   A shell in a named tab is listed by that name, and shells sharing a card
@@ -22,6 +25,9 @@ Entries reference the issue that motivated them.
   terminal to close it after confirming, or long-press it to open another in
   its Workspace or copy its path. Pull the Terminals list down to search it
   by Host, Workspace, tab, title, or directory. (#316; PR #377)
+- A Shell Terminal's input row ends in a keyboard button, as the Agent
+  switcher does: it hides the keyboard, the Keys keyboard included, and
+  brings the system keyboard back. (PR #381)
 
 ### Changed
 
@@ -33,6 +39,8 @@ Entries reference the issue that motivated them.
   name. The disclosure chevron moves to the trailing edge, and an expanded
   Host in the Agents tab states its condition as the Terminals tab does.
   (#316; PR #377)
+- By Host, in the Agents and Terminals presentation menus, shows an
+  indented list instead of the server glyph Hosts uses. (PR #381)
 - A Host that is reconnecting or cannot connect no longer expands: tapping
   it opens a sheet with the failure, a Retry button, and Edit for its
   settings. In the flat Agents list and the By Workspace terminals, Hosts
@@ -43,6 +51,33 @@ Entries reference the issue that motivated them.
   Can't Connect first, naming each problem beside a refresh button that
   retries, then Hosts still trying, then connected ones with their latency.
   (#316; PR #377)
+- On iPad, Agents and Terminals set their list beside the terminal, each
+  keeping its own selection and sidebar; in portrait a pick returns to the
+  terminal alone, and swiping in from the terminal's left edge brings the
+  list back out instead of closing the terminal. The sidebar's buttons
+  stand bare on it, with New and Hide Sidebar beside its title even in the
+  narrowest window, its list menus sit at its foot, and its search field,
+  as on an iPhone, stays out of sight until a list is pulled down. The terminal
+  reaches the top of the window, and the status bar takes its colors,
+  except beside a sidebar of the other appearance, where a band in the
+  app's colors keeps it legible. Sidebar rows mark the
+  selection and the keyboard focus with a quiet rounded fill and ring
+  instead of a blue band, and long-pressing one lifts a card of it. An
+  Agent opened from a notification or from a shell always shows on the
+  Agents tab. ⌘N opens New Terminal on the Terminals tab, and the menu names
+  each command for the tab on screen. A shell's loading, failure, and closed
+  states draw on the terminal's own background. (PR #381)
+- On iPad, Hosts and Settings open as centered sheets with Done, a Host
+  problem opens its Host there, and a Host's status sheets, New Terminal,
+  and New Agent open as centered forms sized to their content, with Done:
+  New Agent grows to show its whole form, up to the window's height,
+  instead of scrolling inside a fixed form. The buttons on an empty detail
+  (Show Agents, New Agent, New Terminal) are full size and one width,
+  instead of the small ones sized for a phone. (PR #381)
+- The Hosts list marks a connected Host that cannot sync, and a Host with
+  Retry opens like every other row. A Host header shows a sync issue ahead
+  of loading, and the workspace drawer names shells as the Terminals list
+  does. (PR #381)
 - Agents search hides under the list's title until you pull the list down,
   and matches an Agent's Host and kind too. While searching, a Host without
   a match leaves the list even when it has a connection problem, and a
@@ -57,6 +92,11 @@ Entries reference the issue that motivated them.
   network hiccup; it now stops before authenticating. A pairing command
   that ends without answering is reported as such rather than as a network
   hiccup. (#358; PR #376)
+- Rotating a Max iPhone or resizing an iPad window no longer rebuilds an
+  open sheet such as Start Agent, which dropped what was typed in it and
+  any page pushed inside it. (PR #381)
+- In a narrow iPad window, an Agent's terminal and a shell start below the
+  window's close and resize controls instead of under them. (PR #381)
 
 ## [0.1.10] - 2026-09-23
 

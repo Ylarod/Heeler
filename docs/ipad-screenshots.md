@@ -1,6 +1,6 @@
 # Heeler on iPad
 
-Agent Console, terminal input, Skills, and windowed presentation on iPad.
+Agent Console, Direct Input, Skills, Terminals, and windowed presentation on iPad.
 
 [Back to README](../README.md)
 
@@ -8,28 +8,28 @@ Agent Console, terminal input, Skills, and windowed presentation on iPad.
 
 Keep the Agent list visible alongside the selected conversation.
 
-![Agent Console and a Codex conversation on iPad](../output/app-store/ipad-13/sources/01-console.png)
+![Agent sidebar beside a Claude Code conversation and the Composer on iPad](images/console-ipad.png)
 
 ## Terminal keyboard
 
-Use Direct Input with a full terminal keyboard.
+Type straight into the Agent's terminal with Direct Input and the iOS keyboard.
 
-![Direct Input with the full Terminal keyboard on iPad](../output/app-store/ipad-13/sources/02-terminal-keyboard.png)
+![Direct Input with its shortcut row and the iOS keyboard on iPad](images/terminal-keyboard-ipad.png)
 
 ## Skills
 
-Browse Agent Skills alongside the Composer.
+Browse Agent Skills from the tools keyboard.
 
-![Composer with the Skills dock on iPad](../output/app-store/ipad-13/sources/03-skills.png)
+![Agent Skills in the tools keyboard below an Agent's live terminal on iPad](images/skills-ipad.png)
 
-## Agent controls
+## Terminals
 
-Navigate the Agent with dedicated touch controls.
+Open a plain shell in any Workspace, with Text and Keys modes.
 
-![Composer with the Agent control keys on iPad](../output/app-store/ipad-13/sources/04-agent-controls.png)
+![Terminals sidebar and a Shell Terminal in Keys mode on iPad](images/terminal-ipad.png)
 
 ## Windowed presentation
 
 Keep the console open in a floating iPad window.
 
-![Heeler in a floating iPad window](../output/app-store/ipad-13/sources/05-windowed-console.png)
+![Heeler in a floating iPad window](images/windowed-ipad.png)

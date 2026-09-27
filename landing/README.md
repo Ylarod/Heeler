@@ -57,8 +57,8 @@ The Geist and Geist Mono variable fonts in
 `src/styles/substrate/assets/fonts/` come from the `geist` npm package (SIL
 Open Font License 1.1, `LICENSE.txt` alongside them).
 
-The iPhone screenshots are copies of `docs/images/*.png` at the repo root.
-The iPad screenshots are copies of `output/app-store/ipad-13/sources/*.png`.
+The iPhone screenshots are copies of `docs/images/*-iphone.png` at the repo root.
+The iPad screenshots are copies of `docs/images/*-ipad.png`.
 They are not symlinks — refresh them here when the app screenshots change.
 The homepage shows only the floating-window iPad image, below the iPhone
 screenshots. Its image and text link open `/ipad` for the full gallery.

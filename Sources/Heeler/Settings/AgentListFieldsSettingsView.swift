@@ -25,8 +25,6 @@ struct AgentListFieldsSettingsView: View {
                 hostList
             }
         }
-        .frame(maxWidth: AgentListFieldsCopy.readableWidth)
-        .frame(maxWidth: .infinity)
         .navigationTitle("Agent List Fields")
         .navigationBarTitleDisplayMode(.large)
     }
@@ -42,6 +40,7 @@ struct AgentListFieldsSettingsView: View {
         .listStyle(.plain)
         .listSectionSpacing(AgentListFieldsChrome.hostSpacing)
         .contentMargins(.horizontal, AgentListFieldsChrome.pageInset, for: .scrollContent)
+        .readableColumnPage(contentMargin: AgentListFieldsChrome.pageInset)
         .scrollContentBackground(.hidden)
         .background(Color(uiColor: .systemGroupedBackground))
         .listRowSeparatorTint(Color(uiColor: .separator))
@@ -96,8 +95,6 @@ struct AgentListFieldsHostDetailView: View {
 
     var body: some View {
         hostList
-            .frame(maxWidth: AgentListFieldsCopy.readableWidth)
-            .frame(maxWidth: .infinity)
             .navigationTitle(host.displayName)
             .navigationBarTitleDisplayMode(.large)
             .confirmationDialog(
@@ -132,6 +129,7 @@ struct AgentListFieldsHostDetailView: View {
         .listStyle(.plain)
         .listSectionSpacing(AgentListFieldsChrome.hostSpacing)
         .contentMargins(.horizontal, AgentListFieldsChrome.pageInset, for: .scrollContent)
+        .readableColumnPage(contentMargin: AgentListFieldsChrome.pageInset)
         .scrollContentBackground(.hidden)
         .background(Color(uiColor: .systemGroupedBackground))
         .listRowSeparatorTint(Color(uiColor: .separator))
@@ -470,7 +468,6 @@ enum AgentListFieldsSourceCaption {
 }
 
 enum AgentListFieldsCopy {
-    static let readableWidth: CGFloat = 640
     static let noHosts = "Add a Host to configure its Agent rows."
     static let listIntro =
         "Each Host decides which fields appear on its Agent rows in Console. Open a Host to change them."

@@ -25,11 +25,27 @@ struct ConsoleCommandShortcut: Identifiable, Equatable, Sendable {
             Self(action: .focusSearch, title: "Search Agents", key: "f"),
             Self(action: .newAgent, title: "New Agent", key: "n"),
             Self(action: .settings, title: "Settings…", key: ","),
-            Self(action: .hosts, title: "Hosts…", key: "h", requiresShift: true),
+            Self(action: .hosts, title: "Hosts", key: "h", requiresShift: true),
             Self(action: .toggleInputMode, title: "Toggle Direct Input / Composer", key: "e"),
             Self(action: .sendDraft, title: "Send Composer Draft", key: "\r"),
             Self(action: .closeAgent, title: "Close Agent View", key: "w"),
         ]
+}
+
+/// Titles that follow the Console tab on screen. The Terminals tab searches
+/// and creates terminals, and a shell's detail closes a terminal view.
+struct ConsoleCommandTitles: Equatable, Sendable {
+    var listsTerminals = false
+    var showsShell = false
+
+    func title(for shortcut: ConsoleCommandShortcut) -> String {
+        switch shortcut.action {
+        case .focusSearch where listsTerminals: "Search Terminals"
+        case .newAgent where listsTerminals: "New Terminal"
+        case .closeAgent where showsShell: "Close Terminal View"
+        default: shortcut.title
+        }
+    }
 }
 
 enum ConsoleCommandFocus: CaseIterable, Sendable {

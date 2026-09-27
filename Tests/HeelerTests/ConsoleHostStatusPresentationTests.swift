@@ -90,11 +90,43 @@ struct ConsoleHostStatusPresentationTests {
             ConsoleHostStatusPresentation(
                 host: host,
                 status: .connected,
-                syncError: "Could not sync this Host's Agents. Retrying…"))
-        #expect(presentation.message == "studio: Could not sync this Host's Agents. Retrying…")
+                syncError: "Could not sync this Host. Retrying…"))
+        #expect(presentation.message == "studio: Could not sync this Host. Retrying…")
+        #expect(presentation.sectionMessage == "Could not sync this Host. Retrying…")
         #expect(presentation.systemImage == "arrow.trianglehead.2.clockwise")
         #expect(presentation.severity == .warning)
         #expect(presentation.navigates)
+    }
+
+    /// Under the Host's own section header the row need not name it again.
+    /// Only a "studio: " prefix goes; a sentence that names the Host in
+    /// passing still reads as one.
+    @Test func aSectionRowDropsOnlyTheHostNamePrefix() throws {
+        let failure = TransportError.authenticationFailed
+        let failed = try #require(
+            ConsoleHostStatusPresentation(host: host, status: .failed(failure), syncError: nil))
+        #expect(failed.message == "studio: \(failure.presentation.message)")
+        #expect(failed.sectionMessage == failure.presentation.message)
+
+        let retrying = try #require(
+            ConsoleHostStatusPresentation(
+                host: host, status: .connecting, standingFailure: failure, syncError: nil))
+        #expect(retrying.sectionMessage == failure.presentation.message)
+
+        let quiet = [
+            ConsoleHostStatusPresentation(host: host, status: .suspended, syncError: nil),
+            ConsoleHostStatusPresentation(host: host, status: .connecting, syncError: nil),
+            ConsoleHostStatusPresentation(
+                host: host, status: .connected, isAwaitingSnapshot: true, syncError: nil),
+            ConsoleHostStatusPresentation(
+                host: host,
+                status: .reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut),
+                syncError: nil),
+        ]
+        for row in quiet {
+            let row = try #require(row)
+            #expect(row.sectionMessage == row.message)
+        }
     }
 
     @Test func endedOrUnknownStatusesWithoutASyncErrorProduceNoRow() {

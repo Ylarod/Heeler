@@ -110,11 +110,11 @@ struct HostRowPresentationTests {
 
     private func row(
         _ status: EventsSessionStatus?, standingFailure: TransportError? = nil,
-        canRetry: Bool = true
+        syncIssue: String? = nil, canRetry: Bool = true
     ) -> HostRowPresentation {
         HostRowPresentation(
             host: host, status: status, standingFailure: standingFailure,
-            latency: .milliseconds(148), canRetry: canRetry)
+            latency: .milliseconds(148), syncIssue: syncIssue, canRetry: canRetry)
     }
 
     @Test func hostsGroupByWhatTheyNeedFromTheUser() {
@@ -156,6 +156,35 @@ struct HostRowPresentationTests {
         #expect(connected.detail == "\(host.username)@\(host.address)")
         #expect(connected.trailing == "148 ms")
         #expect(row(.failed(.timedOut)).trailing == nil)
+    }
+
+    /// The Console calls this Host "Sync issue" in orange; its row must not
+    /// read as a healthy green Connected.
+    @Test func aConnectedHostThatCannotSyncWearsTheConsolesSyncIssueLook() {
+        let outOfSync = row(.connected, syncIssue: "Could not sync this Host's Agents. Retrying…")
+        let console = ConsoleHostStatusPresentation(
+            host: host, status: .connected,
+            syncError: "Could not sync this Host's Agents. Retrying…")
+        #expect(outOfSync.tone == .warning)
+        #expect(outOfSync.tone == console?.tone)
+        #expect(outOfSync.detail == "Sync issue")
+        #expect(outOfSync.detail == console?.status)
+        #expect(outOfSync.group == .connected)
+        #expect(outOfSync.trailing == "148 ms")
+        #expect(!outOfSync.isProblem)
+        #expect(!outOfSync.offersRetry)
+    }
+
+    /// A lost connection outranks a stale sync error.
+    @Test func aSyncIssueNeverMasksAConnectionProblem() {
+        let issue = "Could not sync this Host's Agents. Retrying…"
+        let stopped = row(.failed(.authenticationFailed), syncIssue: issue)
+        #expect(stopped.tone == .unavailable)
+        #expect(stopped.detail == TransportError.authenticationFailed.presentation.summary)
+        let recovering = row(
+            .reconnecting(attempt: 1, delay: .seconds(1), failure: .timedOut), syncIssue: issue)
+        #expect(recovering.tone == .reconnecting)
+        #expect(row(.suspended, syncIssue: issue).tone == .paused)
     }
 
     @Test func onlyNonEmptyGroupsShowInOrder() {

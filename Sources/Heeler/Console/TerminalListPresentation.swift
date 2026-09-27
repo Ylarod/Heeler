@@ -47,7 +47,7 @@ enum TerminalListPresentationMode: String, CaseIterable, Identifiable, Sendable 
     var systemImage: String {
         switch self {
         case .byWorkspace: "rectangle.3.group"
-        case .byHost: "server.rack"
+        case .byHost: "list.bullet.indent"
         }
     }
 }
@@ -74,6 +74,18 @@ struct TerminalWorkspaceGroup: Identifiable, Equatable {
     let isCollapsed: Bool
 
     var id: ID { ID(hostID: hostID, workspaceID: workspaceID) }
+
+    /// What VoiceOver hears for the card's header.
+    var headerAccessibilityValue: String {
+        "\(TerminalCount.text(terminals.count)), \(isCollapsed ? "Collapsed" : "Expanded")"
+    }
+}
+
+/// A count of shells as the Terminals list words it.
+enum TerminalCount {
+    static func text(_ count: Int) -> String {
+        count == 1 ? "1 terminal" : "\(count) terminals"
+    }
 }
 
 /// One Host section of the By Host presentation.
@@ -94,18 +106,23 @@ struct TerminalHostGroup: Identifiable, Equatable {
 /// What one shell row shows. An idle shell's terminal title is its
 /// directory, so shells side by side in one directory would read alike: a
 /// Tab the user named leads the row, and a card holding several shells
-/// names each row's Tab beside its path.
+/// names each row's Tab beside its path. The Workspace drawer names shells
+/// by the same rules, so one shell reads alike one tap apart.
 struct TerminalRowPresentation: Equatable {
     let title: String
     let subtitle: String
+    /// The shell's Tab, for a surface that shows it beside the title; nil
+    /// when the title already is the Tab's name.
+    let tab: String?
 
     init(terminal: ConsoleTerminal, showsWorkspace: Bool = false, showsTab: Bool = false) {
         let namedTitle = terminal.paneLabel.flatMap { $0.isEmpty ? nil : $0 }
         title = namedTitle ?? terminal.customTabLabel ?? terminal.displayTitle
         let titleIsTab = namedTitle == nil && terminal.customTabLabel != nil
+        tab = titleIsTab ? nil : terminal.displayTabTitle
         var parts: [String] = []
         if showsWorkspace { parts.append(terminal.workspaceLabel ?? terminal.hostName) }
-        if showsTab && !titleIsTab { parts.append(terminal.displayTabTitle) }
+        if showsTab, let tab { parts.append(tab) }
         parts.append(terminal.displayCwd.isEmpty ? "Path unavailable" : terminal.displayCwd)
         subtitle = parts.joined(separator: " · ")
     }

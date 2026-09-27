@@ -70,6 +70,8 @@ struct HostListView: View {
     private let connectionStatuses: [Host.ID: EventsSessionStatus]
     private let standingFailures: [Host.ID: TransportError]
     private let latencies: [Host.ID: Duration]
+    /// Why a connected Host's Agents could not be synced, per Host.
+    private let syncIssues: [Host.ID: String]
     /// Hosts whose Host-detail Reconnect request is in flight. Distinct from
     /// `EventsSessionStatus.reconnecting`.
     private let manualReconnectInFlightHostIDs: Set<Host.ID>
@@ -77,6 +79,9 @@ struct HostListView: View {
     /// Where `initialHostID` was opened from. Its detail's back button goes
     /// back there instead of to this list.
     private let origin: HostListOrigin?
+    /// Closes the list where it is presented as a sheet, as on iPad; nil
+    /// where it is a tab.
+    private let onDone: (@MainActor () -> Void)?
     @State private var removal: HostRemovalStore
     @State private var isAddingHost = false
     @State private var editingHost: Host?
@@ -89,7 +94,7 @@ struct HostListView: View {
     /// waits for `onDismiss` so the TOFU alert is not suppressed mid-transition
     /// (#359).
     @State private var pendingOnboardingHostID: Host.ID?
-    @State private var path: [Host.ID] = []
+    @State private var path: [HostRoute]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
@@ -98,18 +103,25 @@ struct HostListView: View {
         connectionStatuses: [Host.ID: EventsSessionStatus] = [:],
         standingFailures: [Host.ID: TransportError] = [:],
         latencies: [Host.ID: Duration] = [:],
+        syncIssues: [Host.ID: String] = [:],
         manualReconnectInFlightHostIDs: Set<Host.ID> = [],
         retryConnection: (@MainActor @Sendable (Host.ID) async -> Void)? = nil,
-        origin: HostListOrigin? = nil
+        origin: HostListOrigin? = nil,
+        onDone: (@MainActor () -> Void)? = nil
     ) {
         self.store = store
         self.initialHostID = initialHostID
         self.connectionStatuses = connectionStatuses
         self.standingFailures = standingFailures
         self.latencies = latencies
+        self.syncIssues = syncIssues
         self.manualReconnectInFlightHostIDs = manualReconnectInFlightHostIDs
         self.retryConnection = retryConnection
         self.origin = origin
+        self.onDone = onDone
+        // On the stack from the first frame, so the requested detail never
+        // renders with the list's back button first.
+        _path = State(initialValue: Self.requestedRoute(initialHostID, in: store).map { [$0] } ?? [])
         _removal = State(initialValue: HostRemovalStore(store: store))
         _collapsedGroups = State(initialValue: HostHealthGroup.collapsed(in: .standard))
     }
@@ -155,10 +167,16 @@ struct HostListView: View {
                             }
                         }
                     }
+                    .readableColumnPage()
                 }
             }
             .navigationTitle("Hosts")
             .toolbar {
+                if let onDone {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done", action: onDone)
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button("Scan to Pair", systemImage: "qrcode.viewfinder") {
                         isScanningToPair = true
@@ -170,7 +188,8 @@ struct HostListView: View {
                         .disabled(store.catalogLoadError != nil)
                 }
             }
-            .navigationDestination(for: Host.ID.self) { id in
+            .navigationDestination(for: HostRoute.self) { route in
+                let id = route.hostID
                 if let host = store.hosts.first(where: { $0.id == id }) {
                     // Keyed by the Host value: editing recreates the
                     // onboarding store so checks run against fresh settings.
@@ -179,10 +198,11 @@ struct HostListView: View {
                         catalog: store,
                         connectionStatus: connectionStatuses[id],
                         standingFailure: standingFailures[id],
+                        syncIssue: syncIssues[id],
                         isManualReconnectInFlight: manualReconnectInFlightHostIDs.contains(id),
                         retryConnection: retryAction(for: id))
                         .id(host)
-                        .modifier(ReturnToOrigin(origin: returnOrigin(for: id)))
+                        .modifier(ReturnToOrigin(origin: route.isRequested ? origin : nil))
                 } else {
                     ContentUnavailableView("Host removed", systemImage: "server.rack")
                 }
@@ -253,15 +273,19 @@ struct HostListView: View {
             } message: {
                 Text(removal.errorMessage ?? "")
             }
-            .task(id: initialHostID) {
-                guard
-                    path.isEmpty,
-                    let initialHostID,
-                    store.hosts.contains(where: { $0.id == initialHostID })
-                else { return }
-                path.append(initialHostID)
+            // A caller that keeps this view's identity across requests
+            // still lands on the new one.
+            .onChange(of: initialHostID) { _, id in
+                if let route = Self.requestedRoute(id, in: store) { path = [route] }
             }
         }
+        // Covers Host detail too.
+        .readableColumn()
+    }
+
+    private static func requestedRoute(_ id: Host.ID?, in store: HostStore) -> HostRoute? {
+        guard let id, store.hosts.contains(where: { $0.id == id }) else { return nil }
+        return HostRoute(hostID: id, isRequested: true)
     }
 
     private var removalConfirmationPresented: Binding<Bool> {
@@ -279,6 +303,7 @@ struct HostListView: View {
                     status: connectionStatuses[host.id],
                     standingFailure: standingFailures[host.id],
                     latency: latencies[host.id],
+                    syncIssue: syncIssues[host.id],
                     canRetry: retryConnection != nil))
         }
     }
@@ -297,30 +322,23 @@ struct HostListView: View {
     @ViewBuilder
     private func row(for entry: HostListEntry) -> some View {
         let host = entry.host
-        Group {
-            if entry.presentation.offersRetry {
-                // A Retry row opens the Host from everything but its button,
-                // which a whole-row link would swallow.
-                HStack(spacing: 12) {
-                    Button { path.append(host.id) } label: {
-                        HostRowLabel(host: host, presentation: entry.presentation)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens this Host.")
-                    HostRetryButton(
-                        isBusy: entry.presentation.isDialing
-                            || manualReconnectInFlightHostIDs.contains(host.id)
-                    ) {
+        let isRetrying =
+            entry.presentation.offersRetry
+            && (entry.presentation.isDialing || manualReconnectInFlightHostIDs.contains(host.id))
+        // Every row is a link, so each one gets the chevron, press highlight
+        // and pointer hover; a borderless Retry keeps its own target in it,
+        // and VoiceOver offers it as one of the row's actions.
+        NavigationLink(value: HostRoute(hostID: host.id)) {
+            HStack(spacing: 12) {
+                HostRowLabel(host: host, presentation: entry.presentation)
+                if entry.presentation.offersRetry {
+                    HostRetryButton(isBusy: isRetrying) {
                         if let retry = retryAction(for: host.id) { Task { await retry() } }
                     }
                 }
-            } else {
-                NavigationLink(value: host.id) {
-                    HostRowLabel(host: host, presentation: entry.presentation)
-                }
             }
         }
+        .accessibilityValue(isRetrying ? "Connecting" : "")
         .listRowBackground(ListCard.fill)
         // Every removal asks first. No `.destructive` role: List would
         // animate the row out while the confirmation is still up.
@@ -340,16 +358,10 @@ struct HostListView: View {
         }
     }
 
-    /// Only the detail opened on request, still the first thing pushed.
-    private func returnOrigin(for id: Host.ID) -> HostListOrigin? {
-        guard id == initialHostID, path.first == id else { return nil }
-        return origin
-    }
-
     private func navigateToPendingOnboardingHostIfNeeded() {
         guard let id = pendingOnboardingHostID else { return }
         pendingOnboardingHostID = nil
-        path.append(id)
+        path.append(HostRoute(hostID: id))
     }
 
     private func retryAction(
@@ -360,9 +372,17 @@ struct HostListView: View {
     }
 }
 
+/// One pushed Host detail. The one opened on request is marked in the route
+/// itself, not inferred from where it sits on the stack, so its detail knows
+/// where Back goes from its first render.
+private struct HostRoute: Hashable {
+    let hostID: Host.ID
+    var isRequested = false
+}
+
 /// The screen that opened a Host's detail from outside the Hosts list.
 struct HostListOrigin {
-    /// Names the destination for VoiceOver, e.g. "Agents".
+    /// Names the destination, e.g. "Agents".
     let title: String
     let goBack: () -> Void
 }
@@ -371,6 +391,7 @@ struct HostListOrigin {
 /// from somewhere else and backing out lands where the user started.
 private struct ReturnToOrigin: ViewModifier {
     let origin: HostListOrigin?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     func body(content: Content) -> some View {
         if let origin {
@@ -379,7 +400,16 @@ private struct ReturnToOrigin: ViewModifier {
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         Button(action: origin.goBack) {
-                            Image(systemName: "chevron.backward")
+                            // It leaves the tab, so on the iPad it names
+                            // where to, as "< Agents"; iPhone back buttons
+                            // are a bare chevron. Not a Label: the bar
+                            // shows a Label's icon alone.
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.backward")
+                                if horizontalSizeClass == .regular {
+                                    Text(origin.title)
+                                }
+                            }
                         }
                         .accessibilityLabel("Back to \(origin.title)")
                     }
@@ -480,7 +510,8 @@ private struct HostGroupHeader: View {
 struct HostRowPresentation: Equatable {
     let group: HostHealthGroup
     let tone: HostConnectionTone
-    /// Under the name: the address while connected, otherwise the state.
+    /// Under the name: the address while connected and in sync, otherwise
+    /// the state.
     let detail: String
     /// A stopped Host's reason reads in red.
     let isProblem: Bool
@@ -496,13 +527,17 @@ struct HostRowPresentation: Equatable {
         status: EventsSessionStatus?,
         standingFailure: TransportError?,
         latency: Duration?,
+        syncIssue: String? = nil,
         canRetry: Bool = true
     ) {
         let problem = HostConnectionDetailPresentation(
             host: host, status: status, standingFailure: standingFailure)
         let chip = HostConnectionPresentation(
             status: status, standingFailure: standingFailure, latency: latency)
-        tone = problem?.tone ?? chip.tone
+        // Connected but out of sync wears the Console's "Sync issue" look;
+        // the projection only reports a sync error while connected.
+        let isOutOfSync = if case .connected = status { syncIssue != nil } else { false }
+        tone = isOutOfSync ? .warning : problem?.tone ?? chip.tone
         isDialing = problem?.isDialing ?? false
         trailing = if case .connected = status { chip.title } else { nil }
         switch status {
@@ -533,7 +568,8 @@ struct HostRowPresentation: Equatable {
             if case .namedSession(let session) = host.socketLocation {
                 address += " · session \(session)"
             }
-            detail = address
+            // The reason itself is in Host detail, a tap away.
+            detail = isOutOfSync ? "Sync issue" : address
             isProblem = false
             offersRetry = false
         case .suspended, .ended:
@@ -580,8 +616,13 @@ private struct HostRetryButton: View {
     let isBusy: Bool
     let action: () -> Void
 
+    /// The disc grows with the glyph, which follows Dynamic Type.
+    @ScaledMetric(relativeTo: .subheadline) private var discSize: CGFloat = 30
+
     var body: some View {
-        Button(action: action) {
+        // Inert while busy but still hit: a tap on the spinner must not fall
+        // through to the row's link and open the Host.
+        Button { if !isBusy { action() } } label: {
             // Hidden, not removed, while busy: the button keeps its size.
             // Small and light: a stopped Host's reason is the row's point,
             // and three prominent buttons in a row shout over it.
@@ -592,18 +633,19 @@ private struct HostRetryButton: View {
                 .overlay {
                     if isBusy { ProgressView().controlSize(.small) }
                 }
-                .frame(width: 30, height: 30)
+                .frame(width: discSize, height: discSize)
                 // Gray on gray: the stopped Host's red reason stays the one
                 // color in the row.
                 .background(Self.disc, in: Circle())
                 // The full 44-point target around the smaller circle.
-                .frame(width: 44, height: 44)
+                .frame(width: max(44, discSize), height: max(44, discSize))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
-        .allowsHitTesting(!isBusy)
-        .accessibilityLabel(isBusy ? "Connecting" : "Retry")
-        .accessibilityAddTraits(isBusy ? .updatesFrequently : [])
+        .accessibilityLabel("Retry")
+        // The row says "Connecting" instead of offering an action that
+        // would do nothing.
+        .accessibilityHidden(isBusy)
     }
 
     // On the light card the dark palette's pairing reads as disabled: the

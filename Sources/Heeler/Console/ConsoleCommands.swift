@@ -28,7 +28,9 @@ struct ConsoleCommands: Commands {
     }
 
     private func commandButton(_ shortcut: ConsoleCommandShortcut) -> some View {
-        Button(shortcut.title) { target?.perform(shortcut.action) }
+        Button(target?.titles.title(for: shortcut) ?? shortcut.title) {
+            target?.perform(shortcut.action)
+        }
             .keyboardShortcut(
                 shortcut.key == "\r" ? .return : KeyEquivalent(shortcut.key),
                 modifiers: shortcut.modifiers

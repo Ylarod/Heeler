@@ -21,6 +21,7 @@ struct TerminalListView: View {
     let onNewTerminal: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isSidebarColumn) private var isSidebarColumn
     @State private var creating: Set<TerminalWorkspaceGroup.ID> = []
     @State private var createFailure: String?
     @State private var pendingClose: ConsoleTerminal?
@@ -94,6 +95,7 @@ struct TerminalListView: View {
             }
             .listStyle(.insetGrouped)
             .listSectionSpacing(.compact)
+            .modifier(ConsoleSidebarListTint())
             .searchDrawerStartsTucked()
         }
     }
@@ -131,7 +133,9 @@ struct TerminalListView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .background(Color(uiColor: .systemGroupedBackground))
+            // The sidebar's glass, as By Workspace and the Agents list show.
+            .background(isSidebarColumn ? .clear : Color(uiColor: .systemGroupedBackground))
+            .modifier(ConsoleSidebarListTint())
             .searchDrawerStartsTucked()
         }
     }
@@ -154,8 +158,11 @@ struct TerminalListView: View {
         if !workspace.isCollapsed {
             let terminals = workspace.terminals
             ForEach(Array(terminals.enumerated()), id: \.element.id) { index, terminal in
-                terminalRow(terminal, showsTab: terminals.count > 1)
-                    .modifier(TerminalCardRow(isFirst: index == 0, isLast: false))
+                terminalRow(terminal, showsTab: terminals.count > 1, liftsCard: true)
+                    .modifier(
+                        TerminalCardRow(
+                            isFirst: index == 0, isLast: false,
+                            isSelected: isShownSelected(terminal)))
             }
             newTerminalRow(workspace)
                 .modifier(TerminalCardRow(isFirst: terminals.isEmpty, isLast: true))
@@ -191,12 +198,12 @@ struct TerminalListView: View {
             if !workspace.isCollapsed {
                 ForEach(workspace.terminals) {
                     terminalRow($0, showsTab: workspace.terminals.count > 1)
-                        .listRowBackground(ListCard.fill)
+                        .listRowBackground(cardSlice(isSelected: isShownSelected($0)))
                 }
                 // Every card ends in New Terminal, clear of the header's
                 // collapse control: a mistap there would open a real tab.
                 newTerminalRow(workspace)
-                    .listRowBackground(ListCard.fill)
+                    .listRowBackground(cardSlice(isSelected: false))
             }
         } header: {
             TerminalWorkspaceHeader(
@@ -213,32 +220,56 @@ struct TerminalListView: View {
         .listSectionSpacing(.custom(Self.workspaceSpacing))
     }
 
+    /// A By Workspace row's slice of its card. The list rounds the card's
+    /// ends on the cells, so the focus ring takes the cell's corners.
+    private func cardSlice(isSelected: Bool) -> some View {
+        ListCard.fill(inSidebar: isSidebarColumn)
+            .overlay(isSelected ? ConsoleRowSelection.fill : Color.clear)
+            .background { if isSidebarColumn { ListRowCellFocusHalo() } }
+    }
+
     private func isFolded(_ group: TerminalHostGroup) -> Bool {
         group.isCollapsed || group.opensConnectionDetail
     }
 
-    private func terminalRow(_ terminal: ConsoleTerminal, showsTab: Bool) -> some View {
+    /// The card row on stage beside the sidebar; see `ConsoleRowSelection`.
+    private func isShownSelected(_ terminal: ConsoleTerminal) -> Bool {
+        isSidebarColumn && selection == .terminal(terminal.id)
+    }
+
+    /// `liftsCard`: a By Host row, whose card is a slice drawn inside a
+    /// wider plain-list cell, lifts that card, not the whole cell.
+    private func terminalRow(
+        _ terminal: ConsoleTerminal, showsTab: Bool, liftsCard: Bool = false
+    ) -> some View {
         NavigationLink(value: ConsoleSelection.terminal(terminal.id)) {
             TerminalRowView(terminal: terminal, showsTab: showsTab)
+                // Across the row, as an Agent's card is: the context menu
+                // lifts a card as wide as the row it measures.
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .modifier(ConsoleRowSelectionContent())
         }
         .hoverEffect(.highlight)
-        .contextMenu {
-            Section(
-                "\(terminal.displayTabTitle) · \(terminal.workspaceLabel ?? "Workspace") · \(terminal.hostName)"
-            ) {
-                if terminal.cwd.hasPrefix("/") {
-                    Button("New Terminal Here", systemImage: "plus.rectangle") {
-                        create(beside: terminal)
-                    }
-                    Button("Copy Path", systemImage: "doc.on.doc") {
-                        UIPasteboard.general.string = terminal.cwd
+        .modifier(
+            ConsoleRowContextMenu(liftsCard: liftsCard) {
+                Section(
+                    "\(terminal.displayTabTitle) · \(terminal.workspaceLabel ?? "Workspace") · \(terminal.hostName)"
+                ) {
+                    if terminal.cwd.hasPrefix("/") {
+                        Button("New Terminal Here", systemImage: "plus.rectangle") {
+                            create(beside: terminal)
+                        }
+                        Button("Copy Path", systemImage: "doc.on.doc") {
+                            UIPasteboard.general.string = terminal.cwd
+                        }
                     }
                 }
-            }
-            Button(closeLabel(for: terminal), systemImage: "trash", role: .destructive) {
-                pendingClose = terminal
-            }
-        }
+                Button(closeLabel(for: terminal), systemImage: "trash", role: .destructive) {
+                    pendingClose = terminal
+                }
+            } preview: {
+                TerminalRowView(terminal: terminal, showsTab: showsTab)
+            })
         // Every close asks first. No `.destructive` role: List would animate
         // the row out while the confirmation is still up.
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
@@ -280,11 +311,20 @@ struct TerminalListView: View {
         .hoverEffect(.highlight)
     }
 
+    /// A search opens every card and Host holding a match, so a toggle
+    /// then would change nothing on screen, only what the list comes back
+    /// to once the search ends.
+    private var isSearching: Bool {
+        !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private func toggle(_ id: TerminalWorkspaceGroup.ID) {
+        guard !isSearching else { return }
         withAnimation(reduceMotion ? nil : .snappy) { presentation.toggleCollapsed(id) }
     }
 
     private func toggle(_ hostID: Host.ID) {
+        guard !isSearching else { return }
         withAnimation(reduceMotion ? nil : .snappy) { presentation.toggleCollapsed(hostID) }
     }
 
@@ -426,6 +466,19 @@ enum ListCard {
                 ? .secondarySystemGroupedBackground
                 : UIColor.white.withAlphaComponent(0.65)
         })
+
+    /// On the sidebar's glass rather than the grouped background, dark mode
+    /// lifts the cards a step: the system card sinks into the dark glass.
+    private static let sidebarFill = Color(
+        uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? .tertiarySystemGroupedBackground
+                : UIColor.white.withAlphaComponent(0.65)
+        })
+
+    static func fill(inSidebar: Bool) -> Color {
+        inSidebar ? sidebarFill : fill
+    }
 }
 
 /// One row of a By Host Workspace card. The plain list that lets Host
@@ -443,11 +496,17 @@ private struct TerminalCardRow: ViewModifier {
 
     let isFirst: Bool
     let isLast: Bool
+    var isSelected = false
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.isSidebarColumn) private var isSidebarColumn
 
     func body(content: Content) -> some View {
         let top = isFirst ? Self.radius : 0
         let bottom = isLast ? Self.radius : 0
+        let slice = UnevenRoundedRectangle(
+            topLeadingRadius: top, bottomLeadingRadius: bottom,
+            bottomTrailingRadius: bottom, topTrailingRadius: top,
+            style: .continuous)
         content
             .listRowInsets(
                 EdgeInsets(
@@ -455,12 +514,12 @@ private struct TerminalCardRow: ViewModifier {
                     trailing: Self.contentInset))
             .listRowSeparator(.hidden)
             .listRowBackground(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: top, bottomLeadingRadius: bottom,
-                    bottomTrailingRadius: bottom, topTrailingRadius: top,
-                    style: .continuous
-                )
-                .fill(ListCard.fill)
+                slice
+                .fill(ListCard.fill(inSidebar: isSidebarColumn))
+                .background { if isSidebarColumn { ListRowFocusHalo(shape: slice) } }
+                .overlay {
+                    if isSelected { slice.fill(ConsoleRowSelection.fill) }
+                }
                 .overlay(alignment: .bottom) {
                     if !isLast {
                         Rectangle()
@@ -514,6 +573,8 @@ private struct TerminalWorkspaceHeader: View {
                     .frame(width: 12)
             }
             .lineLimit(1)
+            // The whole 44-point band toggles, not just the label's line.
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -521,14 +582,11 @@ private struct TerminalWorkspaceHeader: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
             showsHost ? "\(workspace.title), \(workspace.hostName)" : workspace.title)
-        .accessibilityValue(
-            "\(workspace.terminals.count) terminals, \(workspace.isCollapsed ? "Collapsed" : "Expanded")"
-        )
+        .accessibilityValue(workspace.headerAccessibilityValue)
         .accessibilityHint(
             workspace.isCollapsed ? "Expands this Workspace." : "Collapses this Workspace.")
         .accessibilityAddTraits(.isHeader)
         .textCase(nil)
-        .frame(minHeight: 44)
     }
 }
 
@@ -549,22 +607,25 @@ private struct TerminalHostHeader: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if group.isCollapsed, group.terminalCount > 0 {
-                    Text(group.terminalCount == 1 ? "1 terminal" : "\(group.terminalCount) terminals")
+                    Text(TerminalCount.text(group.terminalCount))
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2)
                         .background(.fill.tertiary, in: Capsule())
                 }
+                // The Workspace chevrons' weight and ink, as the Agents
+                // tab's Host header draws it.
                 Image(systemName: isFolded ? "chevron.right" : "chevron.down")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.secondary)
                     .frame(width: 12, alignment: .center)
             }
             .contentShape(Rectangle())
             .padding(.vertical, 4)
         }
         .buttonStyle(.plain)
+        .hoverEffect(.highlight)
         .textCase(nil)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(group.hostName), \(group.readiness.text)")

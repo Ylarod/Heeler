@@ -13,6 +13,20 @@ struct WorkspaceTerminalPresentationTests {
                 "Tab order, then Pane order, whatever the snapshot order")
     }
 
+    @Test func drawerNamesAgentsByTheirTitleBesideTheirTab() throws {
+        let terminals = Self.terminals()
+        let agent = try #require(terminals.first { $0.isAgent })
+        let name = WorkspaceTerminalDrawer.rowName(for: agent)
+        #expect(name.title == agent.displayTitle)
+        #expect(name.tab == agent.displayTabTitle)
+
+        let shell = try #require(terminals.first { $0.paneID == "server" })
+        let row = TerminalRowPresentation(terminal: shell)
+        let shellName = WorkspaceTerminalDrawer.rowName(for: shell)
+        #expect(shellName.title == row.title)
+        #expect(shellName.tab == row.tab)
+    }
+
     @Test(arguments: [0.0, 1.0])
     func drawerHandleRestsWhereItWasLastDocked(fraction: Double) async throws {
         guard #available(iOS 27, *) else { return }
@@ -78,8 +92,8 @@ struct WorkspaceTerminalPresentationTests {
         #expect(agent.accessibilityTraits.contains(.selected))
         #expect(!sameTab.accessibilityTraits.contains(.selected))
         #expect(!otherTab.accessibilityTraits.contains(.selected))
-        #expect(agent.accessibilityValue == "Development")
-        #expect(otherTab.accessibilityValue == "Checks")
+        #expect(agent.accessibilityValue == "Tab \u{201C}Development\u{201D}")
+        #expect(otherTab.accessibilityValue == "Tab \u{201C}Checks\u{201D}")
         // The panel slides in; read the rows once it has settled on screen.
         var frames: [CGRect] = []
         for _ in 0..<40 {

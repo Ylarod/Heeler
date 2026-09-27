@@ -9,10 +9,10 @@ upload order, with the floating-window presentation first.
 | Order | Export | Focus |
 | --- | --- | --- |
 | 1 | `exports/01-fits-your-workspace.png` | A real floating Heeler window on iPad |
-| 2 | `exports/02-every-agent-one-console.png` | Agent sidebar and selected Codex conversation |
-| 3 | `exports/03-type-directly-stay-in-flow.png` | Direct Input and the full Terminal keyboard |
-| 4 | `exports/04-skills-within-reach.png` | Composer Skills dock |
-| 5 | `exports/05-control-without-leaving-the-flow.png` | Composer and Agent control keys |
+| 2 | `exports/02-every-agent-one-console.png` | Agent sidebar and a selected Claude Code conversation |
+| 3 | `exports/03-type-directly-stay-in-flow.png` | Direct Input with its shortcut row and the iOS keyboard |
+| 4 | `exports/04-skills-within-reach.png` | Skills in the Direct Input tools keyboard |
+| 5 | `exports/05-a-shell-when-you-need-one.png` | Terminals sidebar and a Shell Terminal in Keys mode |
 
 `contact-sheet.jpg` provides an overview; `index.html` links the five full-size
 exports. Neither the contact sheet nor the source captures belong in the upload
@@ -21,17 +21,12 @@ exports and is excluded from Git, together with the earlier HTML draft.
 
 ## Source preservation
 
-- The sources are real captures from the iPad Pro 13-inch (M5) simulator on
-  iOS 26.5, UDID `B33CE5C2-3BB2-477E-A53E-E8034F85031B`.
-- All coding content is the user-selected Codex conversation about the current
-  project architecture on Local-a.
-- Sources 1, 2, 3, and 5 come from the earlier 2026-09-13 simulator capture set;
-  their unchanged originals are included in `sources/` for regeneration.
-- Source 4 was captured during this mockup task using `xcrun simctl io` on the
-  same simulator. Only local mode and dock controls were used. No prompt, draft
-  text, terminal key, or Agent control key was submitted.
-- The temporary 9:41 status bar override was cleared after the capture. The
-  keyboard was dismissed and the selected conversation remains open.
+- The sources are real captures from the iPad Pro 13-inch (M5) (16GB) simulator
+  on iOS 27.0, UDID `A993BBE0-BD87-4807-8541-34A23C15C6A9`, taken on 2026-09-28
+  against a live herdr on this Mac. They show the iPad sidebar console.
+- The same captures are copied to `docs/images/*-ipad.png` for the README and to
+  `landing/src/assets/screens/*-ipad.png` for the landing page.
+- The session titles in the captures remain in Chinese, as captured.
 - Source captures are copied unchanged. The renderer scales each 4:3 capture
   uniformly to 2112 × 1584, with a small rounded corner mask. It does not redraw,
   rearrange, stretch, or replace any application content.
@@ -41,16 +36,10 @@ exports and is excluded from Git, together with the earlier HTML draft.
 - Source and export SHA-256 values, copy, geometry, and format are recorded in
   `manifest.json`.
 
-The English marketing copy follows the existing App Store set. The selected
-conversation remains in Chinese, as requested. Additional localized variants
-have not been produced.
+The English marketing copy follows the existing App Store set. Additional
+localized variants have not been produced.
 
 ## Scope and verification
-
-The first image uses the previously captured floating window in place of the
-proposed Shell image: opening a Shell can create a remote terminal, which would
-exceed the existing read-only Herdr constraint. This image demonstrates windowed
-presentation; it does not establish minimum-width behavior.
 
 All five rendered PNGs and the contact sheet were visually inspected. The
 renderer checks source dimensions, equal scale on both axes, headline and

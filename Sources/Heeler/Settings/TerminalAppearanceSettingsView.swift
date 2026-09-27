@@ -32,6 +32,7 @@ struct TerminalAppearanceSettingsView: View {
                         + "under a light system.")
             }
         }
+        .readableColumnPage()
         .navigationTitle("Terminal Appearance")
         .navigationBarTitleDisplayMode(.inline)
     }

@@ -34,13 +34,14 @@ struct TerminalListProjectionTests {
         workspaces: [Host.ID: [ConsoleWorkspace]] = [:], agents: [ConsoleAgent] = [],
         statuses: [Host.ID: EventsSessionStatus] = [:],
         awaiting: Set<Host.ID> = [],
+        syncErrors: [Host.ID: String] = [:],
         collapsedWorkspaces: Set<TerminalWorkspaceGroup.ID> = [],
         collapsedHosts: Set<Host.ID> = []
     ) -> TerminalListProjection {
         TerminalListProjection(
             hosts: hosts, terminals: terminals, workspacesByHost: workspaces, agents: agents,
             hostStatuses: statuses, hostStandingFailures: [:], hostsAwaitingSnapshot: awaiting,
-            hostSyncErrors: [:], collapsedWorkspaces: collapsedWorkspaces,
+            hostSyncErrors: syncErrors, collapsedWorkspaces: collapsedWorkspaces,
             collapsedHosts: collapsedHosts)
     }
 
@@ -206,6 +207,38 @@ struct TerminalListProjectionTests {
         let group = projection(hosts: [host], statuses: [host.id: .connected]).hostGroups().first
         #expect(group?.readiness.text == "No Terminals")
     }
+
+    @Test func aHostWhoseSyncFailedReadsAsASyncIssueUnderItsOwnHeader() throws {
+        let host = Host.fixture(name: "mini")
+        let group = try #require(
+            projection(
+                hosts: [host], statuses: [host.id: .connected], awaiting: [host.id],
+                syncErrors: [host.id: "Could not sync this Host. Retrying…"]
+            ).hostGroups().first)
+        #expect(group.readiness == HostReadiness(text: "Sync issue", tone: .warning))
+        let issue = try #require(group.issue)
+        #expect(issue.tone == group.readiness.tone)
+        #expect(issue.message == "mini: Could not sync this Host. Retrying…")
+        #expect(issue.sectionMessage == "Could not sync this Host. Retrying…")
+    }
+
+    @Test func workspaceHeadersCountOneShellInTheSingular() throws {
+        let host = Host.fixture()
+        let cards = projection(
+            hosts: [host],
+            terminals: [
+                terminal(host: host, paneID: "only", workspaceID: "w1"),
+                terminal(host: host, paneID: "first", workspaceID: "w2"),
+                terminal(host: host, paneID: "second", workspaceID: "w2", tabPosition: 2),
+            ],
+            collapsedWorkspaces: [TerminalWorkspaceGroup.ID(hostID: host.id, workspaceID: "w2")]
+        ).workspaces()
+        #expect(
+            cards.map(\.headerAccessibilityValue) == [
+                "1 terminal, Expanded", "2 terminals, Collapsed",
+            ])
+        #expect(TerminalCount.text(0) == "0 terminals")
+    }
 }
 
 @MainActor
@@ -298,6 +331,31 @@ struct TerminalRowPresentationTests {
         #expect(row.subtitle == "api · Tab \u{201C}logs\u{201D} · ~/app")
     }
 
+    @Test func theTabBesideTheTitleIsLeftOutWhenTheTitleIsTheTab() {
+        #expect(TerminalRowPresentation(terminal: shell(tabLabel: "logs")).tab == nil)
+        #expect(TerminalRowPresentation(terminal: shell()).tab == "Tab 2")
+        #expect(
+            TerminalRowPresentation(terminal: shell(tabLabel: "logs", paneLabel: "tail")).tab
+                == "Tab \u{201C}logs\u{201D}")
+    }
+
+    /// One shell reads alike in the Terminals list and, one tap on, in the
+    /// Workspace drawer.
+    @MainActor @Test func theWorkspaceDrawerNamesShellsAsTheListDoes() {
+        let named = WorkspaceTerminalDrawer.rowName(for: shell(tabLabel: "logs", title: "zsh"))
+        #expect(named.title == "logs")
+        #expect(named.tab == nil)
+
+        let unnamed = WorkspaceTerminalDrawer.rowName(for: shell())
+        #expect(unnamed.title == "~/app")
+        #expect(unnamed.tab == "Tab 2")
+
+        let labelled = WorkspaceTerminalDrawer.rowName(
+            for: shell(tabLabel: "logs", paneLabel: "tail"))
+        #expect(labelled.title == "tail")
+        #expect(labelled.tab == "Tab \u{201C}logs\u{201D}")
+    }
+
     @Test func closeMessagesNameTheTabAndWorkspace() {
         #expect(TerminalCloseScope.tab.message(for: shell()) == "Closes Tab 2 in api.")
         #expect(
@@ -312,5 +370,19 @@ struct TerminalRowPresentationTests {
                 host: host, status: .connected, isAwaitingSnapshot: true, syncError: nil,
                 inventoryNoun: "Terminals"))
         #expect(row.message == "Loading Terminals from studio…")
+    }
+}
+
+@Suite("Console row lift")
+struct ConsoleRowLiftTests {
+    @Test func liftedCardIsTheRowPaddedAsACardPadsItsRows() {
+        // A 320-point sidebar's card row: 256 points of content, a 288-point card.
+        #expect(ConsoleRowLift.cardWidth(rowWidth: 256) == 288)
+        #expect(ConsoleRowLift.cardWidth(rowWidth: 376) == 408)
+    }
+
+    @Test func anUnmeasuredRowLiftsTheIdealSidebarsCard() {
+        #expect(ConsoleRowLift.cardWidth(rowWidth: nil) == ConsoleRowLift.fallbackWidth)
+        #expect(ConsoleRowLift.cardWidth(rowWidth: 0) == ConsoleRowLift.fallbackWidth)
     }
 }

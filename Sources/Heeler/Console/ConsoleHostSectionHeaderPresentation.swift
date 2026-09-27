@@ -93,11 +93,15 @@ struct ConsoleHostSectionHeaderPresentation: Equatable {
     ) -> HostReadiness {
         switch connectionStatus {
         case .connected:
+            // A failed sync outranks the snapshot still awaited after it, in
+            // `ConsoleHostStatusPresentation`'s order: the header and the
+            // Host's issue row never give one state two looks. A connected
+            // Host's only quieter condition is that wait itself.
+            if let statusSeverity, statusSeverity != .informational {
+                return HostReadiness(text: "Sync issue", tone: .warning)
+            }
             if isAwaitingSnapshot {
                 return HostReadiness(text: "Loading \(inventoryNoun)…", tone: .pending)
-            }
-            if statusSeverity != nil {
-                return HostReadiness(text: "Sync issue", tone: .warning)
             }
             return HostReadiness(
                 text: isEmpty ? "No \(inventoryNoun)" : "Connected", tone: .connected)

@@ -9,7 +9,7 @@ struct ConsoleEmptyDetailPresentation: Equatable {
             switch self {
             case .showAgents: "Show Agents"
             case .newAgent: "New Agent"
-            case .hosts: "Hosts"
+            case .hosts: "Add Host"
             }
         }
         var systemImage: String {
@@ -37,8 +37,11 @@ struct ConsoleEmptyDetailPresentation: Equatable {
     /// for terminals, with `.newAgent` opening New Terminal.
     let listsTerminals: Bool
 
+    /// Hosts is a tab right above this screen, so it is offered here only
+    /// as the way to add a first Host.
     init(hasHosts: Bool, showsAgentsAction: Bool = true, listsTerminals: Bool = false) {
-        actions = showsAgentsAction ? Action.allCases : [.newAgent, .hosts]
+        actions = (showsAgentsAction ? [.showAgents] : []) + [.newAgent]
+            + (hasHosts ? [] : [.hosts])
         canStartAgent = hasHosts
         self.listsTerminals = listsTerminals
         if listsTerminals {
@@ -61,13 +64,13 @@ struct ConsoleEmptyDetailPresentation: Equatable {
         switch action {
         case .showAgents: return "Show Terminals"
         case .newAgent: return "New Terminal"
-        case .hosts: return action.title
+        case .hosts: return "Add Host"
         }
     }
 
-    /// ⌘N stays New Agent everywhere, so it is not advertised on New Terminal.
+    /// ⌘N creates what the tab lists, so New Terminal shows it too.
     func shortcutHint(for action: Action) -> String? {
-        listsTerminals && action == .newAgent ? nil : action.shortcutHint
+        action.shortcutHint
     }
 
     func isEnabled(_ action: Action) -> Bool {
@@ -78,6 +81,7 @@ struct ConsoleEmptyDetailPresentation: Equatable {
 struct ConsoleEmptyDetailView: View {
     let presentation: ConsoleEmptyDetailPresentation
     let perform: (ConsoleEmptyDetailPresentation.Action) -> Void
+    @ScaledMetric(relativeTo: .body) private var minimumActionWidth: CGFloat = 200
 
     var body: some View {
         ContentUnavailableView {
@@ -98,8 +102,13 @@ struct ConsoleEmptyDetailView: View {
                                 .accessibilityHidden(true)
                         }
                     }
+                    // One width for the stack, so the buttons line up.
+                    .frame(minWidth: minimumActionWidth)
                 }
                 .buttonStyle(.bordered)
+                // The view draws its actions small, sized for a phone; a
+                // detail column as wide as an iPad's wants them full size.
+                .controlSize(.large)
                 .disabled(!presentation.isEnabled(action))
                 .hoverEffect(.highlight)
             }

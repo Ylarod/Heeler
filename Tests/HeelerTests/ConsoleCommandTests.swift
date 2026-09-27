@@ -99,6 +99,33 @@ struct ConsoleCommandTests {
     }
 }
 
+@Suite("Console command titles")
+struct ConsoleCommandTitlesTests {
+    private func title(_ action: ConsoleCommandAction, _ titles: ConsoleCommandTitles) -> String? {
+        ConsoleCommandShortcut.all.first { $0.action == action }.map(titles.title(for:))
+    }
+
+    @Test func agentsTabKeepsTheTableTitles() {
+        let titles = ConsoleCommandTitles()
+        for shortcut in ConsoleCommandShortcut.all {
+            #expect(titles.title(for: shortcut) == shortcut.title)
+        }
+    }
+
+    @Test func terminalsTabNamesItsOwnSearchAndNew() {
+        let titles = ConsoleCommandTitles(listsTerminals: true)
+        #expect(title(.focusSearch, titles) == "Search Terminals")
+        #expect(title(.newAgent, titles) == "New Terminal")
+        #expect(title(.closeAgent, titles) == "Close Agent View")
+        #expect(title(.hosts, titles) == "Hosts")
+    }
+
+    @Test func shownShellNamesTheCloseCommandForIt() {
+        let titles = ConsoleCommandTitles(listsTerminals: true, showsShell: true)
+        #expect(title(.closeAgent, titles) == "Close Terminal View")
+    }
+}
+
 @MainActor
 @Suite("Console command scene registrations")
 struct ConsoleCommandRegistryTests {
@@ -210,6 +237,29 @@ struct ConsoleCommandRegistryTests {
         #expect(selected == nil)
         commands.perform(.toggleInputMode)
         #expect(toggles == 0)
+    }
+
+    @Test func previousAndNextStepFromTheAnchorAwayFromTheAgentsList() {
+        let rows = (0..<4).map { ConsoleAgent.ID(hostID: UUID(), paneID: "opaque:p\($0)") }
+        var anchor: ConsoleAgent.ID? = rows[2]
+        var landed: [ConsoleAgent.ID] = []
+        let commands = target(
+            registry: ConsoleCommandRegistry(),
+            context: {
+                .init(
+                    selection: nil, agents: rows, isSearchFocused: false,
+                    isCovered: false, inputMode: .composer, navigationAnchor: anchor)
+            },
+            navigate: { landed.append($0) })
+        commands.perform(.nextAgent)
+        commands.perform(.previousAgent)
+        #expect(landed == [rows[3], rows[1]])
+        // Nothing held: the list's ends, as before.
+        anchor = nil
+        commands.perform(.nextAgent)
+        #expect(landed.last == rows[0])
+        // Close and toggle still need the detail on screen.
+        #expect(!commands.allows(.closeAgent))
     }
 
     @Test func sendUsesRegisteredActionAndRechecksDraftFocusAndOwner() async {

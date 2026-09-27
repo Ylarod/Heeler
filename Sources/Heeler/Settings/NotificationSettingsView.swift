@@ -40,6 +40,7 @@ struct NotificationSettingsView: View {
             // Last on purpose — it is the one section most users never touch.
             customRelaySection
         }
+        .readableColumnPage()
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.inline)
         .task { await notificationPreferences.refresh() }

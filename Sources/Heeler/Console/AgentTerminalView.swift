@@ -258,9 +258,14 @@ struct AgentTerminalView: View {
     /// The scene root's window, known before this screen first renders.
     @Environment(\.sceneWindow) private var sceneWindow
     @Environment(\.detailCrossfade) private var detailCrossfade
+    @Environment(\.revealDetailSidebar) private var revealDetailSidebar
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     @Environment(\.detailTopChromeInset) private var topChromeInset
+    @Environment(\.detailSurfaceEdges) private var surfaceEdges
+    /// The window's own controls over this screen's top-leading corner, on
+    /// a windowed iPad; see `onWindowControlsHeightChange`.
+    @State private var windowControlsHeight: CGFloat = 0
     /// Nil outside a scene root, where this screen always holds its Host's
     /// terminal channel.
     @Environment(\.agentSceneRouting) private var sceneRouting
@@ -546,7 +551,8 @@ struct AgentTerminalView: View {
                 onStarted: { switchToAgent($0) })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(
-                    horizontalSizeClass: horizontalSizeClass)))
+                    horizontalSizeClass: horizontalSizeClass),
+                fitsContent: true))
         }
         // Presenting this takes the keyboard down and dismissing brings it
         // back; see `allowsKeyboardActivation` in HeelerTerminalView.
@@ -969,7 +975,9 @@ struct AgentTerminalView: View {
         // Keep the edge gesture below the input chrome and tools dock so
         // its transparent hit region cannot intercept their leading keys.
         .overlay(alignment: .leading) {
-            AgentEdgeBackGesture { dismiss() }
+            AgentEdgeBackGesture {
+                if let revealDetailSidebar { revealDetailSidebar() } else { dismiss() }
+            }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             attachmentStatus
@@ -1018,7 +1026,8 @@ struct AgentTerminalView: View {
         // The navigation bar remains present only as the owner of the status
         // bar appearance. Its content stays hidden, while this inset keeps
         // terminal output below the system clock.
-        .padding(.top, max(statusBarInset, topChromeInset))
+        .padding(.top, max(statusBarInset, topChromeInset, windowControlsHeight))
+        .onWindowControlsHeightChange { windowControlsHeight = $0 }
         .background {
             // Keyboard geometry and the status bar inset follow this view's
             // own window, not whichever window of the app is key.
@@ -1029,9 +1038,14 @@ struct AgentTerminalView: View {
             .allowsHitTesting(false)
             .accessibilityHidden(true)
         }
-        .background(
+        // Through every safe-area region, not only the container's: SwiftUI
+        // can take the home-indicator inset for a keyboard's, and a
+        // container-only background then leaves it the app's own color.
+        .background {
             terminal.themes.selection(for: colorScheme)
-                .surfaceBackground(for: colorScheme))
+                .surfaceBackground(for: colorScheme)
+                .ignoresSafeArea(.all, edges: surfaceEdges)
+        }
         .ignoresSafeArea(.container, edges: .top)
         .toolbarColorScheme(
             terminal.themes.selection(for: colorScheme)
@@ -1764,7 +1778,8 @@ struct AgentTerminalView: View {
     }
 }
 
-/// Preserve edge-swipe navigation after the title bar is removed.
+/// Preserve edge-swipe navigation after the title bar is removed. Beside
+/// an iPad's sidebar the swipe brings the sidebar out instead of going back.
 private struct AgentEdgeBackGesture: View {
     let dismiss: @MainActor () -> Void
 

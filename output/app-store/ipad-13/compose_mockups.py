@@ -45,7 +45,7 @@ MOCKUPS = (
     Mockup(
         "03-type-directly-stay-in-flow", "02-terminal-keyboard.png",
         "Type Directly. Stay in Flow.",
-        "A full terminal keyboard, built for your iPad.",
+        "Type straight into your agent's terminal.",
         (236, 113, 177),
     ),
     Mockup(
@@ -55,9 +55,9 @@ MOCKUPS = (
         (184, 137, 255),
     ),
     Mockup(
-        "05-control-without-leaving-the-flow", "04-agent-controls.png",
-        "Control Without Leaving the Flow",
-        "Navigate your agent with dedicated touch controls.",
+        "05-a-shell-when-you-need-one", "04-terminal.png",
+        "A Shell When You Need One.",
+        "Open a plain terminal in any workspace, with Text and Keys modes.",
         (88, 214, 198),
     ),
 )
@@ -151,8 +151,8 @@ def main() -> None:
         'figure{margin:40px 0}img{display:block;width:100%;height:auto;border-radius:10px}'
         'figcaption{margin-top:10px}</style><h1>Heeler for iPad</h1>'
         '<p>Five landscape App Store mockups · 2752 × 2064 · opaque RGB PNG.<br>'
-        'Real simulator captures with English marketing copy. The requested Codex '
-        'architecture conversation remains in Chinese.</p>' + cards + '</html>'
+        'Real simulator captures with English marketing copy. The captured '
+        'session titles remain in Chinese.</p>' + cards + '</html>'
     )
     # A review contact sheet is separate from the five upload-ready exports.
     sheet = Image.new("RGB", (1376, 1640), (20, 20, 24))

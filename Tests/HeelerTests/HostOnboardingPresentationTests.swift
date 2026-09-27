@@ -89,6 +89,30 @@ struct HostOnboardingPresentationTests {
         }
     }
 
+    /// Opened from a "Sync issue" row, the detail says what went wrong.
+    @Test func aConnectedHostExplainsItsSyncIssue() {
+        let issue = "herdr rejected the Console sync: boom. Retrying…"
+        let outOfSync = HostOnboardingConnectionPresentation(
+            status: .connected, syncIssue: issue, isManualReconnectInFlight: false)
+        #expect(outOfSync.footerMessage == issue)
+        #expect(outOfSync.isSyncIssue)
+
+        let reconnectPressed = HostOnboardingConnectionPresentation(
+            status: .connected, syncIssue: issue, isManualReconnectInFlight: true)
+        #expect(reconnectPressed.footerMessage == nil)
+
+        let inSync = HostOnboardingConnectionPresentation(
+            status: .connected, isManualReconnectInFlight: false)
+        #expect(inSync.footerMessage == nil)
+        #expect(!inSync.isSyncIssue)
+
+        let failure = TransportError.authenticationFailed
+        let stopped = HostOnboardingConnectionPresentation(
+            status: .failed(failure), syncIssue: issue, isManualReconnectInFlight: false)
+        #expect(stopped.footerMessage == failure.presentation.message)
+        #expect(!stopped.isSyncIssue)
+    }
+
     @Test func aManualRequestDoesNotRewriteStatusDerivedCopy() {
         let failure = TransportError.authenticationFailed
         let suppressed = HostOnboardingConnectionPresentation(

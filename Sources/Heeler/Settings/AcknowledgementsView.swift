@@ -59,6 +59,7 @@ struct AcknowledgementsView: View {
                     "Heeler redistributes these components. Each licence is reproduced in full.")
             }
         }
+        .readableColumnPage()
         .overlay {
             if notices.isEmpty {
                 ContentUnavailableView(

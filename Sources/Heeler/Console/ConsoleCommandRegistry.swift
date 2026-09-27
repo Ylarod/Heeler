@@ -95,10 +95,16 @@ struct ConsoleCommandTarget {
         let isSearchFocused: Bool
         let isCovered: Bool
         let inputMode: AgentInputMode
+        /// Where previous and next step from when `selection` is not the
+        /// Agents list's: another tab on screen, and the Agent that list
+        /// still holds for its return.
+        var navigationAnchor: ConsoleAgent.ID? = nil
     }
 
     let registry: ConsoleCommandRegistry
     let context: @MainActor () -> Context
+    /// Worded for the tab on screen; the menu reads them, key dispatch does not.
+    var titles = ConsoleCommandTitles()
     let navigate: @MainActor (ConsoleAgent.ID) -> Void
     let focusSearch: @MainActor () -> Void
     let newAgent: @MainActor () -> Void
@@ -169,7 +175,8 @@ struct ConsoleCommandTarget {
         switch action {
         case .selectAgent, .previousAgent, .nextAgent:
             if let id = ConsoleCommandNavigation.destination(
-                for: action, in: context.agents, selection: context.selection)
+                for: action, in: context.agents,
+                selection: context.navigationAnchor ?? context.selection)
             {
                 navigate(id)
             }

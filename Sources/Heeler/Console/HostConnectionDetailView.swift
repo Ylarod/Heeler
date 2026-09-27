@@ -69,22 +69,36 @@ struct HostConnectionDetailPresentation: Equatable {
     }
 }
 
-/// The bottom sheet a failing Host opens instead of expanding.
+/// The sheet a failing Host opens instead of expanding.
 struct HostConnectionDetailView: View {
     let presentation: HostConnectionDetailPresentation
     let host: Host
     let catalog: HostStore
+    /// The presenting Console's: inside the sheet, the size class describes
+    /// the sheet, not the screen.
+    let sheetPresentation: ConsoleSheetPresentation
     let isRetryInFlight: Bool
     let onRetry: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             HostConnectionDetailContent(
                 presentation: presentation, host: host, catalog: catalog,
-                isRetryInFlight: isRetryInFlight, onRetry: onRetry)
+                sheetPresentation: sheetPresentation,
+                isRetryInFlight: isRetryInFlight, onRetry: onRetry
+            )
+            .toolbar {
+                // A form sheet has no grabber to pull down.
+                if sheetPresentation == .form {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { dismiss() }
+                    }
+                }
+            }
         }
-        .presentationDetents([.fraction(0.6), .large])
-        .presentationDragIndicator(.visible)
+        .modifier(ConsoleStatusSheetPresentationModifier(presentation: sheetPresentation))
     }
 }
 
@@ -94,6 +108,7 @@ struct HostConnectionDetailContent: View {
     let presentation: HostConnectionDetailPresentation
     let host: Host
     let catalog: HostStore
+    let sheetPresentation: ConsoleSheetPresentation
     let isRetryInFlight: Bool
     let onRetry: () -> Void
 
@@ -147,22 +162,30 @@ struct HostConnectionDetailContent: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 8)
         }
+        .consoleSheetPage()
         // Pinned: however long the failure's detail, the one action
         // stays in reach.
         .safeAreaInset(edge: .bottom) {
             retryButton
                 .padding(.horizontal, 20)
-                .padding(.vertical, 12)
+                .padding(.top, 12)
+                // A form has no home indicator below it: the button sits as
+                // far from the sheet's bottom edge as from its sides.
+                .padding(.bottom, sheetPresentation == .form ? 20 : 12)
         }
         .navigationTitle(presentation.hostName)
         .navigationBarTitleDisplayMode(.inline)
+        .modifier(StatusFormPageBackground(presentation: sheetPresentation))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Edit") { isEditing = true }
             }
         }
         .sheet(isPresented: $isEditing) {
+            // A full form over the shorter one, so the stack reads as one
+            // card rather than two sheet styles layered.
             HostFormView(store: catalog, editing: host)
+                .modifier(ConsoleSheetPresentationModifier(presentation: sheetPresentation))
         }
     }
 
@@ -185,9 +208,29 @@ struct HostConnectionDetailContent: View {
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
+        // Across a whole form the bar would outweigh the failure it answers.
+        .frame(maxWidth: sheetPresentation == .form ? 360 : .infinity)
         // Busy keeps the prominent look rather than a disabled gray, so the
         // spinner reads as work under way.
         .allowsHitTesting(!busy)
         .accessibilityAddTraits(busy ? .updatesFrequently : [])
+    }
+}
+
+/// A regular-width status sheet's page ground, the same whether the page is
+/// the sheet's root or pushed from its list, where navigation would
+/// otherwise back the pushed page with its own.
+private struct StatusFormPageBackground: ViewModifier {
+    let presentation: ConsoleSheetPresentation
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        switch presentation {
+        case .form:
+            content.containerBackground(
+                ConsoleStatusSheetPresentationModifier.formBackground, for: .navigation)
+        case .inheritedSheet:
+            content
+        }
     }
 }

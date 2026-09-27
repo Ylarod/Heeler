@@ -51,6 +51,11 @@ struct ShellTerminalView: View {
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     @Environment(\.detailTopChromeInset) private var topChromeInset
+    @Environment(\.detailSurfaceEdges) private var surfaceEdges
+    @Environment(\.revealDetailSidebar) private var revealDetailSidebar
+    /// The window's own controls over this screen's top-leading corner, on
+    /// a windowed iPad; see `onWindowControlsHeightChange`.
+    @State private var windowControlsHeight: CGFloat = 0
 
     /// The status bar height of the window this terminal is in; see
     /// `AgentTerminalView.statusBarInset`.
@@ -187,7 +192,7 @@ struct ShellTerminalView: View {
             // gesture's hit region, including their leftmost buttons.
             .overlay(alignment: .leading) {
                 ShellTerminalEdgeBackGesture(isEnabled: !isReturning) {
-                    await goBack()
+                    if let revealDetailSidebar { revealDetailSidebar() } else { await goBack() }
                 }
             }
             // Always present, keyboard up or down: with no title bar, its
@@ -198,6 +203,8 @@ struct ShellTerminalView: View {
                         get: { keyboardMode },
                         set: { setKeyboardMode($0) }),
                     paste: { keyboardControl.paste($0) },
+                    isKeyboardUp: isKeyboardShown,
+                    toggleKeyboard: toggleKeyboard,
                     more: ShellTerminalMoreMenu(
                         title: title,
                         backTitle: backTitle,
@@ -228,7 +235,8 @@ struct ShellTerminalView: View {
             // No title bar, as on Agent detail: the navigation bar stays
             // only as the owner of the status bar appearance, and this inset
             // keeps terminal output below the system clock.
-            .padding(.top, max(statusBarInset, topChromeInset))
+            .padding(.top, max(statusBarInset, topChromeInset, windowControlsHeight))
+            .onWindowControlsHeightChange { windowControlsHeight = $0 }
             .background {
                 // Keyboard geometry and the status bar inset follow this
                 // view's own window, not whichever window of the app is key.
@@ -239,10 +247,12 @@ struct ShellTerminalView: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }
-            .background(
+            // Through every safe-area region, as Agent detail's surface.
+            .background {
                 terminal.themes.selection(for: colorScheme)
                     .surfaceBackground(for: colorScheme)
-            )
+                    .ignoresSafeArea(.all, edges: surfaceEdges)
+            }
             .ignoresSafeArea(.container, edges: .top)
             .toolbarColorScheme(
                 terminal.themes.selection(for: colorScheme)
@@ -356,6 +366,32 @@ struct ShellTerminalView: View {
             if restoresSystemKeyboard, !keyboardControl.isFirstResponder {
                 keyboardControl.requestKeyboard()
             }
+        }
+    }
+
+    /// The keyboard toggle's glyph: the Keys dock counts as a keyboard, and
+    /// a measured inset covers UIKit's show before first responder lands.
+    private var isKeyboardShown: Bool {
+        isKeyboardUpForHandoff || keyboardInset.height > 0
+    }
+
+    /// Hides whichever keyboard is up, Keys included, or raises the system
+    /// one, as the Agent switcher's toggle does.
+    private func toggleKeyboard() {
+        if keyboardMode == .controls {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                keyboardMode = .text
+            }
+            // Not `prepareKeyboardMode(.text)`: nothing is coming back up.
+            keyboardInset.resumeHeightCapture()
+            keyboardControl.setKeyboardMode(.text)
+            keyboardControl.dismissKeyboard()
+        } else if keyboardControl.isKeyboardUp {
+            keyboardControl.dismissKeyboard()
+        } else {
+            keyboardControl.requestKeyboard()
         }
     }
 
@@ -525,6 +561,8 @@ struct ShellTerminalMoreMenu: View {
 struct ShellTerminalInputRow: View {
     @Binding var mode: TerminalKeyboardMode
     let paste: (String) -> Void
+    let isKeyboardUp: Bool
+    let toggleKeyboard: () -> Void
     let more: ShellTerminalMoreMenu
     /// Matches the Composer chrome's small glyphs, or the row's icons read as
     /// borrowed from a different set.
@@ -535,6 +573,10 @@ struct ShellTerminalInputRow: View {
     private var sizeClass: InputShortcutStripPresentation.SizeClass {
         horizontalSizeClass == .regular ? .regular : .compact
     }
+
+    /// Both sides as wide as the wider one, so the mode control stays
+    /// centered.
+    private static let sideWidth = InputChromeLayout.shellAccessoryButtonWidth * 2
 
     var body: some View {
         HStack(spacing: 0) {
@@ -551,6 +593,7 @@ struct ShellTerminalInputRow: View {
             .frame(
                 width: InputChromeLayout.shellAccessoryButtonWidth,
                 height: InputChromeLayout.shortcutRowHeight)
+            .frame(width: Self.sideWidth, alignment: .leading)
 
             Spacer(minLength: 4)
 
@@ -565,7 +608,11 @@ struct ShellTerminalInputRow: View {
 
             // A line break without submitting (Shift+Enter) lives on the Keys
             // keyboard; the row keeps only what Text mode cannot do itself.
-            more
+            HStack(spacing: 0) {
+                more
+                keyboardToggle
+            }
+            .frame(width: Self.sideWidth, alignment: .trailing)
         }
         .padding(.horizontal, 8)
         .frame(height: 48)
@@ -575,6 +622,21 @@ struct ShellTerminalInputRow: View {
                 .frame(height: 1 / max(displayScale, 1))
         }
         .background(Color(uiColor: .secondarySystemBackground))
+    }
+
+    private var keyboardToggle: some View {
+        Button(action: toggleKeyboard) {
+            Image(systemName: isKeyboardUp ? "keyboard.chevron.compact.down" : "keyboard")
+                .font(.system(size: Self.glyphPointSize))
+                .foregroundStyle(Color(uiColor: .label))
+                .contentTransition(.symbolEffect(.replace))
+                .frame(
+                    width: InputChromeLayout.shellAccessoryButtonWidth,
+                    height: InputChromeLayout.shortcutRowHeight)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isKeyboardUp ? "Dismiss keyboard" : "Show keyboard")
     }
 }
 
@@ -636,6 +698,8 @@ struct ShellTerminalKeysDock: View {
     }
 }
 
+/// Goes back on an edge swipe, or beside an iPad's sidebar brings the
+/// sidebar out instead.
 private struct ShellTerminalEdgeBackGesture: View {
     let isEnabled: Bool
     let onBack: @MainActor () async -> Void
