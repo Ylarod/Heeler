@@ -813,16 +813,10 @@ struct ConsoleView: View {
         // as the list, and the title's width, changes.
         if usesSidebarNavigation {
             ToolbarItem(placement: .topBarLeading) {
-                Menu { listMenu } label: {
-                    SidebarListTitle(
-                        title: tab.title,
-                        titles: [ConsoleTab.agents.title, ConsoleTab.terminals.title])
-                }
-                    .menuStyle(.button)
-                    // A style of its own keeps the label SwiftUI's: bridged
-                    // to a bar button, it would show only its image.
-                    .buttonStyle(SidebarListTitleButtonStyle())
-                    .accessibilityHint("Switches between Agents and Terminals")
+                SidebarListMenu(
+                    title: tab.title,
+                    titles: [ConsoleTab.agents.title, ConsoleTab.terminals.title]
+                ) { listMenu }
             }
             .sidebarItemBackground(.hidden)
         }
@@ -1765,32 +1759,40 @@ private struct SidebarBarButton: ViewModifier {
     }
 }
 
-/// An iPad sidebar's title as the label of its list menu, drawn as the bar's
-/// own title menu: the list's name and a chevron in a small disc.
-private struct SidebarListTitle: View {
+/// An iPad sidebar's title as its list menu, drawn as the bar's own title
+/// menu: the list's name and a chevron in a small disc.
+private struct SidebarListMenu<Items: View>: View {
     let title: String
     /// Every title the menu switches between.
     let titles: [String]
+    @ViewBuilder let items: Items
 
     var body: some View {
         // As wide as the widest title throughout: the bar lays its items
         // out again only a while after a title changes, so a wider one
-        // would be clipped, and the menu would fold back onto a frame
-        // that no longer fits it.
+        // would be clipped. The width is held outside the menu, whose own
+        // frame, which its pointer highlight and its folding back follow,
+        // fits the title on show.
         ZStack(alignment: .leading) {
-            ForEach(titles, id: \.self) { label($0).hidden() }
-            label(title)
+            ForEach(titles, id: \.self) { SidebarListTitle(title: $0).hidden() }
+            Menu { items } label: { SidebarListTitle(title: title) }
+                .menuStyle(.button)
+                // A style of its own keeps the label SwiftUI's: bridged to a
+                // bar button, it would show only its image.
+                .buttonStyle(SidebarListTitleButtonStyle())
+                // On the menu itself: set inside its label, the highlight
+                // gives way to one over the bar item's whole frame.
+                .contentShape(.hoverEffect, Capsule().inset(by: 4))
+                .hoverEffect(.highlight)
+                .accessibilityHint("Switches between Agents and Terminals")
         }
-        .foregroundStyle(.primary)
-        // In line with the rows' own leading edge, as the bar's title is.
-        .padding(.leading, 12)
-        .frame(minHeight: 44)
-        .contentShape(.rect)
-        .contentShape(.hoverEffect, .capsule)
-        .hoverEffect(.highlight)
     }
+}
 
-    private func label(_ title: String) -> some View {
+private struct SidebarListTitle: View {
+    let title: String
+
+    var body: some View {
         HStack(spacing: 8) {
             Text(title)
                 .font(.headline)
@@ -1803,6 +1805,13 @@ private struct SidebarListTitle: View {
                 .background(Color(uiColor: .tertiarySystemFill), in: .circle)
                 .accessibilityHidden(true)
         }
+        .foregroundStyle(.primary)
+        // The leading inset puts the name in line with the rows' own
+        // leading edge, as the bar's title is; the trailing one matches it
+        // around the pointer highlight.
+        .padding(.horizontal, 12)
+        .frame(minHeight: 44)
+        .contentShape(.rect)
     }
 }
 
