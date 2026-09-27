@@ -36,7 +36,7 @@ Heeler is an **agent console**: a native dashboard of every coding agent running
 | --- | --- | --- |
 | <img src="docs/images/terminal-iphone.png" width="240" alt="Terminals tab listing shell panes by Host and Workspace on iPhone" /> | <img src="docs/images/skills-iphone.png" width="240" alt="Composer Skills suggestions on iPhone" /> | <img src="docs/images/live-activity-iphone.png" width="240" alt="Lock-screen Live Activity tracking Agents on iPhone" /> |
 
-<a href="docs/ipad-screenshots.md"><img src="output/app-store/ipad-13/sources/05-windowed-console.png" width="760" alt="Heeler in a floating iPad window" /></a>
+<a href="docs/ipad-screenshots.md"><img src="docs/images/windowed-ipad.png" width="760" alt="Heeler in a floating iPad window" /></a>
 
 [View iPad screenshots](docs/ipad-screenshots.md)
 
