@@ -570,11 +570,20 @@ struct ConsoleView: View {
             || (horizontalSizeClass == .compact && selectedItem.wrappedValue != nil)
     }
 
-    /// Beside the sidebar, the detail's leading safe area lies under it,
-    /// and its material would take on a terminal's color there.
+    /// Beside an opaque sidebar, the detail's leading safe area lies under
+    /// it, and its material would take on a terminal's color there. A glass
+    /// sidebar floats over the terminal instead, which fills the window.
     private func detailSurfaceEdges(for tab: ConsoleTab) -> Edge.Set {
-        horizontalSizeClass == .regular && splitVisibility(for: tab).isSidebarVisible != false
+        !sidebarFloatsOverDetail && horizontalSizeClass == .regular
+            && splitVisibility(for: tab).isSidebarVisible != false
             ? [.vertical, .trailing] : .all
+    }
+
+    /// iPadOS 26 draws the sidebar as glass over the detail column, so what
+    /// lies behind it is the detail's; earlier releases give it an opaque
+    /// column of its own, up to the window's top edge.
+    private var sidebarFloatsOverDetail: Bool {
+        if #available(iOS 26.0, *) { true } else { false }
     }
 
     /// Output starts below the detail's bar row, or below the whole bar
@@ -1072,15 +1081,17 @@ struct ConsoleView: View {
         terminalOwnsTopEdge ? stagedTerminalChromeScheme : nil
     }
 
-    /// A terminal reaches the window's top edge unless the sidebar shares
-    /// that edge and the two disagree: the status bar spans both columns and
-    /// takes one scheme, so white text over a dark terminal would vanish
-    /// over a light sidebar. The detail then keeps the app's own band above
-    /// the terminal, with the status bar in it. An iPhone wide enough for
-    /// both columns shows no status bar in landscape.
+    /// A terminal reaches the window's top edge unless an opaque sidebar
+    /// shares that edge and the two disagree: the status bar spans both
+    /// columns and takes one scheme, so white text over a dark terminal
+    /// would vanish over a light sidebar. The detail then keeps the app's
+    /// own band above the terminal, with the status bar in it. A glass
+    /// sidebar floats below the status bar, over the terminal. An iPhone
+    /// wide enough for both columns shows no status bar in landscape.
     private var terminalOwnsTopEdge: Bool {
         horizontalSizeClass != .regular
             || UIDevice.current.userInterfaceIdiom != .pad
+            || sidebarFloatsOverDetail
             || splitVisibility(for: currentTab).isSidebarVisible != true
             || stagedTerminalChromeScheme.map { $0 == colorScheme } ?? true
     }
@@ -2153,7 +2164,7 @@ extension EnvironmentValues {
     /// in compact width; the screens still clear the status bar themselves.
     @Entry var detailTopChromeInset: CGFloat = 0
     /// The edges a detail screen's full-bleed surface fills past the safe
-    /// area. Beside a visible sidebar the leading one lies under the
+    /// area. Beside an opaque sidebar the leading one lies under the
     /// sidebar; every other edge, an iPhone's landscape insets included, is
     /// the surface's to fill.
     @Entry var detailSurfaceEdges: Edge.Set = .all
