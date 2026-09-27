@@ -89,10 +89,6 @@ struct ConsoleView: View {
     @State private var isTerminalSearchPresented = false
     /// Lists whose search an iPad's sidebar has open at its foot.
     @State private var openSidebarSearches: Set<ConsoleTab> = []
-    /// The list the sidebar's switch has picked while its thumb still
-    /// slides, before the tab follows.
-    @State private var switchingList: ConsoleTab?
-    @State private var listSwitchTask: Task<Void, Never>?
     /// The list whose search field has focus.
     @FocusState private var focusedSearch: ConsoleTab?
     @State private var commandRegistry = ConsoleCommandRegistry()
@@ -129,12 +125,14 @@ struct ConsoleView: View {
     @Environment(\.agentSceneRouting) private var sceneRouting
 
     var body: some View {
-        TabView(selection: selectedTab) {
+        TabView(selection: tabViewSelection) {
             Tab(ConsoleTab.agents.title, systemImage: "sparkles", value: ConsoleTab.agents) {
-                splitView(for: .agents)
+                splitView(for: usesSidebarNavigation ? shownListTab : .agents)
             }
             Tab(value: ConsoleTab.terminals) {
-                splitView(for: .terminals)
+                // Beside an iPad's sidebar the Terminals list shows in the
+                // Agents tab's split view; see `tabViewSelection`.
+                if !usesSidebarNavigation { splitView(for: .terminals) }
             } label: {
                 // The tab bar fills symbols; filled, this one is a solid
                 // block beside the other tabs' line icons.
@@ -335,6 +333,22 @@ struct ConsoleView: View {
 
     private var currentTab: ConsoleTab { selectedTab.wrappedValue }
 
+    /// The TabView's own selection. Beside an iPad's sidebar both lists
+    /// share the Agents tab's split view, so the sidebar's switch stays one
+    /// control whose thumb slides between them: a tab each would swap in the
+    /// other tab's switch mid-slide.
+    private var tabViewSelection: Binding<ConsoleTab> {
+        Binding(
+            get: {
+                let tab = currentTab
+                return usesSidebarNavigation && tab.isList ? .agents : tab
+            },
+            set: { tab in
+                guard !(usesSidebarNavigation && tab.isList) else { return }
+                selectedTab.wrappedValue = tab
+            })
+    }
+
     /// An iPad beside its sidebar navigates from the sidebar instead of a
     /// tab bar. An iPhone, and an iPad window too narrow for a sidebar, keep
     /// the tab bar.
@@ -377,45 +391,18 @@ struct ConsoleView: View {
     }
 
     /// The sidebar's switch between the two lists, standing in for the tab
-    /// bar. Each tab has its own, which a hidden tab leaves on the list it
-    /// switched to; it is rebuilt when its tab returns, so it does not
-    /// slide back to that tab's list in view.
-    private func listSwitcher(for tab: ConsoleTab) -> some View {
+    /// bar.
+    private var listSwitcher: some View {
         Picker(
             "List",
-            selection: Binding(get: { switchingList ?? tab }, set: { pickList($0) })
+            selection: Binding(get: { shownListTab }, set: { switchList(to: $0) })
         ) {
             Text(ConsoleTab.agents.title).tag(ConsoleTab.agents)
             Text(ConsoleTab.terminals.title).tag(ConsoleTab.terminals)
         }
         .pickerStyle(.segmented)
         .fixedSize()
-        .id(shownListTab)
     }
-
-    /// Each tab's sidebar has its own switch, so switching tabs under a
-    /// sliding thumb swaps in the other tab's switch, already settled, and
-    /// cuts the slide short. The tab follows once the thumb lands.
-    private func pickList(_ tab: ConsoleTab) {
-        listSwitchTask?.cancel()
-        let leaving = currentTab
-        guard tab != leaving, !reduceMotion else {
-            switchingList = nil
-            switchList(to: tab)
-            return
-        }
-        switchingList = tab
-        listSwitchTask = Task { @MainActor in
-            try? await Task.sleep(for: Self.listSwitchSlide)
-            guard !Task.isCancelled else { return }
-            switchingList = nil
-            // Something else, a shortcut or a notification, moved on first.
-            if currentTab == leaving { switchList(to: tab) }
-        }
-    }
-
-    /// How long a segmented control's thumb takes to slide and settle.
-    private static let listSwitchSlide = Duration.milliseconds(350)
 
     private func switchList(to tab: ConsoleTab) {
         guard tab != currentTab else { return }
@@ -518,8 +505,8 @@ struct ConsoleView: View {
     }
 
     /// Parks the leaving list's selection and puts back the arriving one's,
-    /// if what it showed may still be there. No crossfade: the detail column
-    /// belongs to the other tab's split view.
+    /// if what it showed may still be there. No crossfade: behind a tab bar
+    /// the detail column belongs to the other tab's split view.
     private func swapListSelection(from leaving: ConsoleTab, to arriving: ConsoleTab) {
         rememberedSelections[leaving] = parkedSelection
         switch rememberedSelections[arriving] {
@@ -610,7 +597,7 @@ struct ConsoleView: View {
             NavigationSplitView(
                 columnVisibility: splitVisibilityBinding(for: tab, presentation: presentation)
             ) {
-                sidebar(for: tab)
+                sidebarLists(showing: tab)
                     // The sidebar column reports a compact size class even
                     // beside a detail, so the lists are told outright.
                     .environment(\.isSidebarColumn, presentation.usesRegularColumns)
@@ -681,6 +668,12 @@ struct ConsoleView: View {
                 splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
                     .update(from: presentation)
             }
+            // A sidebar's switch hands this split view the other list, whose
+            // state may predate the layout.
+            .onChange(of: tab) { _, tab in
+                splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
+                    .update(from: presentation)
+            }
         }
         // Up to the window's top edge, as a split view alone in a window
         // runs: a terminal then reaches under the status bar, while the
@@ -691,6 +684,22 @@ struct ConsoleView: View {
             ConsoleTabBarBridge(chromeScheme: tabBarChromeScheme, hidesBar: hidesTabBar)
         }
         .toolbarVisibility(hidesTabBar ? .hidden : .automatic, for: .tabBar)
+    }
+
+    /// Beside an iPad's sidebar both lists stay built, the one not shown
+    /// out of sight and out of reach: a split view whose sidebar swaps its
+    /// list rebuilds the whole column, its bar included, which lands the
+    /// switch's sliding thumb at once.
+    @ViewBuilder
+    private func sidebarLists(showing tab: ConsoleTab) -> some View {
+        if usesSidebarNavigation {
+            ZStack {
+                sidebar(for: .agents).modifier(SidebarListShown(isShown: tab == .agents))
+                sidebar(for: .terminals).modifier(SidebarListShown(isShown: tab == .terminals))
+            }
+        } else {
+            sidebar(for: tab)
+        }
     }
 
     @ViewBuilder
@@ -797,7 +806,7 @@ struct ConsoleView: View {
     private func toolbar(for tab: ConsoleTab) -> some ToolbarContent {
         if usesSidebarNavigation {
             // The list's menus sit at the sidebar's foot; see `sidebarFooter`.
-            ToolbarItem(placement: .principal) { listSwitcher(for: tab) }
+            ToolbarItem(placement: .principal) { listSwitcher }
         } else {
             if filtersByHost, !foldsHostFilter {
                 ToolbarItem(placement: .primaryAction) {
@@ -812,17 +821,14 @@ struct ConsoleView: View {
         }
         if !hosts.hosts.isEmpty {
             ToolbarItem(placement: .primaryAction) {
-                if tab == .terminals {
-                    Button("New Terminal", systemImage: "plus") {
-                        isStartingTerminal = true
-                    }
-                    .modifier(SidebarBarButton(isInSidebar: usesSidebarNavigation))
-                } else {
-                    Button("New Agent", systemImage: "plus") {
-                        isStartingAgent = true
-                    }
-                    .modifier(SidebarBarButton(isInSidebar: usesSidebarNavigation))
+                // One button for both lists, so a sidebar switching lists
+                // keeps its bar as it is.
+                Button(
+                    tab == .terminals ? "New Terminal" : "New Agent", systemImage: "plus"
+                ) {
+                    if tab == .terminals { isStartingTerminal = true } else { isStartingAgent = true }
                 }
+                .modifier(SidebarBarButton(isInSidebar: usesSidebarNavigation))
             }
             .sidebarItemBackground(usesSidebarNavigation ? .hidden : .automatic)
         }
@@ -1818,6 +1824,20 @@ private struct SidebarBarButton: ViewModifier {
         } else {
             content.hoverEffect(.highlight)
         }
+    }
+}
+
+/// One of an iPad sidebar's two lists, shown or kept out of sight, touch,
+/// focus, and VoiceOver; see `sidebarLists(showing:)`.
+private struct SidebarListShown: ViewModifier {
+    let isShown: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isShown ? 1 : 0)
+            .allowsHitTesting(isShown)
+            .disabled(!isShown)
+            .accessibilityHidden(!isShown)
     }
 }
 
