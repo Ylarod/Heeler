@@ -50,6 +50,7 @@ struct ConsoleView: View {
     /// Hosts and Settings where the sidebar navigates instead of a tab bar.
     @State private var isShowingHostsSheet = false
     @State private var isShowingSettingsSheet = false
+    @State private var isShowingListMenu = false
     @State private var isStartingTerminal = false
     @State private var terminalPresentation = TerminalListPresentationStore()
     /// Where the detail column's navigation bar sits, from the column's top
@@ -387,18 +388,6 @@ struct ConsoleView: View {
             onDone: onDone)
     }
 
-    /// The sidebar's choice between the two lists, standing in for the tab
-    /// bar: the menu under the list's title in its bar.
-    private var listMenu: some View {
-        Picker(
-            "List",
-            selection: Binding(get: { shownListTab }, set: { switchList(to: $0) })
-        ) {
-            Label(ConsoleTab.agents.title, systemImage: "sparkles").tag(ConsoleTab.agents)
-            Label(ConsoleTab.terminals.title, systemImage: "terminal").tag(ConsoleTab.terminals)
-        }
-    }
-
     private func switchList(to tab: ConsoleTab) {
         guard tab != currentTab else { return }
         let leaving = splitVisibility(for: currentTab)
@@ -695,6 +684,25 @@ struct ConsoleView: View {
                 prompt: tab == .terminals ? "Search Terminals" : "Search Agents")
             .searchFocused($focusedSearch, equals: tab)
             .sidebarSearchDrawer(following: tab)
+            // The title's list menu opens from here rather than from the
+            // title: anything a bar item presents folds back onto the item's
+            // frame, which lingers as a rectangle around a bare title for
+            // about a second and a half after it closes.
+            .overlay {
+                GeometryReader { _ in
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .popover(isPresented: $isShowingListMenu, arrowEdge: .top) {
+                            SidebarListChoices(
+                                shown: tab, lists: [.agents, .terminals],
+                                isPresented: $isShowingListMenu, select: switchList(to:))
+                        }
+                        .position(x: SidebarListMenu.anchorLeading, y: SidebarListMenu.anchorTop)
+                }
+                // Measured from the column's top, under the bar.
+                .ignoresSafeArea(.container, edges: .top)
+                .allowsHitTesting(false)
+            }
         } else {
             sidebar(for: tab)
         }
@@ -811,9 +819,7 @@ struct ConsoleView: View {
         if usesSidebarNavigation {
             ToolbarItem(placement: .topBarLeading) {
                 SidebarListMenu(
-                    title: tab.title,
-                    titles: [ConsoleTab.agents.title, ConsoleTab.terminals.title]
-                ) { listMenu }
+                    shown: tab, lists: [.agents, .terminals], isPresented: $isShowingListMenu)
             }
             .sidebarItemBackground(.hidden)
         }
@@ -1757,32 +1763,81 @@ private struct SidebarBarButton: ViewModifier {
 }
 
 /// An iPad sidebar's title as its list menu, drawn as the bar's own title
-/// menu: the list's name and a chevron in a small disc.
-private struct SidebarListMenu<Items: View>: View {
-    let title: String
-    /// Every title the menu switches between.
-    let titles: [String]
-    @ViewBuilder let items: Items
+/// menu: the list's name and a chevron in a small disc. It only asks for
+/// the choices; `sidebarLists(showing:)` presents them.
+private struct SidebarListMenu: View {
+    let shown: ConsoleTab
+    /// Every list the menu switches between.
+    let lists: [ConsoleTab]
+    @Binding var isPresented: Bool
+
+    /// Where the choices point from, in the sidebar column: under the
+    /// title's name, just above the bar's bottom edge.
+    static let anchorLeading: CGFloat = 44
+    static let anchorTop: CGFloat = 40
 
     var body: some View {
         // As wide as the widest title throughout: the bar lays its items
         // out again only a while after a title changes, so a wider one
-        // would be clipped. The width is held outside the menu, whose own
-        // frame, which its pointer highlight and its folding back follow,
-        // fits the title on show.
+        // would be clipped. The width is held outside the button, whose own
+        // frame, which its pointer highlight follows, fits the title on show.
         ZStack(alignment: .leading) {
-            ForEach(titles, id: \.self) { SidebarListTitle(title: $0).hidden() }
-            Menu { items } label: { SidebarListTitle(title: title) }
-                .menuStyle(.button)
+            ForEach(lists) { SidebarListTitle(title: $0.title).hidden() }
+            Button { isPresented = true } label: { SidebarListTitle(title: shown.title) }
                 // A style of its own keeps the label SwiftUI's: bridged to a
                 // bar button, it would show only its image.
                 .buttonStyle(SidebarListTitleButtonStyle())
-                // On the menu itself: set inside its label, the highlight
+                // On the button itself: set inside its label, the highlight
                 // gives way to one over the bar item's whole frame.
                 .contentShape(.hoverEffect, Capsule().inset(by: 4))
                 .hoverEffect(.highlight)
                 .accessibilityHint("Switches between Agents and Terminals")
         }
+    }
+}
+
+/// The lists an iPad sidebar's title menu switches between, laid out as
+/// a menu's rows.
+private struct SidebarListChoices: View {
+    let shown: ConsoleTab
+    let lists: [ConsoleTab]
+    @Binding var isPresented: Bool
+    let select: (ConsoleTab) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(lists) { list in
+                Button {
+                    isPresented = false
+                    select(list)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark")
+                            .font(.body.weight(.semibold))
+                            .opacity(list == shown ? 1 : 0)
+                            .accessibilityHidden(true)
+                        Image(systemName: Self.symbol(for: list))
+                            .frame(width: 24)
+                            .accessibilityHidden(true)
+                        Text(list.title)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: 44)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .hoverEffect(.highlight)
+                .accessibilityAddTraits(list == shown ? .isSelected : [])
+            }
+        }
+        .padding(.vertical, 6)
+        .frame(width: 220)
+        .presentationCompactAdaptation(.popover)
+    }
+
+    private static func symbol(for list: ConsoleTab) -> String {
+        list == .terminals ? "terminal" : "sparkles"
     }
 }
 
