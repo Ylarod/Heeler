@@ -104,9 +104,9 @@ private struct SidebarSearchDrawerBridge: UIViewRepresentable {
         }
 
         /// Puts a tucked list back at its top once the field has gone. The
-        /// list sits below the bar rather than under it, so the bar losing
-        /// the field already raised the rows by its height: the scroll that
-        /// hid the field would otherwise leave them that much too far down.
+        /// bar losing the field moves the list's top edge while the scroll
+        /// that hid it is still settling, which can leave the first rows
+        /// under the bar.
         private func settle(_ list: UIScrollView, below field: UISearchBar, attempt: Int = 0) {
             guard !list.isTracking, !list.isDecelerating else { return }
             guard field.frame.height < 1 else {

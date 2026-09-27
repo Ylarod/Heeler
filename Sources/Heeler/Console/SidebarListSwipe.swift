@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 /// Which way a swipe across an iPad sidebar turns its lists: to the one
-/// after the shown list in the switch, or the one before it.
+/// after the shown list in the title menu, or the one before it.
 enum SidebarListSwipeDirection {
     case next
     case previous
@@ -96,7 +96,7 @@ private struct SidebarListSwipeInstaller: UIViewRepresentable {
             let velocity = pan.velocity(in: host)
             guard abs(velocity.x) > abs(velocity.y) * 2 else { return false }
             let start = pan.location(in: host)
-            // Only over the lists, not the switch above them or the foot.
+            // Only over the lists, not the bar above them or the foot.
             guard bounds.contains(convert(start, from: host)) else { return false }
             return !startsOnRow(start, in: host)
         }

@@ -332,9 +332,8 @@ struct ConsoleView: View {
     private var currentTab: ConsoleTab { selectedTab.wrappedValue }
 
     /// The TabView's own selection. Beside an iPad's sidebar both lists
-    /// share the Agents tab's split view, so the sidebar's switch stays one
-    /// control whose thumb slides between them: a tab each would swap in the
-    /// other tab's switch mid-slide.
+    /// share the Agents tab's split view, so switching lists keeps one
+    /// sidebar and its bar rather than swapping in another tab's.
     private var tabViewSelection: Binding<ConsoleTab> {
         Binding(
             get: {
@@ -388,19 +387,16 @@ struct ConsoleView: View {
             onDone: onDone)
     }
 
-    /// The sidebar's switch between the two lists, standing in for the tab
-    /// bar. A row of its own below the bar, as wide as the sidebar: the bar
-    /// row also carries a window's controls and the sidebar's buttons, and a
-    /// narrow window leaves the switch no room between them.
-    private var listSwitcher: some View {
+    /// The sidebar's choice between the two lists, standing in for the tab
+    /// bar: the menu under the list's title in its bar.
+    private var listMenu: some View {
         Picker(
             "List",
             selection: Binding(get: { shownListTab }, set: { switchList(to: $0) })
         ) {
-            Text(ConsoleTab.agents.title).tag(ConsoleTab.agents)
-            Text(ConsoleTab.terminals.title).tag(ConsoleTab.terminals)
+            Label(ConsoleTab.agents.title, systemImage: "sparkles").tag(ConsoleTab.agents)
+            Label(ConsoleTab.terminals.title, systemImage: "terminal").tag(ConsoleTab.terminals)
         }
-        .pickerStyle(.segmented)
     }
 
     private func switchList(to tab: ConsoleTab) {
@@ -597,6 +593,7 @@ struct ConsoleView: View {
                         max: presentation.sidebarWidth.maximum)
                     .navigationBarTitleDisplayMode(usesSidebarNavigation ? .inline : .automatic)
                     .toolbar { toolbar(for: tab) }
+                    .modifier(SidebarTitleMenu(isShown: usesSidebarNavigation) { listMenu })
                     .bottomBar {
                         if usesSidebarNavigation { sidebarFooter(for: tab) }
                     }
@@ -605,8 +602,6 @@ struct ConsoleView: View {
                     // detail one to bring the sidebar back. Removed here, it
                     // leaves the whole split view.
                     .toolbar(removing: usesSidebarNavigation ? .sidebarToggle : nil)
-                    // The switch below the bar already names the list.
-                    .toolbar(removing: usesSidebarNavigation ? .title : nil)
             } detail: {
                 // Every tab keeps its split view alive; only the selected one
                 // may mount the detail, or a terminal would attach twice.
@@ -678,29 +673,19 @@ struct ConsoleView: View {
 
     /// Beside an iPad's sidebar both lists stay built, the one not shown
     /// out of sight and out of reach: a split view whose sidebar swaps its
-    /// list rebuilds the whole column, its bar included, which lands the
-    /// switch's sliding thumb at once.
-    ///
-    /// The switch sits above the lists rather than over them, so rows never
-    /// scroll beneath it: pinned over a list, as an inset or a scroll edge
-    /// bar, it needs a backdrop of its own, and a scroll edge bar also
-    /// keeps the search field from being pulled into view.
+    /// list rebuilds the whole column, its bar included, and each list keeps
+    /// its scroll position and tucked search field across a switch.
     @ViewBuilder
     private func sidebarLists(showing tab: ConsoleTab) -> some View {
         if usesSidebarNavigation {
-            VStack(spacing: 0) {
-                listSwitcher
-                    .padding(.horizontal)
-                    .padding(.bottom, 6)
-                ZStack {
-                    ForEach([ConsoleTab.agents, .terminals], id: \.self) { list in
-                        sidebar(for: list)
-                            .modifier(SidebarListShown(isShown: tab == list))
-                    }
+            ZStack {
+                ForEach([ConsoleTab.agents, .terminals], id: \.self) { list in
+                    sidebar(for: list)
+                        .modifier(SidebarListShown(isShown: tab == list))
                 }
-                .sidebarListSwipe { direction in
-                    switchList(to: direction == .next ? .terminals : .agents)
-                }
+            }
+            .sidebarListSwipe { direction in
+                switchList(to: direction == .next ? .terminals : .agents)
             }
             // One field for both lists, searching the one on show.
             .searchable(
@@ -1322,8 +1307,8 @@ struct ConsoleView: View {
         }
         ForEach(filteredAgents) { agent in
             agentRow(agent)
-                // Right under an iPad sidebar's list switch, a rule over
-                // the first row would crowd it.
+                // Right under an iPad sidebar's bar, a rule over the
+                // first row would crowd it.
                 .listRowSeparator(
                     usesSidebarNavigation && visibleHostIssues.isEmpty
                         && agent.id == filteredAgents.first?.id ? .hidden : .automatic,
@@ -1773,6 +1758,21 @@ private struct SidebarBarMenu: ViewModifier {
                 .roundPointerHighlight()
         } else {
             content.hoverEffect(.highlight)
+        }
+    }
+}
+
+/// The list menu under an iPad sidebar's title. Only there: an empty title
+/// menu still draws its chevron.
+private struct SidebarTitleMenu<Menu: View>: ViewModifier {
+    let isShown: Bool
+    @ViewBuilder let menu: () -> Menu
+
+    func body(content: Content) -> some View {
+        if isShown {
+            content.toolbarTitleMenu(content: menu)
+        } else {
+            content
         }
     }
 }
