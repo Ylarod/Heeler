@@ -189,13 +189,19 @@ private struct ConsoleSheetPage: ViewModifier {
 /// grow the sheet by the keyboard for good, and feed the keyboard's own
 /// layout of the sheet back into its size. So once the sheet places the
 /// page, only the least bottom inset it has had counts: its own bars and
-/// pinned controls, not the keyboard.
+/// pinned controls, not the keyboard. A page laid out unplaced again starts
+/// over: as a sheet opens, a first placed pass can come before a pinned
+/// control joins the inset, and holding to it would leave the control
+/// covering the page.
 @MainActor
 final class ConsoleSheetPageMeasure {
     private var restingBottomInset: CGFloat?
 
     func height(content: CGFloat, bottomInset: CGFloat, isPlaced: Bool) -> CGFloat {
-        guard isPlaced else { return content + bottomInset }
+        guard isPlaced else {
+            restingBottomInset = nil
+            return content + bottomInset
+        }
         let resting = min(restingBottomInset ?? bottomInset, bottomInset)
         restingBottomInset = resting
         return content + resting
@@ -213,3 +219,4 @@ struct ContentFittedFormSizing: PresentationSizing {
         return ProposedViewSize(width: form.width, height: min(height, fitted.height))
     }
 }
+

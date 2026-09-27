@@ -85,6 +85,19 @@ struct ConsoleSheetPresentationTests {
         #expect(measure.height(content: 340, bottomInset: 76 + 212, isPlaced: true) == 416)
     }
 
+    @MainActor @Test func sheetPageCountsAPinnedControlThatJoinsAfterAFirstPass() {
+        let measure = ConsoleSheetPageMeasure()
+        // Opening a Host's own connection sheet, as logged on iPad: a first
+        // placed pass before Retry Now joins the inset, then the page is
+        // laid out again unplaced with it.
+        #expect(measure.height(content: 129, bottomInset: 0, isPlaced: true) == 129)
+        #expect(measure.height(content: 181, bottomInset: 90.5, isPlaced: false) == 271.5)
+        // Placed again, Retry Now counts rather than covering the page.
+        #expect(measure.height(content: 181, bottomInset: 90.5, isPlaced: true) == 271.5)
+        // And a keyboard over it still does not.
+        #expect(measure.height(content: 181, bottomInset: 90.5 + 212, isPlaced: true) == 271.5)
+    }
+
     @MainActor @Test func fittedFormDoesNotGrowByAKeyboardOverItsPage() {
         let fit = ConsoleSheetFit()
         let measure = ConsoleSheetPageMeasure()
