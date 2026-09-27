@@ -841,30 +841,36 @@ struct ConsoleView: View {
                 presentationMenu(for: tab).hoverEffect(.highlight)
             }
         }
-        if !hosts.hosts.isEmpty {
-            ToolbarItem(placement: .primaryAction) {
-                // One button for both lists, so a sidebar switching lists
-                // keeps its bar as it is.
-                Button(
-                    tab == .terminals ? "New Terminal" : "New Agent", systemImage: "plus"
-                ) {
-                    if tab == .terminals { isStartingTerminal = true } else { isStartingAgent = true }
-                }
-                .modifier(SidebarBarButton(isInSidebar: usesSidebarNavigation))
-            }
-            .sidebarItemBackground(usesSidebarNavigation ? .hidden : .automatic)
-        }
         if usesSidebarNavigation {
+            // One item, so the bar sets no gap between the two, and neither
+            // folds into its overflow menu without the other: beside a
+            // window's controls a sidebar at its narrowest has room for both
+            // only this way.
             ToolbarItem(placement: .primaryAction) {
-                Button("Hide Sidebar", systemImage: "sidebar.left") {
-                    withAnimation(reduceMotion ? nil : .snappy) {
-                        splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
-                            .hideSidebar()
+                HStack(spacing: 0) {
+                    if !hosts.hosts.isEmpty { newItemButton(for: tab) }
+                    Button("Hide Sidebar", systemImage: "sidebar.left") {
+                        withAnimation(reduceMotion ? nil : .snappy) {
+                            splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
+                                .hideSidebar()
+                        }
                     }
                 }
                 .buttonStyle(SidebarIconButtonStyle())
             }
             .sidebarItemBackground(.hidden)
+        } else if !hosts.hosts.isEmpty {
+            ToolbarItem(placement: .primaryAction) {
+                newItemButton(for: tab).hoverEffect(.highlight)
+            }
+        }
+    }
+
+    /// One button for both lists, so a sidebar switching lists keeps its
+    /// bar as it is.
+    private func newItemButton(for tab: ConsoleTab) -> some View {
+        Button(tab == .terminals ? "New Terminal" : "New Agent", systemImage: "plus") {
+            if tab == .terminals { isStartingTerminal = true } else { isStartingAgent = true }
         }
     }
 
@@ -1752,23 +1758,6 @@ private struct ConsoleListSearch: ViewModifier {
     }
 }
 
-/// A bar button, drawn in an iPad's sidebar as the sidebar's own icons are.
-/// A plain toolbar button is bridged to a UIKit bar item, which ignores
-/// SwiftUI's hover modifiers and picks its pointer effect per symbol (a
-/// highlight for `plus`, a lens for `sidebar.left`); a styled one stays
-/// SwiftUI's, with the sidebar's round highlight.
-private struct SidebarBarButton: ViewModifier {
-    let isInSidebar: Bool
-
-    func body(content: Content) -> some View {
-        if isInSidebar {
-            content.buttonStyle(SidebarIconButtonStyle())
-        } else {
-            content.hoverEffect(.highlight)
-        }
-    }
-}
-
 /// An iPad sidebar's title as its list menu, drawn as the bar's own title
 /// menu: the list's name and a chevron in a small disc. It only asks for
 /// the choices; `sidebarLists(showing:)` presents them.
@@ -1875,10 +1864,15 @@ private struct SidebarListTitle: View {
                 .accessibilityHidden(true)
         }
         .foregroundStyle(.primary)
+        // Fixed, as the bar's own title is: a larger one would push the
+        // trailing buttons into the bar's overflow menu.
+        .dynamicTypeSize(.large)
         // The leading inset puts the name in line with the rows' own
-        // leading edge, as the bar's title is; the trailing one matches it
-        // around the pointer highlight.
-        .padding(.horizontal, 12)
+        // leading edge, as the bar's title is. The trailing one only clears
+        // the pointer highlight: beside a window's controls the bar has
+        // little width to spare.
+        .padding(.leading, 12)
+        .padding(.trailing, 6)
         .frame(minHeight: 44)
         .contentShape(.rect)
     }
