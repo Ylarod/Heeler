@@ -208,15 +208,18 @@ final class ConsoleSheetPageMeasure {
     }
 }
 
-/// A form sheet's width, and its height unless the content needs less.
+/// A form sheet's width, and its content's height: shorter than a form
+/// when the content is, and taller when it needs to be, up to a page
+/// sheet's height, which the system fits to the window.
 struct ContentFittedFormSizing: PresentationSizing {
     func proposedSize(
         for root: PresentationSizingRoot, context: PresentationSizingContext
     ) -> ProposedViewSize {
         let form = FormPresentationSizing.form.proposedSize(for: root, context: context)
-        guard let height = form.height else { return form }
+        let page = PagePresentationSizing.page.proposedSize(for: root, context: context)
+        guard let limit = page.height ?? form.height else { return form }
         let fitted = root.sizeThatFits(ProposedViewSize(width: form.width, height: nil))
-        return ProposedViewSize(width: form.width, height: min(height, fitted.height))
+        return ProposedViewSize(width: form.width, height: min(limit, fitted.height))
     }
 }
 

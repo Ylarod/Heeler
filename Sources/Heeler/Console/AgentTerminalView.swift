@@ -551,7 +551,8 @@ struct AgentTerminalView: View {
                 onStarted: { switchToAgent($0) })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(
-                    horizontalSizeClass: horizontalSizeClass)))
+                    horizontalSizeClass: horizontalSizeClass),
+                fitsContent: true))
         }
         // Presenting this takes the keyboard down and dismissing brings it
         // back; see `allowsKeyboardActivation` in HeelerTerminalView.

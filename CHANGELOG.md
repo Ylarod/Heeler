@@ -35,6 +35,9 @@ Entries reference the issue that motivated them.
   indented list instead of the server glyph Hosts uses.
 - The buttons on an empty detail (Show Agents, New Agent, New Terminal)
   are full size and one width, instead of the small ones sized for a phone.
+- New Agent on iPad grows to show its whole form, up to the window's
+  height, instead of cutting it off under a scroll at a fixed form size.
+  The Console's other fitted sheets can grow the same way.
 - A Host's connection state reads at a glance: Host headers in the Agents
   and Terminals tabs lead with a server glyph instead of a line of text, and
   a badge on its corner marks the state: green once connected, an open ring

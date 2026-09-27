@@ -242,6 +242,12 @@ struct StartAgentView: View {
                     }
                 }
             }
+            // The last footer ends clear of the sheet's rounded corners
+            // when the form fits it.
+            .contentMargins(.bottom, 20, for: .scrollContent)
+            // The form grows as a Host adds its Agent and argument rows; a
+            // fixed form cut them off under a scroll.
+            .consoleSheetPage()
             .navigationTitle("New Agent")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
