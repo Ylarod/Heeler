@@ -31,13 +31,6 @@ Entries reference the issue that motivated them.
 
 ### Changed
 
-- By Host, in the Agents and Terminals presentation menus, shows an
-  indented list instead of the server glyph Hosts uses.
-- The buttons on an empty detail (Show Agents, New Agent, New Terminal)
-  are full size and one width, instead of the small ones sized for a phone.
-- New Agent on iPad grows to show its whole form, up to the window's
-  height, instead of cutting it off under a scroll at a fixed form size.
-  The Console's other fitted sheets can grow the same way.
 - A Host's connection state reads at a glance: Host headers in the Agents
   and Terminals tabs lead with a server glyph instead of a line of text, and
   a badge on its corner marks the state: green once connected, an open ring
@@ -46,6 +39,8 @@ Entries reference the issue that motivated them.
   name. The disclosure chevron moves to the trailing edge, and an expanded
   Host in the Agents tab states its condition as the Terminals tab does.
   (#316; PR #377)
+- By Host, in the Agents and Terminals presentation menus, shows an
+  indented list instead of the server glyph Hosts uses.
 - A Host that is reconnecting or cannot connect no longer expands: tapping
   it opens a sheet with the failure, a Retry button, and Edit for its
   settings. In the flat Agents list and the By Workspace terminals, Hosts
@@ -60,7 +55,8 @@ Entries reference the issue that motivated them.
   keeping its own selection and sidebar; in portrait a pick returns to the
   terminal alone, and swiping in from the terminal's left edge brings the
   list back out instead of closing the terminal. The sidebar's buttons
-  stand bare on it, its list menus sit at its foot, and its search field,
+  stand bare on it, with New and Hide Sidebar beside its title even in the
+  narrowest window, its list menus sit at its foot, and its search field,
   as on an iPhone, stays out of sight until a list is pulled down. The terminal
   reaches the top of the window, and the status bar takes its colors,
   except beside a sidebar of the other appearance, where a band in the
@@ -72,8 +68,12 @@ Entries reference the issue that motivated them.
   each command for the tab on screen. A shell's loading, failure, and closed
   states draw on the terminal's own background.
 - On iPad, Hosts and Settings open as centered sheets with Done, a Host
-  problem opens its Host there, and a Host's status sheets and New Terminal
-  open as centered forms sized to their content, with Done.
+  problem opens its Host there, and a Host's status sheets, New Terminal,
+  and New Agent open as centered forms sized to their content, with Done:
+  New Agent grows to show its whole form, up to the window's height,
+  instead of scrolling inside a fixed form. The buttons on an empty detail
+  (Show Agents, New Agent, New Terminal) are full size and one width,
+  instead of the small ones sized for a phone.
 - The Hosts list marks a connected Host that cannot sync, and a Host with
   Retry opens like every other row. A Host header shows a sync issue ahead
   of loading, and the workspace drawer names shells as the Terminals list
