@@ -741,9 +741,12 @@ struct ConsoleView: View {
     /// A filter is meaningless with a single Host.
     private var filtersByHost: Bool { hosts.hosts.count > 1 }
 
-    /// At the largest text sizes a sidebar's bar cannot fit its title
-    /// beside three buttons, so the Host filter joins the presentation menu.
-    private var foldsHostFilter: Bool { filtersByHost && dynamicTypeSize >= .xxLarge }
+    /// At the largest text sizes a bar cannot fit its title beside three
+    /// buttons, so the Host filter joins the presentation menu. An iPad
+    /// sidebar keeps both menus at its foot, which has room for them.
+    private var foldsHostFilter: Bool {
+        filtersByHost && !usesSidebarNavigation && dynamicTypeSize >= .xxLarge
+    }
 
     private var hostFilterPicker: some View {
         Picker("Host", selection: $hostFilter) {
@@ -823,18 +826,16 @@ struct ConsoleView: View {
             }
             .sidebarItemBackground(.hidden)
         }
-        if filtersByHost, !foldsHostFilter {
+        // A sidebar keeps its list menus at its foot.
+        if !usesSidebarNavigation, filtersByHost, !foldsHostFilter {
             ToolbarItem(placement: .primaryAction) {
-                hostFilterMenu.modifier(SidebarBarMenu(isInSidebar: usesSidebarNavigation))
+                hostFilterMenu.hoverEffect(.highlight)
             }
-            .sidebarItemBackground(usesSidebarNavigation ? .hidden : .automatic)
         }
-        if !hosts.hosts.isEmpty {
+        if !usesSidebarNavigation, !hosts.hosts.isEmpty {
             ToolbarItem(placement: .primaryAction) {
-                presentationMenu(for: tab)
-                    .modifier(SidebarBarMenu(isInSidebar: usesSidebarNavigation))
+                presentationMenu(for: tab).hoverEffect(.highlight)
             }
-            .sidebarItemBackground(usesSidebarNavigation ? .hidden : .automatic)
         }
         if !hosts.hosts.isEmpty {
             ToolbarItem(placement: .primaryAction) {
@@ -849,24 +850,39 @@ struct ConsoleView: View {
             }
             .sidebarItemBackground(usesSidebarNavigation ? .hidden : .automatic)
         }
+        if usesSidebarNavigation {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Hide Sidebar", systemImage: "sidebar.left") {
+                    withAnimation(reduceMotion ? nil : .snappy) {
+                        splitVisibilities[tab, default: ConsoleSplitVisibilityState()]
+                            .hideSidebar()
+                    }
+                }
+                .buttonStyle(SidebarIconButtonStyle())
+            }
+            .sidebarItemBackground(.hidden)
+        }
     }
 
     /// An iPad sidebar's foot, standing in for the tab bar: Hosts and
-    /// Settings, and the button that hides the sidebar, which the bar has
-    /// no room for beside a window's controls.
+    /// Settings, then the list's menus.
     private func sidebarFooter(for tab: ConsoleTab) -> some View {
         HStack(spacing: 4) {
             Button(ConsoleTab.hosts.title, systemImage: "server.rack") { showHosts() }
             Button(ConsoleTab.settings.title, systemImage: "gearshape") { showSettings() }
             Spacer(minLength: 0)
-            Button("Hide Sidebar", systemImage: "sidebar.left") {
-                withAnimation(reduceMotion ? nil : .snappy) {
-                    splitVisibilities[tab, default: ConsoleSplitVisibilityState()].hideSidebar()
-                }
+            // A menu's pointer target is its own, not its button style's
+            // label, so it takes the round highlight here.
+            if filtersByHost, !foldsHostFilter {
+                hostFilterMenu.roundPointerHighlight()
+            }
+            if !hosts.hosts.isEmpty {
+                presentationMenu(for: tab).roundPointerHighlight()
             }
         }
         .labelStyle(.iconOnly)
         .buttonStyle(SidebarIconButtonStyle())
+        .menuStyle(.button)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
     }
@@ -1742,25 +1758,7 @@ private struct SidebarBarButton: ViewModifier {
 
     func body(content: Content) -> some View {
         if isInSidebar {
-            content.buttonStyle(SidebarIconButtonStyle(width: SidebarIconButtonStyle.barWidth))
-        } else {
-            content.hoverEffect(.highlight)
-        }
-    }
-}
-
-/// `SidebarBarButton` for a menu, whose pointer target is its own rather
-/// than its button style's label.
-private struct SidebarBarMenu: ViewModifier {
-    let isInSidebar: Bool
-
-    func body(content: Content) -> some View {
-        if isInSidebar {
-            content
-                .labelStyle(.iconOnly)
-                .buttonStyle(SidebarIconButtonStyle(width: SidebarIconButtonStyle.barWidth))
-                .menuStyle(.button)
-                .roundPointerHighlight()
+            content.buttonStyle(SidebarIconButtonStyle())
         } else {
             content.hoverEffect(.highlight)
         }
@@ -1831,16 +1829,11 @@ private struct SidebarListShown: ViewModifier {
 /// An iPad sidebar's bare buttons and menus, in its bar and at its foot:
 /// symbols as bar buttons draw them, each with a bar button's hit area.
 private struct SidebarIconButtonStyle: ButtonStyle {
-    /// Narrower in the bar, which holds the list's title beside three of
-    /// them and, in a window, the window's controls.
-    var width: CGFloat = 44
-    static let barWidth: CGFloat = 38
-
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .imageScale(.large)
             .foregroundStyle(.primary)
-            .frame(width: width, height: 44)
+            .frame(width: 44, height: 44)
             .contentShape(.rect)
             .opacity(configuration.isPressed ? 0.35 : 1)
             .roundPointerHighlight()
