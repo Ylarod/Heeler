@@ -102,7 +102,7 @@ struct FileDiffViewTests {
         try #require(await ChangesViewTests.eventually {
             ChangesViewTests.activate("Load More", in: controller.view)
         })
-        #expect(await ChangesViewTests.eventually {
+        try #expect(await ChangesViewTests.eventually {
             ChangesViewTests.labels(in: controller).contains(diff.tooLargeMessage)
         })
         #expect(!ChangesViewTests.labels(in: controller).contains("Load More"))
