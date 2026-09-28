@@ -114,6 +114,55 @@ struct ChangesViewTests {
         #expect(shown, "state missing: \(labels.sorted())")
     }
 
+    /// Try Again's read belongs to the view, as the first read does: leaving
+    /// Changes cancels it instead of letting it run on for a store nobody
+    /// shows.
+    @Test func leavingChangesCancelsATryAgainRead() async throws {
+        let reads = ReadRecorder()
+        let store = ChangesStore(directory: { "/home/dev/src/app" }) { _ in
+            if await reads.begin() == 1 { throw ChangesReadError.notAGitWorkingTree }
+            do {
+                try await Task.sleep(for: .seconds(30))
+            } catch {
+                await reads.markCancelled()
+                throw error
+            }
+            throw ChangesReadError.unavailable
+        }
+        let controller = UIHostingController(
+            rootView: AnyView(NavigationStack { ChangesView(store: store) {} }))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        try #require(
+            await Self.eventually {
+                Self.labels(in: controller).contains("Not a Git Working Tree")
+            })
+
+        try #require(await Self.eventually { Self.activate("Try Again", in: controller.view) })
+        try #require(await Self.eventually { await reads.count == 2 })
+        controller.rootView = AnyView(Text("Agent detail"))
+
+        let cancelled = try await Self.eventually {
+            controller.view.layoutIfNeeded()
+            return await reads.wasCancelled
+        }
+        #expect(cancelled, "the Try Again read outlived Changes")
+    }
+
+    private actor ReadRecorder {
+        private(set) var count = 0
+        private(set) var wasCancelled = false
+
+        func begin() -> Int {
+            count += 1
+            return count
+        }
+
+        func markCancelled() { wasCancelled = true }
+    }
+
     @Test func backReturnsThroughTheBarButton() async throws {
         let (controller, window, backs) = try await Self.host(GitProbeRecordings.clean)
         defer { window.isHidden = true }

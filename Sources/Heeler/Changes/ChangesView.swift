@@ -8,6 +8,9 @@ struct ChangesView: View {
     let onBack: () -> Void
     /// A pull shows the system's own indicator; the bar's is for the rest.
     @State private var isPulling = false
+    /// Try Again's read. Like the first read's `.task`, it ends when Changes
+    /// leave the screen rather than running on for a store nobody shows.
+    @State private var retry: Task<Void, Never>?
 
     var body: some View {
         list
@@ -16,6 +19,7 @@ struct ChangesView: View {
             .id(store.checkout)
             .overlay { stateOverlay }
             .task { await store.appear() }
+            .onDisappear { retry?.cancel() }
             .navigationTitle("Changes")
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
@@ -90,7 +94,7 @@ struct ChangesView: View {
 
     private var tryAgain: some View {
         Button("Try Again") {
-            Task { await store.refresh() }
+            retry = Task { await store.refresh() }
         }
         .disabled(store.isRefreshing)
     }
