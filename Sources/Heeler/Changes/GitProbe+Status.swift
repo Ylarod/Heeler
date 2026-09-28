@@ -9,6 +9,10 @@ extension GitProbe {
         var commit: String?
         /// Conflicted files first, then by raw path bytes.
         var files: [ChangedFile] = []
+        var upstream: CheckoutUpstream? = nil
+        var isUnborn = false
+        /// Retained separately so branch headers can arrive in either order.
+        var divergence: CheckoutUpstream.State? = nil
     }
 
     /// A body cut at its cap loses its last, partial record (and a rename
@@ -124,8 +128,19 @@ extension GitProbe {
         let text = String(decoding: record, as: UTF8.self)
         if let value = headerValue(text, key: "# branch.oid ") {
             report.commit = value == "(initial)" ? nil : value
+            report.isUnborn = value == "(initial)"
+            // Without HEAD, a missing branch.ab says nothing about whether
+            // the upstream exists. Also handle an upstream header seen first.
+            report.upstream?.state = report.divergence ?? (report.isUnborn ? .unknown : .deleted)
         } else if let value = headerValue(text, key: "# branch.head ") {
             report.branch = value == "(detached)" ? .detached : .named(value)
+        } else if let value = headerValue(text, key: "# branch.upstream "), !value.isEmpty {
+            report.upstream = CheckoutUpstream(
+                name: value, state: report.divergence ?? (report.isUnborn ? .unknown : .deleted))
+        } else if let value = headerValue(text, key: "# branch.ab ") {
+            let state = parseDivergence(value)
+            report.divergence = state
+            report.upstream?.state = state
         }
     }
 

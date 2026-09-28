@@ -48,7 +48,7 @@ struct ChangesViewTests {
         var labels = Set<String>()
         let loaded = try await Self.eventually {
             labels = Self.labels(in: controller)
-            return labels.contains("gone.txt, deleted, unstaged")
+            return labels.contains("conflict.txt, conflicted, 4 lines added, 0 lines removed")
         }
         try #require(loaded, "rows never appeared: \(labels.sorted())")
 
@@ -62,10 +62,10 @@ struct ChangesViewTests {
         #expect(!labels.contains("main"))
         // Rows are lazy, so only the first screenful exists: conflicts
         // first, then by path.
-        #expect(labels.contains("conflict.txt, conflicted"))
-        #expect(labels.contains("--, modified, unstaged"))
-        #expect(labels.contains("[ab].txt, modified, unstaged"))
-        #expect(labels.contains("added.txt, added, staged"))
+        #expect(labels.contains("conflict.txt, conflicted, 4 lines added, 0 lines removed"))
+        #expect(labels.contains("--, modified, unstaged, 1 line added, 0 lines removed"))
+        #expect(labels.contains("[ab].txt, modified, unstaged, 1 line added, 0 lines removed"))
+        #expect(labels.contains("added.txt, added, staged, 1 line added, 0 lines removed"))
     }
 
     @Test func aCleanCheckoutSaysSoUnderItsHeader() async throws {
@@ -310,7 +310,7 @@ struct AgentDetailChangesTests {
         var labels = Set<String>()
         let opened = try await ChangesViewTests.eventually {
             labels = ChangesViewTests.labels(in: controller)
-            return labels.contains("gone.txt, deleted, unstaged")
+            return labels.contains("conflict.txt, conflicted, 4 lines added, 0 lines removed")
                 && AgentSurfaceReplacementTests.terminals(in: controller.view).isEmpty
         }
         try #require(opened, "Changes never replaced the terminal: \(labels.sorted())")
@@ -329,7 +329,7 @@ struct AgentDetailChangesTests {
         #expect(shownChanges.last == false)
         #expect(composer.draft == "keep this draft")
         #expect(inputMode.mode == mode)
-        #expect(!ChangesViewTests.labels(in: controller).contains("gone.txt, deleted, unstaged"))
+        #expect(!ChangesViewTests.labels(in: controller).contains("conflict.txt, conflicted, 4 lines added, 0 lines removed"))
 
         await attach.leave().value
     }

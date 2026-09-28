@@ -1976,7 +1976,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
     HeelerSSHDirectStreamLocalE2ETests
-run_suite SharedFixtureE2ETests 110 6 0 \
+run_suite SharedFixtureE2ETests 111 6 0 \
     HeelerSSHPTYE2ETests \
     HeelerSSHJumpHostGateE2ETests \
     HeelerSSHTransportBehaviorE2ETests \
@@ -2029,6 +2029,9 @@ assert_behavior "Changes read leaves the Checkout untouched" \
 assert_behavior "Changes file patch: tracked and untracked files" \
     HeelerSSHTransportBehaviorE2ETests \
     '"file patches read tracked and untracked content through real SSH without changing the Checkout"'
+assert_behavior "Changes line counts: counted in the one exec" \
+    HeelerSSHTransportBehaviorE2ETests \
+    '"a Changes read counts lines from the seeded repository in its one exec"'
 assert_behavior "Changes failure states: outside a repository and a missing directory" \
     HeelerSSHTransportBehaviorE2ETests \
     '"a Changes read distinguishes an outside directory from a missing directory"'
