@@ -38,6 +38,9 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     /// Trailing terminal output (`pane.read`, ANSI stripped), fetched after
     /// snapshots and status changes; nil until the first read lands.
     var lastOutputSnippet: String?
+    /// Only the resolved directory from the latest PaneInfo, so frequent
+    /// terminal-title updates do not change the Agent's value.
+    private var paneDirectory: String?
 
     var id: ID { ID(hostID: hostID, paneID: agent.paneID) }
 
@@ -100,6 +103,27 @@ struct ConsoleAgent: Identifiable, Sendable, Equatable {
     }
 
     var checkoutPath: String? { repositoryCheckout?.checkoutPath }
+
+    /// The Agent's current directory: latest pane foreground cwd, then pane
+    /// cwd, then its last Agent snapshot, then the workspace checkout path.
+    /// Launch-directory consumers continue to use `agent.cwd`.
+    var directory: String? {
+        paneDirectory ?? nonempty(agent.foregroundCwd) ?? nonempty(agent.cwd)
+            ?? nonempty(checkoutPath)
+    }
+
+    mutating func updateDirectory(from pane: PaneInfo) {
+        guard pane.paneID == agent.paneID,
+            pane.terminalID == agent.terminalID,
+            pane.workspaceID == agent.workspaceID,
+            pane.tabID == agent.tabID
+        else { return }
+        paneDirectory = nonempty(pane.foregroundCwd) ?? nonempty(pane.cwd)
+    }
+
+    private func nonempty(_ value: String?) -> String? {
+        value.flatMap { $0.isEmpty ? nil : $0 }
+    }
 
     /// Console badge and destructive-action eligibility come only from the
     /// latest session snapshot's explicit linkage bit.
