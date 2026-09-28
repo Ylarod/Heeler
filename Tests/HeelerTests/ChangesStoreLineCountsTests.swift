@@ -32,6 +32,13 @@ struct ChangesStoreLineCountsTests {
         #expect(summary(changes).contains("2 commits ahead and 1 commit behind origin/main."))
     }
 
+    @Test func aDeletedFilesCountLabelDoesNotDependOnItsRowBeingVisible() async throws {
+        let changes = try await load(GitProbeRecordings.hostile)
+        let deleted = try #require(changes.files.first { $0.displayPath == "gone.txt" })
+        #expect(deleted.rowAccessibilityLabel
+            == "gone.txt, deleted, unstaged, 0 lines added, 1 line removed")
+    }
+
     @Test func theHeaderStatesWhenTheUpstreamWasDeleted() async throws {
         let changes = try await load(GitProbeRecordings.upstreamGone)
         #expect(changes.head.upstream?.state == .deleted)
