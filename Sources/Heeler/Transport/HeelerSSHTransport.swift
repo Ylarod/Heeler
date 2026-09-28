@@ -2003,6 +2003,14 @@ actor HeelerSSHTransport: Transport {
             stdout: result.stdout, stderr: result.stderr, nonce: nonce)
     }
 
+    /// A lazy file read uses the same bounded exec path as the Changes list.
+    func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch {
+        let nonce = GitProbe.makeNonce()
+        let result = try await runGitScript(GitProbe.patchScript(request, nonce: nonce))
+        return try GitProbe.parsePatch(
+            stdout: result.stdout, stderr: result.stderr, nonce: nonce, request: request)
+    }
+
     /// Internal plumbing for the purpose-built Changes reads. The script
     /// owns POSIX quoting, locale, output caps and completeness markers.
     /// The caller's deadline includes admission. Once dispatched, exec keeps

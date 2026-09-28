@@ -396,6 +396,15 @@ final class ConsoleStore {
         }
     }
 
+    /// Reads only the open file through the Host's existing connection.
+    func readFilePatch(
+        _ request: FilePatchRequest, on hostID: Host.ID
+    ) async throws -> FilePatch {
+        try await projection(for: hostID).session.withTransport { transport in
+            try await transport.readFilePatch(request)
+        }
+    }
+
     /// Composer's one-shot delivery source. Prompts borrow the Host's current
     /// Console connection rather than dialing a parallel connection or holding
     /// an RPC open for Agent completion.

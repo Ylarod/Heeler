@@ -249,6 +249,11 @@ protocol Transport: Sendable {
     /// run git on a Host throw `ChangesReadError.unavailable` by default.
     func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead
 
+    /// Reads one file's patch in its resolved Checkout, including both paths
+    /// for a rename and an empty-file comparison for an untracked file.
+    /// Transports without Host git throw `ChangesReadError.unavailable`.
+    func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch
+
     /// Whether the underlying connection to the Host is still alive. The
     /// reconnect machinery (#18) decides "re-subscribe on this connection or
     /// re-establish it" from this flag.
@@ -305,6 +310,11 @@ extension Transport {
     /// A transport without Host commands cannot run git, and says so
     /// rather than reporting an empty Checkout.
     func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead {
+        throw ChangesReadError.unavailable
+    }
+
+    /// A transport without Host commands cannot read a file's patch.
+    func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch {
         throw ChangesReadError.unavailable
     }
 

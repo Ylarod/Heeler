@@ -13,28 +13,46 @@ struct ChangesView: View {
     @State private var retry: Task<Void, Never>?
 
     var body: some View {
-        list
-            // A read resolving another Checkout replaces the whole view,
-            // scroll position included; a refresh of the same one keeps it.
-            .id(store.checkout)
-            .overlay { stateOverlay }
-            .task { await store.appear() }
-            .onDisappear { retry?.cancel() }
-            .navigationTitle("Changes")
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarBackButtonHidden(true)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Back", systemImage: "chevron.backward", action: onBack)
-                }
-                if store.isRefreshing, !isPulling {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        ProgressView()
-                            .accessibilityLabel("Refreshing Changes")
+        ZStack {
+            list
+                // A read resolving another Checkout replaces the whole view,
+                // scroll position included; a refresh of the same one keeps it.
+                .id(store.checkout)
+                .overlay { stateOverlay }
+                .opacity(store.fileDiff.current == nil ? 1 : 0)
+                .allowsHitTesting(store.fileDiff.current == nil)
+                .accessibilityHidden(store.fileDiff.current != nil)
+            if let diff = store.fileDiff.current {
+                FileDiffView(store: diff)
+                    .id(ObjectIdentifier(diff))
+            }
+        }
+        .task { await store.appear() }
+        .onDisappear {
+            retry?.cancel()
+            store.fileDiff.current?.cancel()
+        }
+        .navigationTitle(store.fileDiff.current?.file.displayPath ?? "Changes")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Back", systemImage: "chevron.backward") {
+                    if store.fileDiff.current != nil {
+                        store.closeDiff()
+                    } else {
+                        onBack()
                     }
                 }
             }
-            .toolbar(.visible, for: .navigationBar)
+            if store.fileDiff.current == nil, store.isRefreshing, !isPulling {
+                ToolbarItem(placement: .topBarTrailing) {
+                    ProgressView()
+                        .accessibilityLabel("Refreshing Changes")
+                }
+            }
+        }
+        .toolbar(.visible, for: .navigationBar)
     }
 
     private var list: some View {
@@ -49,7 +67,14 @@ struct ChangesView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(changes.files) { file in
-                            ChangesFileRow(file: file)
+                            if isUntrackedDirectory(file) {
+                                ChangesFileRow(file: file)
+                            } else {
+                                Button { store.openDiff(file) } label: {
+                                    ChangesFileRow(file: file)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                     }
                 }
@@ -98,6 +123,10 @@ struct ChangesView: View {
         }
         .disabled(store.isRefreshing)
     }
+}
+
+private func isUntrackedDirectory(_ file: ChangedFile) -> Bool {
+    file.kind == .untracked && file.path.last == 0x2F
 }
 
 /// The Checkout, its branch or detached commit, and the latest commit. One

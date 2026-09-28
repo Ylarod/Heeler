@@ -1976,7 +1976,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
     HeelerSSHDirectStreamLocalE2ETests
-run_suite SharedFixtureE2ETests 108 6 0 \
+run_suite SharedFixtureE2ETests 109 6 0 \
     HeelerSSHPTYE2ETests \
     HeelerSSHJumpHostGateE2ETests \
     HeelerSSHTransportBehaviorE2ETests \
@@ -2026,6 +2026,9 @@ assert_behavior "git cancellation isolation" HeelerSSHTransportBehaviorE2ETests 
 assert_behavior "Changes read leaves the Checkout untouched" \
     HeelerSSHTransportBehaviorE2ETests \
     '"a Changes read parses real git and leaves the index, fsmonitor and hooks untouched"'
+assert_behavior "Changes file patch: tracked and untracked files" \
+    HeelerSSHTransportBehaviorE2ETests \
+    '"file patches read tracked and untracked content through real SSH without changing the Checkout"'
 assert_behavior "PTY" HeelerSSHPTYE2ETests \
     '"PTY exec preserves raw IO, merged output, geometry, and exit status"'
 assert_behavior "resize" HeelerSSHTransportBehaviorE2ETests \
