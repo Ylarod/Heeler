@@ -187,7 +187,7 @@ struct GitProbePatchParsingTests {
         let noNewline = try #require(Self.parse(GitProbeRecordings.patchMissingNewline).files.first)
         let lines = noNewline.hunks.flatMap(\.lines)
         #expect(lines.map(\.text) == ["old", "new"])
-        #expect(lines.allSatisfy(\.missingNewline))
+        #expect(lines.allSatisfy { $0.missingNewline })
         #expect(lines.last?.accessibilityLabel == "Added, line 1: new. No newline at end of file.")
         let crlf = try #require(Self.parse(GitProbeRecordings.patchCRLF).files.first)
         #expect(crlf.hunks.flatMap(\.lines).map(\.text) == ["first", "old", "new", "last"])
