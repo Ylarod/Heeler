@@ -3,6 +3,16 @@ import Foundation
 /// Numeric counts are read from the same exec as status. Paths stay as bytes:
 /// a tab or newline inside a name is data, and rename paths are NUL-delimited.
 extension GitProbe {
+    static func parseDivergence(_ value: String) -> CheckoutUpstream.State {
+        let fields = value.utf8.split(separator: UInt8(ascii: " "))
+        guard fields.count == 2, fields[0].first == UInt8(ascii: "+"),
+            fields[1].first == UInt8(ascii: "-"),
+            let ahead = decimalCount(Data(fields[0].dropFirst())),
+            let behind = decimalCount(Data(fields[1].dropFirst()))
+        else { return .unknown }
+        return .tracking(ahead: ahead, behind: behind)
+    }
+
     fileprivate struct CountedPath: Hashable {
         let path: Data
         var originalPath: Data? = nil

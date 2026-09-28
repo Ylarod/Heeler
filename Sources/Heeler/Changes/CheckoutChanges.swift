@@ -53,6 +53,8 @@ struct CheckoutHead: Sendable, Equatable {
     let commit: String?
     /// Nil while HEAD is unborn, or when git could not read the commit.
     let latestCommit: LatestCommit?
+    var upstream: CheckoutUpstream? = nil
+    var isUnborn = false
 
     /// "main", or "Detached at 1a2b3c4".
     var branchTitle: String {
@@ -174,6 +176,16 @@ struct ChangedFile: Sendable, Equatable, Identifiable {
         return parts.joined(separator: ", ")
     }
 
+    /// Kept separate from the path/kind label used by other Changes surfaces.
+    var rowAccessibilityLabel: String {
+        guard kind != .untracked, let lineCounts else { return accessibilityLabel }
+        return accessibilityLabel + ", " + lineCounts.accessibilityLabel
+    }
+
+    var countsSummary: String? {
+        kind == .untracked ? "New" : lineCounts?.summary
+    }
+
     static func displayText(_ bytes: Data) -> String {
         var scalars = String.UnicodeScalarView()
         for scalar in String(decoding: bytes, as: UTF8.self).unicodeScalars {
@@ -239,6 +251,9 @@ extension CheckoutChanges {
             sentences.append(
                 "Latest commit: \(latest.subject), \(latest.age(relativeTo: now, locale: locale))")
         }
+        if head.isUnborn { sentences.append("No commits yet") }
+        if let upstream = head.upstream { sentences.append(upstream.accessibilitySummary) }
+        sentences.append(totals.accessibilitySummary)
         return sentences.map { "\($0)." }.joined(separator: " ")
     }
 }
@@ -247,6 +262,23 @@ extension CheckoutChanges {
 enum LineCounts: Sendable, Equatable {
     case lines(added: Int, removed: Int)
     case binary
+
+    /// Also used by the too-large diff state, without depending on a diff model.
+    var summary: String {
+        switch self {
+        case .lines(let added, let removed): "+\(added.formatted()) −\(removed.formatted()) lines"
+        case .binary: "Binary"
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .lines(let added, let removed):
+            "\(added.formatted()) \(added == 1 ? "line" : "lines") added, "
+                + "\(removed.formatted()) \(removed == 1 ? "line" : "lines") removed"
+        case .binary: "binary"
+        }
+    }
 }
 
 /// Computed before any display limit. Untracked directories count as one item.
@@ -257,5 +289,57 @@ struct ChangesTotals: Sendable, Equatable {
     var removed = 0
     var linesAreComplete = true
     var linesAreAvailable = true
+
+    var filesSummary: String {
+        "\(trackedFiles.formatted()) \(trackedFiles == 1 ? "file" : "files") changed"
+    }
+
+    var untrackedSummary: String {
+        "\(untrackedItems.formatted()) untracked \(untrackedItems == 1 ? "item" : "items")"
+    }
+
+    var linesSummary: String {
+        guard linesAreAvailable else { return "Line counts unavailable" }
+        return (linesAreComplete ? "" : "At least ") + LineCounts.lines(added: added, removed: removed).summary
+    }
+
+    var summary: String { "\(filesSummary) · \(linesSummary) · \(untrackedSummary)" }
+
+    var accessibilitySummary: String {
+        let lines = linesAreAvailable
+            ? (linesAreComplete ? "" : "At least ")
+                + LineCounts.lines(added: added, removed: removed).accessibilityLabel + " in tracked files"
+            : "Line counts unavailable"
+        return "\(filesSummary). \(lines). \(untrackedSummary)"
+    }
 }
 
+/// A named upstream with divergence, or one git can no longer resolve.
+struct CheckoutUpstream: Sendable, Equatable {
+    enum State: Sendable, Equatable {
+        case tracking(ahead: Int, behind: Int)
+        case deleted
+        case unknown
+    }
+
+    let name: String
+    var state: State = .deleted
+
+    var summary: String {
+        switch state {
+        case .tracking(let ahead, let behind):
+            "\(name): \(ahead.formatted()) ahead, \(behind.formatted()) behind"
+        case .deleted: "Upstream \(name) was deleted"
+        case .unknown: "Upstream \(name), comparison unavailable"
+        }
+    }
+
+    var accessibilitySummary: String {
+        if case .tracking(let ahead, let behind) = state {
+            "\(ahead.formatted()) \(ahead == 1 ? "commit" : "commits") ahead and "
+                + "\(behind.formatted()) \(behind == 1 ? "commit" : "commits") behind \(name)"
+        } else {
+            summary
+        }
+    }
+}

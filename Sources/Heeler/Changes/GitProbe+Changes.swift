@@ -95,7 +95,9 @@ extension GitProbe {
             head: CheckoutHead(
                 branch: report.branch,
                 commit: report.commit,
-                latestCommit: head.status == 0 ? parseLatestCommit(head.body) : nil),
+                latestCommit: head.status == 0 ? parseLatestCommit(head.body) : nil,
+                upstream: report.upstream,
+                isUnborn: report.isUnborn),
             files: countedFiles(report.files, numstat: numstat),
             totals: changesTotals(report.files, numstat: numstat))
         return CheckoutChangesRead(changes: changes, directoryPrefix: prefix)

@@ -103,6 +103,8 @@ struct GitProbeLineCountsTests {
         #expect(changes.totals.added == 2)
         #expect(!changes.totals.linesAreComplete)
         #expect(changes.totals.linesAreAvailable)
+        #expect(changes.totals.linesSummary == "At least +2 −0 lines")
+        #expect(changes.totals.accessibilitySummary.contains("At least 2 lines added"))
     }
 
     @Test func aFailedCountCommandKeepsTheFileListWithoutInventingCounts() throws {
@@ -111,6 +113,8 @@ struct GitProbeLineCountsTests {
         #expect(changes.files.allSatisfy { $0.lineCounts == nil })
         #expect(!changes.totals.linesAreComplete)
         #expect(!changes.totals.linesAreAvailable)
+        #expect(changes.totals.linesSummary == "Line counts unavailable")
+        #expect(!changes.totals.accessibilitySummary.contains("0 lines added"))
     }
 
     @Test func malformedCountsAndAnIncompleteLastRecordStayUnknown() throws {
@@ -128,6 +132,22 @@ struct GitProbeLineCountsTests {
         }
         #expect(changes.totals.added == 1)
         #expect(!changes.totals.linesAreComplete)
+    }
+
+    @Test func upstreamHeadersTolerateOrderingAndDoNotMistakeMalformedCountsForDeletion() throws {
+        let recording = GitProbeRecordings.tracking
+        let stdout = String(decoding: recording.stdout, as: UTF8.self)
+        let headers = "# branch.upstream origin/main\0# branch.ab +2 -1\0"
+        let reordered = stdout.replacingOccurrences(
+            of: headers, with: "# branch.ab +2 -1\0# branch.upstream origin/main\0")
+        #expect(try read((Data(reordered.utf8), recording.stderr)).head.upstream?.state
+            == .tracking(ahead: 2, behind: 1))
+        let invalid = stdout.replacingOccurrences(of: "+2 -1", with: "+two -1")
+        let changes = try read((Data(invalid.utf8), recording.stderr))
+        #expect(changes.head.upstream?.state == .unknown)
+        #expect(changes.head.upstream?.summary == "Upstream origin/main, comparison unavailable")
+        #expect(try read(GitProbeRecordings.hostile).head.upstream == nil)
+        #expect(try read(GitProbeRecordings.clean).head.upstream == nil)
     }
 
     /// Replaces only the numeric section in a real read; altered bytes are

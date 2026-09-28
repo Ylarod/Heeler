@@ -141,6 +141,8 @@ private struct ChangesHeader: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                ChangesHeadDetails(head: changes.head)
+                ChangesTotalsLine(totals: changes.totals)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(
@@ -165,12 +167,12 @@ private struct ChangesFileRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(file.displayPath)
                     .font(.callout.monospaced())
-                Text(file.detail)
+                ChangedFileDetails(file: file)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(file.accessibilityLabel)
+        .accessibilityLabel(file.rowAccessibilityLabel)
     }
 }

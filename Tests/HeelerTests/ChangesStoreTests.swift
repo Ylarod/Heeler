@@ -233,15 +233,15 @@ struct ChangesStoreTests {
         let main = try Self.read(GitProbeRecordings.hostile).changes
         #expect(
             main.accessibilitySummary(relativeTo: now, locale: locale)
-                == #"Checkout ~/src/app. Branch main. Latest commit: Main edit to "conflict.txt", 3 hours ago."#)
+                == #"Checkout ~/src/app. Branch main. Latest commit: Main edit to "conflict.txt", 3 hours ago. 20 files changed. 21 lines added, 1 line removed in tracked files. 2 untracked items."#)
         let worktree = try Self.read(GitProbeRecordings.worktree).changes
         #expect(
             worktree.accessibilitySummary(relativeTo: now, locale: locale)
-                == "Checkout ~/src/app-wt, linked Worktree. Detached at 4f87954. Latest commit: Seed the fixture repository, 1 day ago.")
+                == "Checkout ~/src/app-wt, linked Worktree. Detached at 4f87954. Latest commit: Seed the fixture repository, 1 day ago. 1 file changed. 1 line added, 0 lines removed in tracked files. 0 untracked items.")
         let unborn = try Self.read(GitProbeRecordings.unborn).changes
         #expect(
             unborn.accessibilitySummary(relativeTo: now, locale: locale)
-                == "Checkout ~/src/fresh. Branch main.")
+                == "Checkout ~/src/fresh. Branch main. No commits yet. 1 file changed. 1 line added, 0 lines removed in tracked files. 1 untracked item.")
     }
 }
 
