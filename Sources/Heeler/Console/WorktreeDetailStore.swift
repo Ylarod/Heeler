@@ -28,10 +28,13 @@ final class WorktreeDetailStore {
     private(set) var confirmation: WorktreeRemovalConfirmation?
     private(set) var removalPhase: RemovalPhase = .idle
     private(set) var showsFeedback = false
+    /// The refusal is the dirty-Worktree one, so its alert can offer Changes.
+    private(set) var refusalOffersChanges = false
 
     private let list: (String) async throws -> WorktreeListResponse
     private let remove: (WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt
     private let hasWorkingAgent: () -> Bool
+    private let showChangesHandler: ((String) -> Void)?
     private var didLoadBranch = false
     /// A token captured synchronously by the confirmation action and consumed
     /// exactly once when its asynchronous removal task starts.
@@ -43,7 +46,8 @@ final class WorktreeDetailStore {
         checkout: RepositoryCheckout,
         list: @escaping (String) async throws -> WorktreeListResponse,
         remove: @escaping (WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt,
-        hasWorkingAgent: @escaping () -> Bool
+        hasWorkingAgent: @escaping () -> Bool,
+        showChanges: ((String) -> Void)? = nil
     ) {
         self.request = request
         self.workspaceLabel = workspaceLabel
@@ -51,10 +55,36 @@ final class WorktreeDetailStore {
         self.list = list
         self.remove = remove
         self.hasWorkingAgent = hasWorkingAgent
+        showChangesHandler = showChanges
     }
 
     var canRemove: Bool {
         checkout.isLinkedWorktree && removalPhase == .idle
+    }
+
+    /// The Worktree's own directory, not the Agent's current directory.
+    var changesDirectory: String { checkout.checkoutPath }
+
+    /// Show Changes is available except while a removal is in flight or done,
+    /// and only when something can open Changes after the sheet dismisses.
+    var canShowChanges: Bool {
+        guard showChangesHandler != nil else { return false }
+        switch removalPhase {
+        case .removing, .removed: false
+        case .idle, .failed, .stale, .unconfirmed: true
+        }
+    }
+
+    /// Hands `changesDirectory` to the sheet owner, which dismisses first.
+    /// Clears a refusal so the alert does not stay up over that dismissal.
+    func showChanges() {
+        guard canShowChanges else { return }
+        showsFeedback = false
+        refusalOffersChanges = false
+        if case .failed = removalPhase {
+            removalPhase = .idle
+        }
+        showChangesHandler?(changesDirectory)
     }
 
     func loadBranchIfNeeded() async {
@@ -141,6 +171,8 @@ final class WorktreeDetailStore {
         } catch TransportError.cancelled {
             removalPhase = .idle
         } catch {
+            refusalOffersChanges = showChangesHandler != nil
+                && WorktreeRemovalRefusal.isDirty(error)
             removalPhase = .failed(WorktreeRemovalRefusal.message(for: error))
             showsFeedback = true
         }
@@ -148,6 +180,7 @@ final class WorktreeDetailStore {
 
     func dismissFeedback() {
         showsFeedback = false
+        refusalOffersChanges = false
         if case .failed = removalPhase {
             removalPhase = .idle
         }

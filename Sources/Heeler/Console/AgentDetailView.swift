@@ -277,6 +277,9 @@ struct AgentDetailView: View {
                     // Any Agent with a directory, whatever its worktree
                     // metadata: git resolves the Checkout on the Host.
                     showChanges: agent.directory == nil ? nil : { changes.open() },
+                    showWorktreeChanges: { directory in
+                        changes.open(directory: directory)
+                    },
                     composer: composer,
                     attachStore: attach,
                     retainedSurface: retainedAgent?.surfaceRetention,
