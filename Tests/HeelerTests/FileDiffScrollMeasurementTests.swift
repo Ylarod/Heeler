@@ -13,6 +13,14 @@ import UIKit
 struct FileDiffScrollMeasurementTests {
     @Test func measuresOpeningAndScrollingFiveThousandWrappedLines() async throws {
         let lineCount = 5_000
+        var openMilliseconds = -1.0
+        var sampler: DiffScrollSampler?
+        // Report even if window setup, a bounded wait or cancellation fails.
+        defer {
+            sampler?.stop()
+            print(DiffScrollSampler.report(
+                lineCount: lineCount, openMilliseconds: openMilliseconds, sampler: sampler))
+        }
         let patch = Self.patch(lineCount: lineCount)
         let store = FileDiffStore(
             file: FileDiffViewTests.file,
@@ -27,26 +35,38 @@ struct FileDiffScrollMeasurementTests {
 
         // Include loading the store and laying out the first real row in the
         // open time; a nonzero contentSize alone could still be an estimate.
-        while !Self.lineIsVisible(0, in: controller.view) {
+        let opened = try await Self.waitUntil(timeout: .seconds(10)) {
             controller.view.layoutIfNeeded()
-            try await Task.sleep(for: .milliseconds(10))
+            return Self.lineIsVisible(0, in: controller.view)
         }
-        let openMilliseconds = (CACurrentMediaTime() - started) * 1_000
-        let scroll = try #require(Self.scrollView(in: controller.view))
-        let sampler = DiffScrollSampler(
+        try #require(opened, "the first diff line did not lay out in the viewport within 10 seconds")
+        openMilliseconds = (CACurrentMediaTime() - started) * 1_000
+        let scroll = try #require(
+            Self.scrollView(in: controller.view), "the laid-out diff has no underlying scroll view")
+        let activeSampler = DiffScrollSampler(
             scroll: scroll, root: controller.view, lastLine: lineCount - 1,
             maximumFramesPerSecond: window.screen.maximumFramesPerSecond)
-        sampler.start()
-        defer { sampler.stop() }
-        while !sampler.finished {
+        sampler = activeSampler
+        activeSampler.start()
+        let completed = try await Self.waitUntil(timeout: .seconds(15)) {
+            activeSampler.finished
+        }
+        activeSampler.stop()
+
+        // Timing is data for the checker. Only real end-to-end navigation is
+        // asserted; the deadlines bound missing layout or display-link work.
+        #expect(completed, "scrolling did not complete within 15 seconds; the display link or endpoint layout stalled")
+        #expect(activeSampler.reachedBottom, "the last diff line never entered the scroll viewport")
+        #expect(activeSampler.returnedToTop, "the first diff line never returned to the scroll viewport")
+    }
+
+    private static func waitUntil(timeout: Duration, _ condition: () -> Bool) async throws -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if condition() { return true }
             try await Task.sleep(for: .milliseconds(10))
         }
-
-        print(sampler.report(lineCount: lineCount, openMilliseconds: openMilliseconds))
-        // Timing is data for the checker. Only real end-to-end navigation is
-        // an assertion, so a slow simulator does not become a flaky test.
-        #expect(sampler.reachedBottom, "the last diff line never entered the viewport")
-        #expect(sampler.returnedToTop, "the first diff line never returned to the viewport")
+        return condition()
     }
 
     private static func patch(lineCount: Int) -> FilePatch {
@@ -92,12 +112,18 @@ struct FileDiffScrollMeasurementTests {
     fileprivate static func lineIsVisible(_ id: Int, in root: UIView) -> Bool {
         let identifier = "file-diff-line-\(id)"
         var visited = Set<ObjectIdentifier>()
-        let viewport = root.convert(root.bounds, to: nil)
+        let viewportView = scrollView(in: root) ?? root
+        let viewport = UIAccessibilityConvertFrameToScreenCoordinates(viewportView.bounds, viewportView)
+        let identifierGetter = #selector(getter: UIAccessibilityIdentification.accessibilityIdentifier)
         func visit(_ object: NSObject) -> Bool {
             guard visited.insert(ObjectIdentifier(object)).inserted,
                 !object.accessibilityElementsHidden
             else { return false }
-            if (object as? any UIAccessibilityIdentification)?.accessibilityIdentifier == identifier {
+            // SwiftUI's accessibility nodes expose the getter without
+            // declaring conformance to UIAccessibilityIdentification.
+            if object.responds(to: identifierGetter),
+                object.value(forKey: "accessibilityIdentifier") as? String == identifier
+            {
                 let frame = object.accessibilityFrame
                 return !frame.isEmpty && viewport.intersects(frame)
             }
@@ -135,6 +161,7 @@ private final class DiffScrollSampler: NSObject {
     private var returnStarted: CFTimeInterval?
     private var returnOffset: CGFloat = 0
     private var intervals: [CFTimeInterval] = []
+    private var returnSampleIndex: Int?
     private var budget: CFTimeInterval
     private var duration: CFTimeInterval = 0
     private(set) var finished = false
@@ -179,8 +206,11 @@ private final class DiffScrollSampler: NSObject {
                 CGPoint(x: 0, y: returnOffset + (top - returnOffset) * progress), animated: false)
             root.layoutIfNeeded()
             if progress == 1 {
+                // Accessibility traversal is harness work. Do not sample
+                // the following interval, which includes that traversal.
+                previousTimestamp = nil
                 returnedToTop = FileDiffScrollMeasurementTests.lineIsVisible(0, in: root)
-                if returnedToTop || link.timestamp - returnStarted > 3 {
+                if returnedToTop {
                     finished = true
                     stop()
                 }
@@ -194,16 +224,20 @@ private final class DiffScrollSampler: NSObject {
             scroll.setContentOffset(CGPoint(x: 0, y: top + (bottom - top) * progress), animated: false)
             root.layoutIfNeeded()
             if progress == 1 {
+                previousTimestamp = nil
                 reachedBottom = FileDiffScrollMeasurementTests.lineIsVisible(lastLine, in: root)
-                if reachedBottom || elapsed > 3 {
+                if reachedBottom {
                     returnStarted = link.timestamp
                     returnOffset = scroll.contentOffset.y
+                    returnSampleIndex = intervals.count
                 }
             }
         }
     }
 
-    func report(lineCount: Int, openMilliseconds: Double) -> String {
+    static func report(lineCount: Int, openMilliseconds: Double, sampler: DiffScrollSampler?) -> String {
+        let intervals = sampler?.intervals ?? []
+        let budget = sampler?.budget ?? 0
         let sorted = intervals.sorted()
         func percentile(_ fraction: Double) -> Double {
             guard !sorted.isEmpty else { return 0 }
@@ -212,7 +246,9 @@ private final class DiffScrollSampler: NSObject {
         var longFrames = 0
         var run = 0
         var longestRun = 0
-        for interval in intervals {
+        for (index, interval) in intervals.enumerated() {
+            // The endpoint check separates the two sampled scrolling legs.
+            if index == sampler?.returnSampleIndex { run = 0 }
             if interval > 2 * budget {
                 longFrames += 1
                 run += 1
@@ -222,9 +258,10 @@ private final class DiffScrollSampler: NSObject {
             }
         }
         return String(
-            format: "DIFF-SCROLL-MEASUREMENT lines=%d open_ms=%.2f frames=%d scroll_s=%.3f p50_ms=%.2f p95_ms=%.2f max_ms=%.2f budget_ms=%.2f frames_over_2x=%d longest_run_over_2x=%d",
-            lineCount, openMilliseconds, intervals.count, duration,
+            format: "DIFF-SCROLL-MEASUREMENT lines=%d open_ms=%.2f frames=%d scroll_s=%.3f p50_ms=%.2f p95_ms=%.2f max_ms=%.2f budget_ms=%.2f frames_over_2x=%d longest_run_over_2x=%d reached_bottom=%d returned_to_top=%d",
+            lineCount, openMilliseconds, intervals.count, sampler?.duration ?? 0,
             percentile(0.5), percentile(0.95), (sorted.last ?? 0) * 1_000,
-            budget * 1_000, longFrames, longestRun)
+            budget * 1_000, longFrames, longestRun,
+            sampler?.reachedBottom == true ? 1 : 0, sampler?.returnedToTop == true ? 1 : 0)
     }
 }
