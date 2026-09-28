@@ -68,6 +68,84 @@ struct GitProbeLineCountsTests {
         }
     }
 
+    @Test func duplicateUnmergedRecordsDoNotDoubleCountOrEraseTheChange() throws {
+        // Hand-built variants cover versions that emit a zero conflict record
+        // beside its counts; the real against-HEAD recording has just one.
+        for body in [
+            "0\t0\tconflict.txt\0" + "4\t0\tconflict.txt\0",
+            "4\t0\tconflict.txt\0" + "0\t0\tconflict.txt\0",
+            "4\t0\tconflict.txt\0" + "4\t0\tconflict.txt\0",
+        ] {
+            let changes = try read(replacingNumstat(Data(body.utf8)))
+            #expect(changes.files.first?.lineCounts == .lines(added: 4, removed: 0))
+            #expect(changes.totals.added == 4)
+        }
+    }
+
+    @Test(arguments: [Int32(0), Int32(141)])
+    func aCappedNumstatDropsThePartialRenameAndMarksTotalsAsALowerBound(status: Int32) throws {
+        // Hand-built overrun, cut inside the rename's destination path.
+        var body = Data("2\t0\tsp ace.txt\0".utf8)
+        let partialRename = Data("0\t0\t\0old/name.txt\0pkg/".utf8)
+        let padding = GitProbe.Cap.numstat - body.count - partialRename.count - 5
+        body.append(Data("0\t0\t".utf8))
+        body.append(Data(repeating: UInt8(ascii: "x"), count: padding))
+        body.append(0)
+        body.append(partialRename)
+        body.append(Data("renamed.txt\0".utf8))
+        let changes = try read(replacingNumstat(body, status: status))
+        #expect(changes.files.first { $0.displayPath == "sp ace.txt" }?.lineCounts
+            == .lines(added: 2, removed: 0))
+        #expect(changes.files.first { $0.displayPath == "pkg/renamed.txt" }?.lineCounts == nil)
+        #expect(changes.files.first { $0.displayPath == "gone.txt" }?.lineCounts == nil)
+        #expect(changes.totals.trackedFiles == 20)
+        #expect(changes.totals.untrackedItems == 2)
+        #expect(changes.totals.added == 2)
+        #expect(!changes.totals.linesAreComplete)
+        #expect(changes.totals.linesAreAvailable)
+    }
+
+    @Test func aFailedCountCommandKeepsTheFileListWithoutInventingCounts() throws {
+        let changes = try read(replacingNumstat(Data("4\t0\tconflict.txt\0".utf8), status: 128))
+        #expect(changes.files.count == 22)
+        #expect(changes.files.allSatisfy { $0.lineCounts == nil })
+        #expect(!changes.totals.linesAreComplete)
+        #expect(!changes.totals.linesAreAvailable)
+    }
+
+    @Test func malformedCountsAndAnIncompleteLastRecordStayUnknown() throws {
+        // Hand-built corrupt numeric fields, including signs and overflow.
+        let body = Data((
+            "-\t1\tbin.dat\0-1\t0\tgone.txt\0+1\t0\tadded.txt\0"
+            + "999999999999999999999999\t0\t--\0"
+            + "1\t0\ttab\tname.txt\0"
+            + "2\t0\tsp ace.txt").utf8)
+        let changes = try read(replacingNumstat(body))
+        #expect(changes.files.first { $0.path == Data("tab\tname.txt".utf8) }?.lineCounts
+            == .lines(added: 1, removed: 0))
+        for path in ["bin.dat", "gone.txt", "added.txt", "--", "sp ace.txt"] {
+            #expect(changes.files.first { $0.displayPath == path }?.lineCounts == nil)
+        }
+        #expect(changes.totals.added == 1)
+        #expect(!changes.totals.linesAreComplete)
+    }
+
+    /// Replaces only the numeric section in a real read; altered bytes are
+    /// synthetic parser edge cases, not further live-git recordings.
+    private func replacingNumstat(
+        _ body: Data, status: Int32 = 0
+    ) -> (stdout: Data, stderr: Data) {
+        let recording = GitProbeRecordings.hostile
+        let begin = Data("\n__HEELER_GIT_F00D__ numstat begin\n".utf8)
+        let end = Data("\n__HEELER_GIT_F00D__ numstat rc=0\n".utf8)
+        let start = recording.stdout.range(of: begin)!.upperBound
+        let finish = recording.stdout.range(of: end)!
+        var stdout = recording.stdout
+        stdout.replaceSubrange(start..<finish.upperBound,
+            with: body + Data("\n__HEELER_GIT_F00D__ numstat rc=\(status)\n".utf8))
+        return (stdout, recording.stderr)
+    }
+
     private func read(_ recording: (stdout: Data, stderr: Data)) throws -> CheckoutChanges {
         try GitProbe.parseChanges(
             stdout: recording.stdout, stderr: recording.stderr,

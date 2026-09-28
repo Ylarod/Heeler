@@ -3,13 +3,19 @@ import Foundation
 /// Numeric counts are read from the same exec as status. Paths stay as bytes:
 /// a tab or newline inside a name is data, and rename paths are NUL-delimited.
 extension GitProbe {
-    private struct CountedPath: Hashable {
+    fileprivate struct CountedPath: Hashable {
         let path: Data
         var originalPath: Data? = nil
     }
 
-    static func countedFiles(_ files: [ChangedFile], numstat: Section) -> [ChangedFile] {
-        let records = numstatRecords(numstat)
+    struct NumstatReport {
+        fileprivate var records: [CountedPath: LineCounts] = [:]
+        var linesAreComplete = true
+        var linesAreAvailable = true
+    }
+
+    static func countedFiles(_ files: [ChangedFile], numstat: NumstatReport) -> [ChangedFile] {
+        let records = numstat.records
         return files.map { file in
             var file = file
             guard file.kind != .untracked else { return file }
@@ -40,13 +46,13 @@ extension GitProbe {
         return .binary
     }
 
-    static func changesTotals(_ files: [ChangedFile], numstat: Section) -> ChangesTotals {
+    static func changesTotals(_ files: [ChangedFile], numstat: NumstatReport) -> ChangesTotals {
         var totals = ChangesTotals()
         totals.untrackedItems = files.filter { $0.kind == .untracked }.count
         totals.trackedFiles = files.count - totals.untrackedItems
-        totals.linesAreAvailable = numstat.status == 0 || numstat.isTruncated
-        totals.linesAreComplete = totals.linesAreAvailable && !numstat.isTruncated
-        for counts in numstatRecords(numstat).values {
+        totals.linesAreAvailable = numstat.linesAreAvailable
+        totals.linesAreComplete = numstat.linesAreComplete
+        for counts in numstat.records.values {
             if case .lines(let added, let removed) = counts {
                 let sumAdded = totals.added.addingReportingOverflow(added)
                 let sumRemoved = totals.removed.addingReportingOverflow(removed)
@@ -58,37 +64,59 @@ extension GitProbe {
         return totals
     }
 
-    private static func numstatRecords(_ section: Section) -> [CountedPath: LineCounts] {
-        guard section.status == 0 || section.isTruncated else { return [:] }
+    static func parseNumstat(_ section: Section) -> NumstatReport {
+        var report = NumstatReport()
+        report.linesAreAvailable = section.status == 0 || section.isTruncated
+        report.linesAreComplete = report.linesAreAvailable && !section.isTruncated
+        guard report.linesAreAvailable else { return report }
+        if !section.body.isEmpty, section.body.last != 0 { report.linesAreComplete = false }
         var records = section.body.split(separator: 0, omittingEmptySubsequences: false)
         // The last element is empty after a terminating NUL, or an incomplete
         // record at the cap. A rename is kept only with both complete paths.
         if !records.isEmpty { records.removeLast() }
-        var counts: [CountedPath: LineCounts] = [:]
         var index = records.startIndex
         while index < records.endIndex {
             let fields = records[index].split(
                 separator: 0x09, maxSplits: 2, omittingEmptySubsequences: false)
             index += 1
-            guard fields.count == 3 else { continue }
+            guard fields.count == 3 else {
+                report.linesAreComplete = false
+                continue
+            }
             var path = CountedPath(path: Data(fields[2]))
             if fields[2].isEmpty {
-                guard index + 1 < records.endIndex else { break }
+                guard index + 1 < records.endIndex else {
+                    report.linesAreComplete = false
+                    break
+                }
                 path = CountedPath(path: Data(records[index + 1]), originalPath: Data(records[index]))
                 index += 2
             }
-            guard !path.path.isEmpty, path.originalPath?.isEmpty != true else { continue }
+            guard !path.path.isEmpty, path.originalPath?.isEmpty != true else {
+                report.linesAreComplete = false
+                continue
+            }
             let value: LineCounts
             if fields[0].elementsEqual([0x2D]), fields[1].elementsEqual([0x2D]) {
                 value = .binary
             } else if let added = decimalCount(fields[0]), let removed = decimalCount(fields[1]) {
                 value = .lines(added: added, removed: removed)
             } else {
+                report.linesAreComplete = false
                 continue
             }
-            counts[path] = value
+            // Some unmerged forms emit a zero placeholder beside the real
+            // record. Keep the nonzero counts once, in either order.
+            if let previous = report.records[path] {
+                if value == .lines(added: 0, removed: 0) || value == previous { continue }
+                if previous != .lines(added: 0, removed: 0) {
+                    report.linesAreComplete = false
+                    continue
+                }
+            }
+            report.records[path] = value
         }
-        return counts
+        return report
     }
 
     private static func decimalCount(_ bytes: Data.SubSequence) -> Int? {

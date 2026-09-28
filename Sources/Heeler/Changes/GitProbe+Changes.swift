@@ -81,7 +81,7 @@ extension GitProbe {
         // A cut status can end on SIGPIPE; the kept records are still valid.
         guard status.status == 0 || status.isTruncated else { throw failure(status) }
         // Counts require a framed status too, even when git cannot compute them.
-        let numstat = try frames.requiredSection(SectionName.numstat, cap: Cap.numstat)
+        let numstat = parseNumstat(try frames.requiredSection(SectionName.numstat, cap: Cap.numstat))
         let head = try frames.requiredSection(SectionName.head, cap: Cap.head)
 
         let report = parseStatus(status.body)
