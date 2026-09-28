@@ -685,6 +685,9 @@ struct Agent: Sendable, Equatable {
     /// The Pane address used for per-pane subscriptions and attach.
     let paneID: String
     let cwd: String
+    /// The Agent process's directory in the last snapshot, separate from
+    /// the launch directory used by Open Terminal, Skills and Agent rows.
+    let foregroundCwd: String?
     let revision: Int
 
     /// The card's primary label (#41): the server-reported name when present,
@@ -698,7 +701,8 @@ struct Agent: Sendable, Equatable {
         terminalTitle: String? = nil, terminalTitleStripped: String? = nil,
         paneTitle: String? = nil, agentSession: AgentSessionInfo? = nil,
         tokens: [String: String] = [:],
-        stateLabels: [String: String] = [:], stateChangeSeq: Int? = nil
+        stateLabels: [String: String] = [:], stateChangeSeq: Int? = nil,
+        foregroundCwd: String? = nil
     ) {
         self.terminalID = terminalID
         self.kind = kind
@@ -717,6 +721,7 @@ struct Agent: Sendable, Equatable {
         self.tabID = tabID
         self.paneID = paneID
         self.cwd = cwd
+        self.foregroundCwd = foregroundCwd
         self.revision = revision
     }
 
@@ -742,7 +747,8 @@ struct Agent: Sendable, Equatable {
             agentSession: info.agentSession,
             tokens: info.tokens ?? [:],
             stateLabels: info.stateLabels ?? [:],
-            stateChangeSeq: info.stateChangeSeq
+            stateChangeSeq: info.stateChangeSeq,
+            foregroundCwd: info.foregroundCwd
         )
     }
 
