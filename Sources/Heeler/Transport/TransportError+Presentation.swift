@@ -120,6 +120,11 @@ extension TransportError {
                 summary: "Connection timed out",
                 detail: nil,
                 recoverySuggestion: nil)
+        case .gitTimedOut:
+            TransportErrorPresentation(
+                summary: "Reading Changes timed out",
+                detail: nil,
+                recoverySuggestion: nil)
         case .cancelled:
             TransportErrorPresentation(
                 summary: "Connection cancelled",

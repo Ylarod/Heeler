@@ -266,6 +266,14 @@ final class HeelerSSHAttachOutputGate: Sendable {
     }
 }
 
+/// Raw script output owned by the app transport layer. GitProbe interprets
+/// framing and command statuses; a nonzero channel status is still a result.
+struct GitExecResult: Sendable, Equatable {
+    let stdout: Data
+    let stderr: Data
+    let exitStatus: Int32
+}
+
 /// The libssh2-backed app Transport. Ordinary herdr RPCs use fresh
 /// direct-streamlocal channels, Events owns one reserved forwarding channel,
 /// and Attach owns one reserved PTY exec channel per Host (ADR 0011).
@@ -286,6 +294,9 @@ actor HeelerSSHTransport: Transport {
     /// protocol 20.
     static let generatedProtocolVersion = 22
     static let maximumResponseBytes = 1_048_576
+    /// Paths and shell syntax belong on stdin, never in the login shell's
+    /// command line. In particular, do not prepend an environment assignment.
+    static let gitScriptCommand = "/bin/sh -s"
     static let maxConcurrentForwardingChannels =
         SSHChannelAdmission.Limits.production.ordinaryForwarding
     static let maxConcurrentExecChannels =
@@ -295,6 +306,7 @@ actor HeelerSSHTransport: Transport {
     private let connection: SSHConnection
     private let socketLocation: HerdrSocketLocation
     private let requestTimeout: Duration
+    private let gitExecTimeout: Duration
     private let wakeCommand: String
     private let sessionListCommand: String
     private let agentDiscoveryCommand: String
@@ -427,11 +439,13 @@ actor HeelerSSHTransport: Transport {
     init(
         connection: SSHConnection,
         socketPath: String,
-        requestTimeout: Duration = SSHTransportSettings.defaultRequestTimeout
+        requestTimeout: Duration = SSHTransportSettings.defaultRequestTimeout,
+        gitExecTimeout: Duration = SSHTransportSettings.defaultGitExecTimeout
     ) {
         self.connection = connection
         socketLocation = .absolutePath(socketPath)
         self.requestTimeout = requestTimeout
+        self.gitExecTimeout = gitExecTimeout
         wakeCommand = SSHTransportSettings.defaultWakeCommand
         sessionListCommand = SSHTransportSettings.defaultSessionListCommand
         agentDiscoveryCommand = SSHTransportSettings.defaultAgentDiscoveryCommand
@@ -449,6 +463,7 @@ actor HeelerSSHTransport: Transport {
         self.connection = connection
         socketLocation = settings.socket
         requestTimeout = settings.requestTimeout
+        gitExecTimeout = settings.gitExecTimeout
         wakeCommand = settings.wakeCommand
         sessionListCommand = settings.sessionListCommand
         agentDiscoveryCommand = settings.agentDiscoveryCommand
@@ -1239,6 +1254,12 @@ actor HeelerSSHTransport: Transport {
     }
 
 #if DEBUG
+    /// A local-only observation: fixture tests can await resource reclamation
+    /// without SSH traffic accidentally completing an abandoned close.
+    func ordinarySessionChannelCountForTesting() async -> Int {
+        await channelAdmission.snapshot().ordinarySession
+    }
+
     func delayNextNotificationSFTPWriteForTesting(_ delay: Duration) async {
         await connection.delayNextSFTPWriteForTesting(delay)
     }
@@ -1970,6 +1991,91 @@ actor HeelerSSHTransport: Transport {
             SSHDiagnostics.note("Host command budget \(requestTimeout) expired: \(command)")
             throw TransportError.timedOut
         }
+    }
+
+    /// Internal plumbing for the purpose-built Changes reads. The script
+    /// owns POSIX quoting, locale, output caps and completeness markers.
+    /// The caller's deadline includes admission. Once dispatched, exec keeps
+    /// its lease until the remote watchdog ends the process group and SSH
+    /// observes its exit. Cancelling package exec while that group is alive
+    /// can exhaust channel cleanup and invalidate Events and every Attach.
+    func runGitScript(_ script: Data) async throws -> GitExecResult {
+        do {
+            try Task.checkCancellation()
+            // POSIX sleep accepts whole seconds. Round down, with a one-second
+            // minimum for short injected deadlines; the local timer stays exact.
+            let remoteSeconds = max(1, gitExecTimeout.components.seconds)
+            let timeoutMarker = "__HEELER_GIT_TIMEOUT_\(UUID().uuidString)__"
+            let input = Self.boundedGitScript(
+                script, remoteSeconds: remoteSeconds, timeoutMarker: timeoutMarker)
+            // Allow startup, transfer and reap time outside the remote bound.
+            // This is resource reclamation time, not the caller's read budget.
+            let exchangeTimeout = Duration.seconds(remoteSeconds)
+                + max(requestTimeout, SSHTransportSettings.defaultRequestTimeout)
+            return try await AsyncDeadline.run(for: gitExecTimeout) {
+                try await self.channelAdmission.withChannel(.ordinarySession) {
+                    try Task.checkCancellation()
+                    // Awaiting an unstructured task does not forward cancellation.
+                    // Never cancel this task: its remote bound supplies the exit
+                    // that lets libssh2 reclaim the channel without killing SSH.
+                    let execution = Task.detached {
+                        do {
+                            return try await self.connection.execute(
+                                Self.gitScriptCommand, input: input, timeout: exchangeTimeout)
+                        } catch {
+                            throw await self.mapOperationError(error)
+                        }
+                    }
+                    let result = try await execution.value
+                    if result.stderr.range(of: Data(timeoutMarker.utf8)) != nil {
+                        throw TransportError.gitTimedOut
+                    }
+                    return GitExecResult(
+                        stdout: result.stdout, stderr: result.stderr, exitStatus: result.exitStatus)
+                }
+            }
+        } catch AsyncDeadlineError.timedOut {
+            throw TransportError.gitTimedOut
+        } catch TransportError.timedOut {
+            // Preserve the classification if the package exhausts its budget.
+            throw TransportError.gitTimedOut
+        } catch is CancellationError {
+            throw TransportError.cancelled
+        }
+    }
+
+    /// sshd gives each exec its own process group; non-interactive POSIX sh
+    /// keeps its children in that group. The watchdog ends only this exec.
+    /// Its marker descriptor is closed in sleep so a surviving timer cannot
+    /// hold an SSH output pipe open after normal script completion.
+    private static func boundedGitScript(
+        _ script: Data, remoteSeconds: Int64, timeoutMarker: String
+    ) -> Data {
+        var input = Data("""
+            {
+            (
+                sleep \(remoteSeconds) 3>&-
+                printf '\\n%s\\n' '\(timeoutMarker)' >&3
+                kill -KILL 0
+            ) </dev/null >/dev/null 3>&2 2>/dev/null &
+            __heeler_git_watchdog=$!
+            (
+
+            """.utf8)
+        input.append(script)
+        input.append(Data("""
+
+            ) </dev/null
+            __heeler_git_status=$?
+            {
+                kill -KILL "$__heeler_git_watchdog"
+                wait "$__heeler_git_watchdog"
+            } >/dev/null 2>&1
+            exit "$__heeler_git_status"
+            } </dev/null
+
+            """.utf8))
+        return input
     }
 
     private func runExec(_ command: String) async throws -> SSHExecResult {
