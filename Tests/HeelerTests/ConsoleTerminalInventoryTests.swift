@@ -249,11 +249,13 @@ struct ConsoleTerminalInventoryTests {
         let host = Host.fixture()
         let transport = ScriptedTransport(snapshot: snapshot(
             panes: [pane("agent", foregroundCwd: "/current")], agents: [agent()]))
+        // Let the initial snippet settle before comparing complete Agent values.
+        await transport.setPaneText("Ready for input\n", paneID: "agent")
         let store = makeStore([host.id: transport])
         defer { store.setHosts([]) }
         store.setHosts([host])
         await store.resume()
-        try await waitUntil { store.agents.first?.lastOutputSnippet != nil }
+        try await waitUntil { store.agents.first?.lastOutputSnippet == "Ready for input" }
         await store.refreshSidebarLayouts()
         let before = store.agents
         let count = await transport.snapshotFetchCount
