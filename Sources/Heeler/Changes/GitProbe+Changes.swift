@@ -53,7 +53,7 @@ extension GitProbe {
         guard frames.reachedEnd else { throw ChangesReadError.incomplete }
 
         let version = try frames.requiredSection(SectionName.version, cap: Cap.version)
-        guard version.status == 0 else { throw failure(version) }
+        try requireUsableGit(version)
         let home = try frames.requiredSection(SectionName.home, cap: Cap.home)
 
         let discover = try frames.requiredSection(SectionName.discover, cap: Cap.discover)

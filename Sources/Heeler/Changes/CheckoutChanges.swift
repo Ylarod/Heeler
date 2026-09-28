@@ -201,6 +201,8 @@ enum ChangesReadError: Error, Sendable, Equatable {
     case incomplete
     /// Git failed; carries git's first framed error line.
     case gitFailed(String)
+    case gitMissing
+    case gitTooOld(String)
 
     var message: String {
         switch self {
@@ -212,6 +214,10 @@ enum ChangesReadError: Error, Sendable, Equatable {
             "The Host's reply ended early, so these Changes may be incomplete."
         case .gitFailed(let line):
             line
+        case .gitMissing:
+            "Git couldn't be run on this Host. Install git and make it available to the SSH account."
+        case .gitTooOld(let version):
+            "This Host has git \(version). Changes requires git 2.17 or later."
         }
     }
 }
