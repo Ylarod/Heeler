@@ -351,6 +351,7 @@
 		BFE02F9C58F080B95770E878 /* WakeCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C2343D5ED9436077682CD1 /* WakeCommandTests.swift */; };
 		BFFC881E19AD745075F7155E /* HeelerSSHNativeRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F75E8F9733C77314E6D222AC /* HeelerSSHNativeRuntimeTests.swift */; };
 		C0CA2928B947520D9FB9CAF9 /* SharedAsyncOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A058322630CB1827F69DBF53 /* SharedAsyncOperation.swift */; };
+		C106FF6EBA7ACE3A59ADB67B /* GitProbeRecordings+Counts.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1402BDD10553398A4014420 /* GitProbeRecordings+Counts.swift */; };
 		C1B2B4664800E7E80FB02EBD /* TerminalFontSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB08528C0328AA9AFE358CE /* TerminalFontSettings.swift */; };
 		C1B5D5204EE37B50D3D42984 /* TerminalZoomSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1187933BD5FAA5064BBF856F /* TerminalZoomSettingsTests.swift */; };
 		C1F06F7588D4713392223CC5 /* RecentWorkspaceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7BD377C8BB7AA8205DD8AFC /* RecentWorkspaceStore.swift */; };
@@ -922,6 +923,7 @@
 		EEB863EF2AD319A412DB564A /* notification-payload-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "notification-payload-v1.json"; sourceTree = "<group>"; };
 		F07A0F64626D74A8EC9A1FE2 /* AttachTerminalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachTerminalStore.swift; sourceTree = "<group>"; };
 		F0D5F47AF6EF0F3C7F789894 /* RemoteDirectoryBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDirectoryBrowser.swift; sourceTree = "<group>"; };
+		F1402BDD10553398A4014420 /* GitProbeRecordings+Counts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitProbeRecordings+Counts.swift"; sourceTree = "<group>"; };
 		F234ED041A4A2835A59A7510 /* AgentTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTerminalView.swift; sourceTree = "<group>"; };
 		F261A0911D08819AFC013F1E /* JSONValueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValueTests.swift; sourceTree = "<group>"; };
 		F3A63EFEB7D00E59949CF331 /* HostDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostDraft.swift; sourceTree = "<group>"; };
@@ -1544,6 +1546,7 @@
 				696C6905D9D6EEFF77A64E2E /* FakeTransportConnector.swift */,
 				190CD80AFC8069AB4ECE7781 /* GhosttyContentLayers.swift */,
 				46BF5DA19E807812A4E3EC0F /* GitProbeRecordings.swift */,
+				F1402BDD10553398A4014420 /* GitProbeRecordings+Counts.swift */,
 				57EEA346C23330237A2A79EB /* GridReportSettling.swift */,
 				51B4AAB6885E0EB9D8C4A131 /* InMemorySecretStore.swift */,
 				C5469F0188E985276A49871C /* LiveActivityVectorFile.swift */,
@@ -2196,6 +2199,7 @@
 				0507BD8B4201DB778E11B712 /* GhosttyContentLayers.swift in Sources */,
 				745597578F4E92FCC065823A /* GitBranchNameTests.swift in Sources */,
 				E6F8545440DADAAE3BA7C84F /* GitProbeLineCountsTests.swift in Sources */,
+				C106FF6EBA7ACE3A59ADB67B /* GitProbeRecordings+Counts.swift in Sources */,
 				2733705DB29D88F40EFC5AF2 /* GitProbeRecordings.swift in Sources */,
 				D558CE8704443D60AE1CF725 /* GitProbeTests.swift in Sources */,
 				75A8255D9FA3B634C315DBAE /* GridReportSettling.swift in Sources */,

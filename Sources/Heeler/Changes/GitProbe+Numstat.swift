@@ -14,8 +14,30 @@ extension GitProbe {
             var file = file
             guard file.kind != .untracked else { return file }
             file.lineCounts = records[CountedPath(path: file.path, originalPath: file.originalPath)]
+            // Status pairs staged renames against the index. A rewrite in
+            // the working tree can make diff against HEAD split that same
+            // rename into an addition and a deletion. Require both records:
+            // a cut or differently paired diff cannot supply exact counts.
+            if file.lineCounts == nil, let originalPath = file.originalPath,
+                let added = records[CountedPath(path: file.path)],
+                let removed = records[CountedPath(path: originalPath)]
+            {
+                file.lineCounts = combinedCounts(added, removed)
+            }
             return file
         }
+    }
+
+    private static func combinedCounts(_ lhs: LineCounts, _ rhs: LineCounts) -> LineCounts? {
+        if case .lines(let leftAdded, let leftRemoved) = lhs,
+            case .lines(let rightAdded, let rightRemoved) = rhs
+        {
+            let added = leftAdded.addingReportingOverflow(rightAdded)
+            let removed = leftRemoved.addingReportingOverflow(rightRemoved)
+            guard !added.overflow, !removed.overflow else { return nil }
+            return .lines(added: added.partialValue, removed: removed.partialValue)
+        }
+        return .binary
     }
 
     static func changesTotals(_ files: [ChangedFile], numstat: Section) -> ChangesTotals {
