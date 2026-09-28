@@ -10,16 +10,24 @@ final class AgentChangesPresentation {
     /// The open Changes; nil while Agent detail shows its terminal.
     private(set) var store: ChangesStore?
 
-    @ObservationIgnored private let makeStore: @MainActor () -> ChangesStore
+    /// Nil follows the Agent. A Worktree directory stays fixed for the
+    /// life of that store, even if the Agent later moves.
+    @ObservationIgnored private let makeStoreIn: @MainActor (String?) -> ChangesStore
 
-    init(makeStore: @escaping @MainActor () -> ChangesStore) {
-        self.makeStore = makeStore
+    init(makeStoreIn: @escaping @MainActor (_ directory: String?) -> ChangesStore) {
+        self.makeStoreIn = makeStoreIn
     }
 
-    /// Opens Changes; a second open while one is shown keeps it.
-    func open() {
+    /// The Agent menu, which follows the Agent's current directory.
+    convenience init(makeStore: @escaping @MainActor () -> ChangesStore) {
+        self.init(makeStoreIn: { _ in makeStore() })
+    }
+
+    /// Opens Changes. `directory` is a Worktree's checkout path; nil follows
+    /// the Agent. A second open while one is shown keeps it.
+    func open(directory: String? = nil) {
         guard store == nil else { return }
-        store = makeStore()
+        store = makeStoreIn(directory)
     }
 
     /// Back: returns to Agent detail and drops the document.
