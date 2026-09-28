@@ -550,6 +550,98 @@ struct HeelerSSHTransportBehaviorE2ETests {
         #expect(await transport.isConnected)
     }
 
+    @Test("a Changes read parses real git and leaves the index, fsmonitor and hooks untouched")
+    func changesReadLeavesTheCheckoutUntouched() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+        let root = try #require(RemoteShellPath.quotedAbsolute(
+            environment.homePath + "/changes-" + UUID().uuidString))
+        // The fixture has no git identity. Hostile configuration goes in
+        // last, so no seeding command runs it; the tracked file touched into
+        // the future is stat-dirty but unchanged, which any index refresh
+        // would write back.
+        let seeded = try await transport.runGitScript(Data("""
+            {
+            set -e
+            r=\(root)
+            mkdir -p "$r/repo/sub"
+            cd "$r/repo"
+            git init -q .
+            git symbolic-ref HEAD refs/heads/main
+            printf 'one\\n' > tracked.txt
+            printf 'two\\n' > other.txt
+            printf 'nested\\n' > sub/nested.txt
+            git add -A
+            git -c user.name=Heeler -c user.email=fixture@heeler.invalid commit -q -m 'Seed the Changes fixture'
+            printf 'one, edited\\n' > tracked.txt
+            git mv other.txt renamed.txt
+            printf 'new\\n' > untracked.txt
+            touch -t 203001010000 sub/nested.txt
+            printf '#!/bin/sh\\n: > "%s/fsmonitor-ran"\\n' "$r" > "$r/fsmonitor.sh"
+            mkdir -p .git/hooks
+            printf '#!/bin/sh\\n: > "%s/post-index-change-ran"\\n' "$r" > .git/hooks/post-index-change
+            chmod +x "$r/fsmonitor.sh" .git/hooks/post-index-change
+            git config core.fsmonitor "$r/fsmonitor.sh"
+            pwd -P
+            stat -f '%i %Fm' .git/index
+            } </dev/null
+
+            """.utf8))
+        try #require(
+            seeded.exitStatus == 0, "seed failed: \(String(decoding: seeded.stderr, as: UTF8.self))")
+        let seedLines = String(decoding: seeded.stdout, as: UTF8.self)
+            .split(separator: "\n").map(String.init)
+        try #require(seedLines.count >= 2)
+        let topLevel = seedLines[seedLines.count - 2]
+        let indexBefore = seedLines[seedLines.count - 1]
+
+        let read = try await transport.readChanges(
+            ChangesReadRequest(directory: topLevel + "/sub"))
+
+        let changes = read.changes
+        #expect(changes.checkout.topLevel == Data(topLevel.utf8))
+        #expect(!changes.checkout.isLinkedWorktree)
+        #expect(read.directoryPrefix == Data("sub/".utf8))
+        #expect(changes.head.branch == .named("main"))
+        #expect(changes.head.commit?.count == 40)
+        #expect(changes.head.latestCommit?.subject == "Seed the Changes fixture")
+        #expect(
+            changes.files.map(\.accessibilityLabel) == [
+                "renamed.txt, renamed from other.txt, staged",
+                "tracked.txt, modified, unstaged",
+                "untracked.txt, untracked",
+            ])
+
+        let markers = """
+            for m in fsmonitor-ran post-index-change-ran; do
+              if [ -e "$r/$m" ]; then echo "$m"; fi
+            done
+            """
+        let after = try await transport.runGitScript(Data("""
+            { r=\(root); cd "$r/repo"; stat -f '%i %Fm' .git/index
+            \(markers)
+            } </dev/null
+
+            """.utf8))
+        let afterLines = String(decoding: after.stdout, as: UTF8.self)
+            .split(separator: "\n").map(String.init)
+        // Same inode and modification time: nothing rewrote the index.
+        #expect(afterLines == [indexBefore])
+
+        // The traps were armed: plain git runs both and rewrites the index.
+        let control = try await transport.runGitScript(Data("""
+            { r=\(root); cd "$r/repo"; git status --porcelain >/dev/null 2>&1
+            \(markers)
+            rm -rf "$r"
+            } </dev/null
+
+            """.utf8))
+        #expect(
+            String(decoding: control.stdout, as: UTF8.self)
+                == "fsmonitor-ran\npost-index-change-ran\n")
+    }
+
     @Test("concurrent first-use home probes share work and cache only success")
     func firstUseHomeProbeIsSingleFlight() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
