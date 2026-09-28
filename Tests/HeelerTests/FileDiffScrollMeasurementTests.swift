@@ -113,7 +113,7 @@ struct FileDiffScrollMeasurementTests {
         let identifier = "file-diff-line-\(id)"
         var visited = Set<ObjectIdentifier>()
         let viewportView = scrollView(in: root) ?? root
-        let viewport = UIAccessibilityConvertFrameToScreenCoordinates(viewportView.bounds, viewportView)
+        let viewport = UIAccessibility.convertToScreenCoordinates(viewportView.bounds, in: viewportView)
         let identifierGetter = #selector(getter: UIAccessibilityIdentification.accessibilityIdentifier)
         func visit(_ object: NSObject) -> Bool {
             guard visited.insert(ObjectIdentifier(object)).inserted,
