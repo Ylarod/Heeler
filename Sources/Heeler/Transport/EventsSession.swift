@@ -395,8 +395,8 @@ actor EventsSession {
     }
 
     /// Link-level failures worth one redial-and-retry: the SSH connection
-    /// itself failed or swallowed the call. Server answers and cancellation
-    /// are not retried.
+    /// itself failed or swallowed the call. Server answers, cancellation and
+    /// the independent git deadline are not retried.
     private static func isTransportLinkFailure(_ error: any Error) -> Bool {
         switch error as? TransportError {
         case .sshUnreachable, .timedOut: true

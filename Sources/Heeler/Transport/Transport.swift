@@ -861,6 +861,10 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// The request exceeded its per-request deadline; the channel it held was
     /// closed.
     case timedOut
+    /// A Changes script exceeded its own deadline. This says nothing about
+    /// link health and must not trigger a redial or an automatic retry: the
+    /// remote process can keep running after the local exec is abandoned.
+    case gitTimedOut
     /// The request's task was cancelled before completing; any channel it
     /// held was closed.
     case cancelled
@@ -890,7 +894,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .deviceKeyCorrupt, .rsaKeyCorrupt, .rsaSignatureUnsupported,
             .hostKeyRejected, .hostKeyMismatch,
             .socketNotFound, .herdrBinaryNotFound, .protocolVersionMismatch,
-            .streamLocalOpenFailed,
+            .streamLocalOpenFailed, .gitTimedOut,
             .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:

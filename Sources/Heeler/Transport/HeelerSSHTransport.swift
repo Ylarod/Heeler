@@ -266,6 +266,14 @@ final class HeelerSSHAttachOutputGate: Sendable {
     }
 }
 
+/// Raw script output owned by the app transport layer. GitProbe interprets
+/// framing and command statuses; a nonzero channel status is still a result.
+struct GitExecResult: Sendable, Equatable {
+    let stdout: Data
+    let stderr: Data
+    let exitStatus: Int32
+}
+
 /// The libssh2-backed app Transport. Ordinary herdr RPCs use fresh
 /// direct-streamlocal channels, Events owns one reserved forwarding channel,
 /// and Attach owns one reserved PTY exec channel per Host (ADR 0011).
@@ -286,6 +294,9 @@ actor HeelerSSHTransport: Transport {
     /// protocol 20.
     static let generatedProtocolVersion = 22
     static let maximumResponseBytes = 1_048_576
+    /// Paths and shell syntax belong on stdin, never in the login shell's
+    /// command line. In particular, do not prepend an environment assignment.
+    static let gitScriptCommand = "/bin/sh -s"
     static let maxConcurrentForwardingChannels =
         SSHChannelAdmission.Limits.production.ordinaryForwarding
     static let maxConcurrentExecChannels =
@@ -295,6 +306,7 @@ actor HeelerSSHTransport: Transport {
     private let connection: SSHConnection
     private let socketLocation: HerdrSocketLocation
     private let requestTimeout: Duration
+    private let gitExecTimeout: Duration
     private let wakeCommand: String
     private let sessionListCommand: String
     private let agentDiscoveryCommand: String
@@ -427,11 +439,13 @@ actor HeelerSSHTransport: Transport {
     init(
         connection: SSHConnection,
         socketPath: String,
-        requestTimeout: Duration = SSHTransportSettings.defaultRequestTimeout
+        requestTimeout: Duration = SSHTransportSettings.defaultRequestTimeout,
+        gitExecTimeout: Duration = SSHTransportSettings.defaultGitExecTimeout
     ) {
         self.connection = connection
         socketLocation = .absolutePath(socketPath)
         self.requestTimeout = requestTimeout
+        self.gitExecTimeout = gitExecTimeout
         wakeCommand = SSHTransportSettings.defaultWakeCommand
         sessionListCommand = SSHTransportSettings.defaultSessionListCommand
         agentDiscoveryCommand = SSHTransportSettings.defaultAgentDiscoveryCommand
@@ -449,6 +463,7 @@ actor HeelerSSHTransport: Transport {
         self.connection = connection
         socketLocation = settings.socket
         requestTimeout = settings.requestTimeout
+        gitExecTimeout = settings.gitExecTimeout
         wakeCommand = settings.wakeCommand
         sessionListCommand = settings.sessionListCommand
         agentDiscoveryCommand = settings.agentDiscoveryCommand
@@ -1972,12 +1987,40 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
-    private func runExec(_ command: String) async throws -> SSHExecResult {
+    /// Internal plumbing for the purpose-built Changes reads. The script
+    /// owns POSIX quoting, locale, output caps and completeness markers.
+    /// The deadline includes admission, and returns without waiting for SSH
+    /// cleanup. Never retry: cancellation cannot stop the remote process.
+    func runGitScript(_ script: Data) async throws -> GitExecResult {
+        do {
+            try Task.checkCancellation()
+            return try await AsyncDeadline.run(for: gitExecTimeout) {
+                let result = try await self.runExec(
+                    Self.gitScriptCommand, input: script, timeout: self.gitExecTimeout)
+                return GitExecResult(
+                    stdout: result.stdout, stderr: result.stderr, exitStatus: result.exitStatus)
+            }
+        } catch AsyncDeadlineError.timedOut {
+            throw TransportError.gitTimedOut
+        } catch TransportError.timedOut {
+            // The package can finish its own deadline before the outer timer.
+            throw TransportError.gitTimedOut
+        } catch is CancellationError {
+            throw TransportError.cancelled
+        }
+    }
+
+    private func runExec(
+        _ command: String,
+        input: Data = Data(),
+        timeout: Duration? = nil
+    ) async throws -> SSHExecResult {
         try await channelAdmission.withChannel(.ordinarySession) {
             do {
                 return try await self.connection.execute(
                     command,
-                    timeout: self.requestTimeout)
+                    input: input,
+                    timeout: timeout ?? self.requestTimeout)
             } catch {
                 throw await self.mapOperationError(error)
             }

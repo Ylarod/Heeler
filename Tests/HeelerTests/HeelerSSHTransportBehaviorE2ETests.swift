@@ -430,6 +430,77 @@ struct HeelerSSHTransportBehaviorE2ETests {
             homePath: environment.homePath)
     }
 
+    @Test("git stdin scripts preserve bytes and use only the fixed shell on direct and Jump paths")
+    func gitScriptRoundTripsBytesOnBothPaths() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let hostileNames = [
+            "--", "-dash.txt", "sp ace.txt", "quo\"te.txt", "sq'uote.txt",
+            #"two\\bs.txt"#, #"trail\"#, "bang!.txt", "$HOME.txt", "*.txt",
+            "[ab].txt", "ünï.txt", "中文.txt", "line\nbreak.txt", "tab\tname.txt",
+        ]
+        var payload = Data(hostileNames.joined(separator: "\n").utf8)
+        payload.append(contentsOf: [0x80, 0xFE, 0xFF])
+        // Quote opaque bytes inside the stdin script, including a literal
+        // apostrophe. Nothing from this payload may reach the exec command.
+        var quotedPayload = Data([0x27])
+        for byte in payload {
+            if byte == 0x27 {
+                quotedPayload.append(Data("'\\''".utf8))
+            } else {
+                quotedPayload.append(byte)
+            }
+        }
+        quotedPayload.append(0x27)
+
+        // A brace group redirects children away from the shell's script
+        // input. The padding also exercises input larger than a write chunk.
+        var script = Data("{\n#".utf8)
+        script.append(Data(repeating: 0x78, count: 70_000))
+        script.append(Data("\ncat\nprintf '%s\\n' \"$SSH_ORIGINAL_COMMAND\"\nprintf '%s' ".utf8))
+        script.append(quotedPayload)
+        script.append(Data("\nprintf '\\000\\377\\r\\n'\nprintf 'stderr:' >&2\nprintf '%s' ".utf8))
+        script.append(quotedPayload)
+        script.append(Data(" >&2\nprintf '\\000\\376' >&2\nexit 37\n} </dev/null\n".utf8))
+
+        var expectedStdout = Data("/bin/sh -s\n".utf8)
+        expectedStdout.append(payload)
+        expectedStdout.append(contentsOf: [0x00, 0xFF, 0x0D, 0x0A])
+        var expectedStderr = Data("stderr:".utf8)
+        expectedStderr.append(payload)
+        expectedStderr.append(contentsOf: [0x00, 0xFE])
+
+        for settings in [environment.directSettings(), environment.jumpSettings()] {
+            let transport = try await HeelerSSHTransport.connect(settings: settings)
+            defer { Task { try? await transport.close() } }
+            let result = try await transport.runGitScript(script)
+            #expect(result.stdout == expectedStdout)
+            #expect(result.stderr == expectedStderr)
+            #expect(result.exitStatus == 37)
+            #expect(try await transport.ping().protocolVersion == 17)
+        }
+    }
+
+    @Test("a git deadline surfaces its own error and preserves the SSH connection")
+    func gitDeadlinePreservesConnectionReuse() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        var settings = environment.directSettings()
+        settings.gitExecTimeout = .seconds(2)
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+
+        let started = ContinuousClock.now
+        await #expect(throws: TransportError.gitTimedOut) {
+            _ = try await transport.runGitScript(Data("{ sleep 30; } </dev/null\n".utf8))
+        }
+        #expect(started.duration(to: .now) < settings.requestTimeout)
+        #expect(try await transport.ping().protocolVersion == 17)
+        let result = try await transport.runGitScript(Data("printf 'still usable'\n".utf8))
+        #expect(result.stdout == Data("still usable".utf8))
+        #expect(result.stderr.isEmpty)
+        #expect(result.exitStatus == 0)
+        #expect(await transport.isConnected)
+    }
+
     @Test("concurrent first-use home probes share work and cache only success")
     func firstUseHomeProbeIsSingleFlight() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)

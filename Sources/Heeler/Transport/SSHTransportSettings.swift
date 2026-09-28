@@ -38,6 +38,9 @@ struct SSHTransportSettings: Sendable {
     /// The default of ``requestTimeout``, named so budgets derived from it
     /// cannot drift out of step with it.
     static let defaultRequestTimeout: Duration = .seconds(15)
+    /// Changes reads have a separate, shorter budget. Calibrate this value
+    /// against large repositories and weak networks without changing RPCs.
+    static let defaultGitExecTimeout: Duration = .seconds(10)
 
     static var defaultAgentDiscoveryCommand: String {
         let checks = SupportedAgentKind.allCases.map { kind in
@@ -136,6 +139,9 @@ struct SSHTransportSettings: Sendable {
     /// It also bounds each individual PTY write and window-change on a live
     /// attach channel (`HeelerSSHTransport.runAttachChannel`).
     var requestTimeout: Duration = Self.defaultRequestTimeout
+    /// Bounds ordinary-session admission and the stdin script exchange.
+    /// Expiry reports `.gitTimedOut`, which does not trigger link recovery.
+    var gitExecTimeout: Duration = Self.defaultGitExecTimeout
 }
 
 /// The Jump Host in front of a Host: its own coordinates and credentials. Its
