@@ -190,6 +190,8 @@ struct AgentTerminalView: View {
     private let canOpenTerminal: Bool
     private let isOpeningTerminal: Bool
     private let openTerminal: () -> Void
+    /// Opens Changes in place of this screen; nil hides the menu entry.
+    private let showChanges: (() -> Void)?
     private let composer: AgentComposerStore
     private let interactionProbe: WeakAgentTerminalInteractionProbe?
     private let retainedSurface: TerminalSurfaceRetention?
@@ -295,6 +297,7 @@ struct AgentTerminalView: View {
         canOpenTerminal: Bool = false,
         isOpeningTerminal: Bool = false,
         openTerminal: @escaping () -> Void = {},
+        showChanges: (() -> Void)? = nil,
         composer: AgentComposerStore,
         attachStore: AgentAttachStore? = nil,
         retainedSurface: TerminalSurfaceRetention? = nil,
@@ -321,6 +324,7 @@ struct AgentTerminalView: View {
         self.canOpenTerminal = canOpenTerminal
         self.isOpeningTerminal = isOpeningTerminal
         self.openTerminal = openTerminal
+        self.showChanges = showChanges
         self.composer = composer
         self.interactionProbe = interactionProbe.map(WeakAgentTerminalInteractionProbe.init)
         self.retainedSurface = retainedSurface
@@ -913,6 +917,7 @@ struct AgentTerminalView: View {
                     openTerminal()
                 } : nil,
             isOpeningTerminal: isOpeningTerminal,
+            showChanges: showChanges,
             startAgent: { isStartingAgent = true },
             manageSnippets: { isManagingSnippets = true },
             showSkills: skills != nil ? { isShowingSkillsPicker = true } : nil,

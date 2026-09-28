@@ -7,6 +7,7 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
     case addImage
     case addFile
     case openTerminal
+    case changes
     case newAgent
     case skills
     case snippets
@@ -20,6 +21,7 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
         case .addImage: "Add Image"
         case .addFile: "Add File"
         case .openTerminal: "Open Terminal"
+        case .changes: "Changes"
         case .newAgent: "New Agent"
         case .skills: "Skills"
         case .snippets: "Snippets"
@@ -35,6 +37,7 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
         case .addImage: "photo"
         case .addFile: "doc"
         case .openTerminal: "apple.terminal"
+        case .changes: "plus.forwardslash.minus"
         case .newAgent: "plus"
         case .skills: "sparkles"
         case .snippets: "quote.bubble"
@@ -58,7 +61,7 @@ enum AgentActionMenuItem: Equatable, Hashable, Sendable, CaseIterable {
         switch self {
         case .addImage, .addFile, .skills, .snippets:
             true
-        case .openTerminal, .newAgent, .worktreeDetails, .renameAgent,
+        case .openTerminal, .changes, .newAgent, .worktreeDetails, .renameAgent,
             .renameWorkspace, .closeAgent:
             false
         }
@@ -78,7 +81,7 @@ enum AgentActionMenuSection: Equatable, Hashable, Sendable, CaseIterable {
         case .addAttachments:
             [.addImage, .addFile]
         case .sessionTools:
-            [.openTerminal, .newAgent, .skills, .snippets]
+            [.openTerminal, .changes, .newAgent, .skills, .snippets]
         case .agentLifecycle:
             [.worktreeDetails, .renameAgent, .renameWorkspace, .closeAgent]
         }
@@ -102,6 +105,8 @@ enum AgentActionMenuPolicy {
         actions: AgentComposerActions
     ) -> Bool {
         switch item {
+        case .changes:
+            actions.showChanges != nil
         case .skills:
             actions.showSkills != nil
         case .worktreeDetails:
@@ -136,6 +141,8 @@ enum AgentActionMenuPolicy {
             actions.addFile()
         case .openTerminal:
             actions.openTerminal?()
+        case .changes:
+            actions.showChanges?()
         case .newAgent:
             actions.startAgent()
         case .skills:

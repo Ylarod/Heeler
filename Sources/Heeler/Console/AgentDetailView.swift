@@ -17,12 +17,16 @@ struct AgentDetailView: View {
     private let onSwitch: (ConsoleAgent.ID) -> Void
     private let onClosed: () -> Void
     private let onSelectTerminal: ((ConsoleTerminal) -> Void)?
+    /// Told whether Changes is shown in place of the terminal, so the
+    /// Console stops dressing the window's chrome for a terminal.
+    private let onShowsChanges: ((Bool) -> Void)?
     @State private var focus = AgentFocusCoordinator()
     @State private var hasAppeared = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var composer: AgentComposerStore
     @State private var attach: AgentAttachStore
     @State private var openTerminal: AgentOpenTerminalStore
+    @State private var changes: AgentChangesPresentation
     @State private var retainedAgent: AgentTerminalCache.Entry?
     @State private var retentionOwnerID: UUID
     @State private var attachReference: AgentDetailAttachReference
@@ -48,9 +52,11 @@ struct AgentDetailView: View {
         onSwitch: @escaping (ConsoleAgent.ID) -> Void,
         onClosed: @escaping () -> Void,
         onSelectTerminal: ((ConsoleTerminal) -> Void)? = nil,
+        onShowsChanges: ((Bool) -> Void)? = nil,
         composerStore: AgentComposerStore? = nil,
         attachStore: AgentAttachStore? = nil,
-        openTerminalStore: AgentOpenTerminalStore? = nil
+        openTerminalStore: AgentOpenTerminalStore? = nil,
+        changesPresentation: AgentChangesPresentation? = nil
     ) {
         self.agent = agent
         self.console = console
@@ -66,6 +72,7 @@ struct AgentDetailView: View {
         self.onSwitch = onSwitch
         self.onClosed = onClosed
         self.onSelectTerminal = onSelectTerminal
+        self.onShowsChanges = onShowsChanges
         let composer = composerStore ?? console.composerStore(for: agent)
         _composer = State(initialValue: composer)
         let ownerID = UUID()
@@ -91,6 +98,22 @@ struct AgentDetailView: View {
         _attachReference = State(initialValue: reference)
         let hostID = agent.hostID
         let workspaceID = agent.agent.workspaceID
+        let agentID = agent.id
+        let openingDirectory = agent.directory
+        _changes = State(
+            initialValue: changesPresentation
+                ?? AgentChangesPresentation { [console] in
+                    ChangesStore(
+                        // Where the Agent is now: a later read follows it
+                        // into another Checkout.
+                        directory: {
+                            console.agents.first { $0.id == agentID }?.directory
+                                ?? openingDirectory
+                        },
+                        read: { request in
+                            try await console.readChanges(request, on: hostID)
+                        })
+                })
         _openTerminal = State(
             initialValue: openTerminalStore
                 ?? AgentOpenTerminalStore(
@@ -127,8 +150,13 @@ struct AgentDetailView: View {
         sceneRouting?.terminalAccess(for: agent.hostID) ?? .holds
     }
 
+    /// The terminal is on screen: no Shell Terminal and no Changes in its place.
+    private var showsAgentTerminal: Bool {
+        openTerminal.shell == nil && changes.store == nil
+    }
+
     private func applyTerminalAccess() {
-        guard openTerminal.shell == nil, !openTerminal.isOpening else { return }
+        guard showsAgentTerminal, !openTerminal.isOpening else { return }
         switch terminalAccess {
         case .holds:
             prepareRetainedAgent()
@@ -146,7 +174,7 @@ struct AgentDetailView: View {
     }
 
     private func prepareRetainedAgent() {
-        guard permitsRetention, isOnStage(), openTerminal.shell == nil else { return }
+        guard permitsRetention, isOnStage(), showsAgentTerminal else { return }
         if let retainedAgent, retainedAgent.isRetained {
             console.agentTerminals.activate(retainedAgent, ownerID: retentionOwnerID, isPresented: { isOnStage() })
             return
@@ -220,6 +248,9 @@ struct AgentDetailView: View {
                     await openTerminal.returnToAgent()
                 }
                 .id(openTerminal.destination)
+            } else if let store = changes.store {
+                ChangesView(store: store) { changes.close() }
+                    .id(ObjectIdentifier(store))
             } else {
                 AgentTerminalView(
                     agent: agent,
@@ -231,18 +262,21 @@ struct AgentDetailView: View {
                     keyboardHandoff: keyboardHandoff,
                     keyboardInset: keyboardInset,
                     isOnStage: {
-                        isOnStage() && openTerminal.shell == nil
+                        isOnStage() && showsAgentTerminal
                     },
                     // A detail that lost its Host channel to another window
                     // is still on screen, and its sheets still cover commands.
                     isCommandOnStage: {
-                        isVisible() && openTerminal.shell == nil
+                        isVisible() && showsAgentTerminal
                     },
                     onSwitch: onSwitch,
                     onClosed: onClosed,
                     canOpenTerminal: (!workspaceShells.isEmpty || openTerminal.canOpen) && terminalAccess == .holds,
                     isOpeningTerminal: openTerminal.isOpening || isResolvingTerminal,
                     openTerminal: { openWorkspaceTerminal() },
+                    // Any Agent with a directory, whatever its worktree
+                    // metadata: git resolves the Checkout on the Host.
+                    showChanges: agent.directory == nil ? nil : { changes.open() },
                     composer: composer,
                     attachStore: attach,
                     retainedSurface: retainedAgent?.surfaceRetention,
@@ -271,6 +305,7 @@ struct AgentDetailView: View {
         .onDisappear {
             hasAppeared = false
             focus.leave()
+            if changes.store != nil { onShowsChanges?(false) }
         }
         .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
             prepareRetainedAgent()
@@ -303,6 +338,12 @@ struct AgentDetailView: View {
         // keeps the channel, so neither applies while one is open.
         .onChange(of: terminalAccess, initial: true) {
             applyTerminalAccess()
+        }
+        // Back from Changes: the terminal left as it does for the Agent list,
+        // so it comes back the same way, through retention and rejoin.
+        .onChange(of: changes.store == nil) { _, showsTerminal in
+            onShowsChanges?(!showsTerminal)
+            if showsTerminal { applyTerminalAccess() }
         }
         .onChange(of: openTerminal.shell != nil || openTerminal.isOpening, initial: true) {
             _, showsShellTerminal in

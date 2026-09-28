@@ -60,6 +60,9 @@ struct ConsoleView: View {
     /// edge. In regular width it starts just below the status bar; see
     /// `detailTopChromeInset`.
     @State private var detailBar = NavigationBarBand()
+    /// The Agent whose detail shows Changes in place of its terminal; the
+    /// window's chrome then follows the app, not the terminal theme.
+    @State private var agentShowingChanges: ConsoleAgent.ID?
     /// Each list tab's last selection. In regular width both lists sit
     /// beside their own detail, so a list tab comes back to what it showed
     /// rather than to the other list's pick.
@@ -1123,7 +1126,7 @@ struct ConsoleView: View {
             return terminal.themes.selection(for: colorScheme)
                 .chromeColorScheme(for: colorScheme)
         }
-        guard let id = notificationRouter.path.last else { return nil }
+        guard let id = notificationRouter.path.last, agentShowingChanges != id else { return nil }
         let showsTerminalSurface = console.agents.contains(where: { $0.id == id })
         let showsTerminalSyncSurface = !showsTerminalSurface
             && MissingAgentPresentation(agentID: id, console: console, hosts: hosts)
@@ -1166,7 +1169,14 @@ struct ConsoleView: View {
                         }),
                     onSwitch: { selectAgent($0) },
                     onClosed: { clearSelection() },
-                    onSelectTerminal: { selectTerminal($0) }
+                    onSelectTerminal: { selectTerminal($0) },
+                    onShowsChanges: { shows in
+                        if shows {
+                            agentShowingChanges = id
+                        } else if agentShowingChanges == id {
+                            agentShowingChanges = nil
+                        }
+                    }
                 )
                 // Selecting another Agent must tear down the previous terminal
                 // pipeline; without the explicit identity the detail column

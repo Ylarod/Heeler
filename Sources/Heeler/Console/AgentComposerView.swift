@@ -63,6 +63,10 @@ struct AgentComposerActions {
     let showAttachLinks: () -> Void
     let openTerminal: (() -> Void)?
     let isOpeningTerminal: Bool
+    /// Opens the Changes of the Checkout containing the Agent's directory.
+    /// Nil when the Agent has no directory, which hides the entry; it is
+    /// never gated on the Agent's worktree metadata.
+    let showChanges: (() -> Void)?
     let startAgent: () -> Void
     let manageSnippets: () -> Void
     /// Opens the explicit Skill picker. Nil for agent kinds without a skills

@@ -1,0 +1,337 @@
+import Foundation
+import SwiftUI
+import Testing
+import UIKit
+
+@testable import Heeler
+
+/// Changes opened in place of Agent detail. The presentation owns the only
+/// reference to its store, so closing it discards the content.
+@MainActor
+@Suite("Changes presentation")
+struct AgentChangesPresentationTests {
+    @Test func openingMakesOneStoreAndClosingDiscardsIt() {
+        var made = 0
+        let presentation = AgentChangesPresentation {
+            made += 1
+            return ChangesStore(directory: { "/home/dev/src/app" }) { _ in
+                throw ChangesReadError.unavailable
+            }
+        }
+        #expect(presentation.store == nil)
+
+        presentation.open()
+        let first = presentation.store
+        presentation.open()
+        #expect(first != nil)
+        #expect(presentation.store === first)
+        #expect(made == 1)
+
+        presentation.close()
+        #expect(presentation.store == nil)
+
+        presentation.open()
+        #expect(presentation.store !== first)
+        #expect(presentation.store?.phase == .loading)
+        #expect(made == 2)
+    }
+}
+
+/// The Changes view hosted in a window, read the way VoiceOver reads it.
+@MainActor
+@Suite("Changes view", .timeLimit(.minutes(1)))
+struct ChangesViewTests {
+    @Test func theHeaderIsOneSummaryAndEachRowReadsItsPathAndKind() async throws {
+        let (controller, window, _) = try await Self.host(GitProbeRecordings.hostile)
+        defer { window.isHidden = true }
+
+        var labels = Set<String>()
+        let loaded = try await Self.eventually {
+            labels = Self.labels(in: controller)
+            return labels.contains("gone.txt, deleted, unstaged")
+        }
+        try #require(loaded, "rows never appeared: \(labels.sorted())")
+
+        let header = labels.filter {
+            $0.hasPrefix(
+                #"Checkout ~/src/app. Branch main. Latest commit: Main edit to "conflict.txt", "#)
+        }
+        #expect(header.count == 1, "header summary missing: \(labels.sorted())")
+        // The summary replaces its fragments rather than repeating them.
+        #expect(!labels.contains("~/src/app"))
+        #expect(!labels.contains("main"))
+        // Rows are lazy, so only the first screenful exists: conflicts
+        // first, then by path.
+        #expect(labels.contains("conflict.txt, conflicted"))
+        #expect(labels.contains("--, modified, unstaged"))
+        #expect(labels.contains("[ab].txt, modified, unstaged"))
+        #expect(labels.contains("added.txt, added, staged"))
+    }
+
+    @Test func aCleanCheckoutSaysSoUnderItsHeader() async throws {
+        let (controller, window, _) = try await Self.host(GitProbeRecordings.clean)
+        defer { window.isHidden = true }
+
+        var labels = Set<String>()
+        let clean = try await Self.eventually {
+            labels = Self.labels(in: controller)
+            return labels.contains(ChangesStore.cleanMessage)
+        }
+        #expect(clean, "clean state missing: \(labels.sorted())")
+        #expect(
+            labels.contains {
+                $0.hasPrefix("Checkout ~/src/clean. Branch main. Latest commit: Clean tree, ")
+            })
+    }
+
+    @Test func aDirectoryOutsideAWorkingTreeSaysSo() async throws {
+        let transport = ScriptedTransport()
+        await transport.scriptChangesReads([.failure(ChangesReadError.notAGitWorkingTree)])
+        let (controller, window, _) = try await Self.host(transport: transport)
+        defer { window.isHidden = true }
+
+        var labels = Set<String>()
+        let shown = try await Self.eventually {
+            labels = Self.labels(in: controller)
+            return labels.contains("Not a Git Working Tree")
+        }
+        #expect(shown, "state missing: \(labels.sorted())")
+    }
+
+    @Test func backReturnsThroughTheBarButton() async throws {
+        let (controller, window, backs) = try await Self.host(GitProbeRecordings.clean)
+        defer { window.isHidden = true }
+
+        let activated = try await Self.eventually {
+            Self.activate("Back", in: controller.view)
+        }
+        #expect(activated)
+        #expect(backs.count == 1)
+    }
+
+    // MARK: Hosting
+
+    final class Counter {
+        var count = 0
+    }
+
+    static func host(
+        _ recording: (stdout: Data, stderr: Data)
+    ) async throws -> (UIHostingController<AnyView>, UIWindow, Counter) {
+        let transport = ScriptedTransport()
+        await transport.scriptChangesReads([.success(try ChangesStoreTests.read(recording))])
+        return try await host(transport: transport)
+    }
+
+    static func host(
+        transport: ScriptedTransport
+    ) async throws -> (UIHostingController<AnyView>, UIWindow, Counter) {
+        let store = ChangesStore(directory: { "/home/dev/src/app" }) { request in
+            try await transport.readChanges(request)
+        }
+        let backs = Counter()
+        let controller = UIHostingController(
+            rootView: AnyView(
+                NavigationStack {
+                    ChangesView(store: store) { backs.count += 1 }
+                }))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        return (controller, window, backs)
+    }
+
+    static func labels(in controller: UIViewController) -> Set<String> {
+        controller.view.setNeedsLayout()
+        controller.view.layoutIfNeeded()
+        return AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view)
+    }
+
+    /// Activates the first accessibility element labelled `label`, as
+    /// VoiceOver's double tap does; a bar button is a control that takes
+    /// the tap itself.
+    static func activate(_ label: String, in root: UIView) -> Bool {
+        var visited = Set<ObjectIdentifier>()
+        func visit(_ node: NSObject) -> Bool {
+            guard visited.insert(ObjectIdentifier(node)).inserted,
+                !node.accessibilityElementsHidden
+            else { return false }
+            if node.accessibilityLabel == label {
+                if let control = node as? UIControl {
+                    control.sendActions(for: .touchUpInside)
+                    return true
+                }
+                if node.accessibilityActivate() { return true }
+            }
+            for object in node.accessibilityElements ?? [] {
+                if let object = object as? NSObject, visit(object) { return true }
+            }
+            let count = node.accessibilityElementCount()
+            if count > 0, count != NSNotFound {
+                for index in 0..<count {
+                    if let object = node.accessibilityElement(at: index) as? NSObject,
+                        visit(object)
+                    {
+                        return true
+                    }
+                }
+            }
+            if let view = node as? UIView {
+                for subview in view.subviews where visit(subview) { return true }
+            }
+            return false
+        }
+        root.layoutIfNeeded()
+        return visit(root.window ?? root)
+    }
+
+    static func eventually(
+        timeout: Duration = .seconds(5),
+        _ condition: @escaping () async -> Bool
+    ) async throws -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if await condition() { return true }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        return await condition()
+    }
+}
+
+/// Changes inside a hosted Agent detail: it replaces the terminal in place,
+/// and Back brings the same Agent detail back with its draft and input mode.
+@MainActor
+@Suite("Agent detail Changes", .timeLimit(.minutes(1)))
+struct AgentDetailChangesTests {
+    @Test(arguments: [AgentInputMode.composer, .direct])
+    func backRestoresAgentDetailWithTheDraftAndInputModeUntouched(
+        mode: AgentInputMode
+    ) async throws {
+        let transport = ScriptedTransport()
+        await transport.scriptChangesReads([
+            .success(try ChangesStoreTests.read(GitProbeRecordings.hostile))
+        ])
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        composer.replaceDraft(with: "keep this draft")
+        let attach = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let suiteName = "changes-detail-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let inputMode = AgentInputModeSettings(defaults: defaults)
+        inputMode.select(mode)
+        let changes = AgentChangesPresentation {
+            ChangesStore(directory: { "/home/dev/src/app" }) { request in
+                try await transport.readChanges(request)
+            }
+        }
+        var shownChanges: [Bool] = []
+        let detail = Self.makeDetail(
+            attach: attach, composer: composer, inputMode: inputMode, defaults: defaults,
+            changes: changes, onShowsChanges: { shownChanges.append($0) })
+        let controller = UIHostingController(rootView: NavigationStack { detail })
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        try #require(
+            await ChangesViewTests.eventually {
+                controller.view.layoutIfNeeded()
+                return !AgentSurfaceReplacementTests.terminals(in: controller.view).isEmpty
+            })
+
+        changes.open()
+        var labels = Set<String>()
+        let opened = try await ChangesViewTests.eventually {
+            labels = ChangesViewTests.labels(in: controller)
+            return labels.contains("gone.txt, deleted, unstaged")
+                && AgentSurfaceReplacementTests.terminals(in: controller.view).isEmpty
+        }
+        try #require(opened, "Changes never replaced the terminal: \(labels.sorted())")
+        #expect(shownChanges.last == true)
+
+        let wentBack = try await ChangesViewTests.eventually {
+            ChangesViewTests.activate("Back", in: controller.view)
+        }
+        try #require(wentBack)
+        let returned = try await ChangesViewTests.eventually {
+            controller.view.layoutIfNeeded()
+            return !AgentSurfaceReplacementTests.terminals(in: controller.view).isEmpty
+        }
+        #expect(returned)
+        #expect(changes.store == nil)
+        #expect(shownChanges.last == false)
+        #expect(composer.draft == "keep this draft")
+        #expect(inputMode.mode == mode)
+        #expect(!ChangesViewTests.labels(in: controller).contains("gone.txt, deleted, unstaged"))
+
+        await attach.leave().value
+    }
+
+    private static func makeDetail(
+        attach: AgentAttachStore,
+        composer: AgentComposerStore,
+        inputMode: AgentInputModeSettings,
+        defaults: UserDefaults,
+        changes: AgentChangesPresentation,
+        onShowsChanges: @escaping (Bool) -> Void
+    ) -> AgentDetailView {
+        let console = ConsoleStore(snapshotRetryDelay: .seconds(30)) { _, subscriptions in
+            EventsSession(
+                subscriptions: subscriptions,
+                connect: { throw TransportError.sshUnreachable(detail: "fixture") },
+                reconnectPolicy: .default,
+                keepalive: .default)
+        }
+        let terminal = TerminalSettings(
+            themes: TerminalThemeSettings(defaults: defaults),
+            zoom: TerminalZoomSettings(defaults: defaults),
+            fonts: TerminalFontSettings(defaults: defaults),
+            snippets: SnippetStore(defaults: defaults))
+        return AgentDetailView(
+            agent: AgentSurfaceReplacementTests.makeAgent(pane: "w1:p1"),
+            console: console,
+            terminal: terminal,
+            inputMode: inputMode,
+            hosts: [],
+            activity: AppActivityCoordinator(),
+            keyboardHandoff: TerminalKeyboardHandoff(),
+            keyboardInset: TerminalKeyboardInset(),
+            stage: AgentDetailStage(isVisible: { true }, terminalAccess: { .holds }),
+            onSwitch: { _ in },
+            onClosed: {},
+            onShowsChanges: onShowsChanges,
+            composerStore: composer,
+            attachStore: attach,
+            changesPresentation: changes)
+    }
+
+    private static func makeLiveAttach(
+        transport: ScriptedTransport,
+        composer: AgentComposerStore
+    ) async throws -> AgentAttachStore {
+        let attach = AgentAttachStore(
+            target: "w1:p1",
+            paneTitle: "Claude",
+            transportGeneration: 1,
+            isOnStage: { true },
+            runTerminal: { request, handler in
+                let session = try await transport.attachTerminal(request)
+                try await handler.runEndingSession(session)
+            },
+            stageImage: { _, _ in throw TransportError.cancelled },
+            stageFile: { _, _ in throw TransportError.cancelled },
+            composer: composer,
+            closePane: {})
+        attach.viewDidResize(cols: 80, rows: 24)
+        try #require(
+            await ChangesViewTests.eventually { await transport.attachRequests.count == 1 })
+        #expect(await transport.emitAttachOutput(Data("live".utf8)))
+        try #require(
+            await ChangesViewTests.eventually {
+                attach.terminalStatus == AttachTerminalStore.Status.live
+            })
+        return attach
+    }
+}
