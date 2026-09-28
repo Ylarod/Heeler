@@ -92,6 +92,20 @@ survives. Snapshot worktree metadata also describes the main checkout; only
 `is_linked_worktree` makes a workspace eligible for linked-Worktree removal.
 _Avoid_: sandbox, branch copy, checkout folder
 
+**Checkout**:
+A git working tree on a Host: a repository's main checkout or one of its linked
+Worktrees. An Agent's Checkout is the one containing the Agent's directory; a
+directory outside any repository has none, even when repositories sit below it.
+_Avoid_: repository, repo, project
+
+**Changes**:
+A Checkout's uncommitted difference against its HEAD (staged, unstaged, and
+untracked files) as last read from the Host, beside the Checkout's latest
+commit. Opened from an Agent but owned by the Checkout, so every Agent in the
+same Checkout shows the same Changes, never "what this Agent changed". Viewing
+Changes never modifies the Checkout.
+_Avoid_: diff, source control, Agent's changes, project changes
+
 **Console**:
 The native dashboard surface, split into Agents, Terminals, Hosts, and Settings tabs; the two lists share one Host filter, and each hides its own search field until pulled down. Agents lists Agents across Hosts as either a flat list or a by-Host grouped list with collapsible sections, opening Agent detail; grouping is independent of Agent ordering and Pin priority. Terminals lists ordinary shell Panes as one card per Workspace, By Workspace or nested By Host, opening Shell Terminal. Hosts is Host management. The Console reopens the list tab it last showed. On an iPad beside its sidebar the tabs give way to the sidebar: a switch between the two lists at its top, Hosts and Settings as sheets from its foot, and each list's search behind a button there.
 _Avoid_: dashboard, home
