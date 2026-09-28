@@ -146,6 +146,91 @@ struct ChangesUntrackedDirectoryStoreTests {
         #expect(store.untrackedDirectories.expansion(for: directory.path) == nil)
     }
 
+    /// A is expanded and B is waiting on its listing. Collapsing A must not
+    /// leave B on loading after B's listing lands.
+    @Test func collapsingOneDirectoryLeavesAnothersInFlightListing() async throws {
+        let transport = ScriptedTransport()
+        let (store, read, directory) = try await Self.loaded(transport)
+        let listing = try Self.listing()
+        let other = ChangedFile(
+            path: Data("other/".utf8), originalPath: nil, kind: .untracked, staging: nil)
+        let kept = UntrackedDirectoryListing(
+            directory: other.path,
+            entries: [
+                ChangedFile(
+                    path: Data("other/a.txt".utf8), originalPath: nil, kind: .untracked,
+                    staging: nil)
+            ],
+            total: 1,
+            isTruncated: false,
+            isSeparateRepository: false,
+            limitNotice: nil)
+        await transport.scriptUntrackedDirectoryListings([
+            .success(listing),
+            .success(kept),
+        ])
+        await store.toggleDirectory(directory)
+        #expect(store.untrackedDirectories.expansion(for: directory.path) == .loaded(listing))
+
+        let gate = ScriptedTransportCallGate()
+        await transport.gateNextUntrackedDirectoryListing(using: gate)
+        let expanding = Task { await store.toggleDirectory(other) }
+        await gate.waitForEntry()
+        #expect(store.untrackedDirectories.expansion(for: other.path) == .loading)
+
+        await store.toggleDirectory(directory)
+        #expect(store.untrackedDirectories.expansion(for: directory.path) == nil)
+        #expect(store.untrackedDirectories.expansion(for: other.path) == .loading)
+
+        await gate.open()
+        await expanding.value
+        #expect(store.untrackedDirectories.expansion(for: other.path) == .loaded(kept))
+        #expect(store.untrackedDirectories.expansion(for: directory.path) == nil)
+        #expect(store.phase == .loaded(read.changes))
+        #expect(await transport.untrackedDirectoryRequests.count == 2)
+    }
+
+    /// Collapsing and opening the same directory again drops the listing that
+    /// was already in flight, then keeps the new one.
+    @Test func reopeningADirectoryDropsTheListingThatWasCollapsed() async throws {
+        let transport = ScriptedTransport()
+        let (store, _, directory) = try await Self.loaded(transport)
+        let stale = try Self.listing()
+        let fresh = UntrackedDirectoryListing(
+            directory: directory.path,
+            entries: [],
+            total: 0,
+            isTruncated: false,
+            isSeparateRepository: false,
+            limitNotice: nil)
+        await transport.scriptUntrackedDirectoryListings([
+            .success(stale),
+            .success(fresh),
+        ])
+        let firstGate = ScriptedTransportCallGate()
+        await transport.gateNextUntrackedDirectoryListing(using: firstGate)
+        let first = Task { await store.toggleDirectory(directory) }
+        await firstGate.waitForEntry()
+
+        await store.toggleDirectory(directory)
+        #expect(store.untrackedDirectories.expansion(for: directory.path) == nil)
+
+        let secondGate = ScriptedTransportCallGate()
+        await transport.gateNextUntrackedDirectoryListing(using: secondGate)
+        let second = Task { await store.toggleDirectory(directory) }
+        await secondGate.waitForEntry()
+        #expect(store.untrackedDirectories.expansion(for: directory.path) == .loading)
+
+        await firstGate.open()
+        await first.value
+        #expect(store.untrackedDirectories.expansion(for: directory.path) == .loading)
+
+        await secondGate.open()
+        await second.value
+        #expect(store.untrackedDirectories.expansion(for: directory.path) == .loaded(fresh))
+        #expect(await transport.untrackedDirectoryRequests.count == 2)
+    }
+
     @Test func aFailedListingStaysOnThatDirectoryAndTheNextTapReadsAgain() async throws {
         let transport = ScriptedTransport()
         let (store, read, directory) = try await Self.loaded(transport)
