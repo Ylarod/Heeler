@@ -74,8 +74,16 @@ struct ChangesUntrackedDirectoryRows: View {
                     .padding(.leading, 18)
             }
             ForEach(listing.entries) { entry in
-                ChangesFileRow(file: entry)
+                if entry.path.last == UInt8(ascii: "/") {
+                    ChangesFileRow(file: entry)
+                        .padding(.leading, 18)
+                } else {
+                    Button { store.openDiff(entry) } label: {
+                        ChangesFileRow(file: entry)
+                    }
+                    .buttonStyle(.plain)
                     .padding(.leading, 18)
+                }
             }
             if let notice = listing.limitNotice {
                 Text(notice)

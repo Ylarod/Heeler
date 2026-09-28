@@ -256,6 +256,26 @@ struct ChangesUntrackedDirectoryStoreTests {
         #expect(await transport.untrackedDirectoryRequests.count == 2)
     }
 
+    @Test func anExpandedDirectoryOpensItsFirstChildAsAnUntrackedPatch() async throws {
+        let transport = ScriptedTransport()
+        let (store, _, directory) = try await Self.loaded(transport)
+        let listing = try Self.listing()
+        await transport.scriptUntrackedDirectoryListings([.success(listing)])
+        await transport.scriptFilePatchReads([.success(FilePatch(files: [], isTruncated: false))])
+        await store.toggleDirectory(directory)
+
+        let child = try #require(listing.entries.first)
+        store.openDiff(child)
+        let diff = try #require(store.fileDiff.current)
+        await diff.appear()
+
+        let requests = await transport.filePatchRequests
+        #expect(requests.count == 1)
+        let request = try #require(requests.first)
+        #expect(request.isUntracked)
+        #expect(request.path == child.path)
+    }
+
     @Test func aCancelledListingLeavesTheDirectoryCollapsed() async throws {
         let transport = ScriptedTransport()
         let (store, read, directory) = try await Self.loaded(transport)
@@ -284,6 +304,7 @@ struct ChangesUntrackedDirectoryStoreTests {
         let store = ChangesStore(
             directory: { "/home/dev/src/app" },
             read: { request in try await transport.readChanges(request) },
+            readPatch: { request in try await transport.readFilePatch(request) },
             listUntrackedDirectory: { request in
                 try await transport.listUntrackedDirectory(request)
             })
