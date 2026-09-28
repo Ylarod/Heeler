@@ -133,14 +133,12 @@ struct GitProbeLineCountsTests {
         #expect(complete.totalsSummary == "2 files changed · +3 −1 lines · 1 untracked item")
     }
 
-    @Test func aFailedCountCommandKeepsTheFileListWithoutInventingCounts() throws {
-        let changes = try read(replacingNumstat(Data("4\t0\tconflict.txt\0".utf8), status: 128))
-        #expect(changes.files.count == 22)
-        #expect(changes.files.allSatisfy { $0.lineCounts == nil })
-        #expect(!changes.totals.linesAreComplete)
-        #expect(!changes.totals.linesAreAvailable)
-        #expect(changes.totals.linesSummary == "Line counts unavailable")
-        #expect(!changes.totals.accessibilitySummary.contains("0 lines added"))
+    @Test func aFailedCountCommandReportsTheGitFailure() {
+        // The failure-state contract applies to numstat too: even plausible
+        // output from a failed command must not become a successful read.
+        #expect(throws: ChangesReadError.gitFailed("git exited with status 128.")) {
+            try read(replacingNumstat(Data("4\t0\tconflict.txt\0".utf8), status: 128))
+        }
     }
 
     @Test func malformedCountsAndAnIncompleteLastRecordStayUnknown() throws {
