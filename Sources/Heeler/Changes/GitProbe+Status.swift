@@ -19,6 +19,8 @@ extension GitProbe {
         // one ends inside its last record.
         if !records.isEmpty { records.removeLast() }
         var report = StatusReport()
+        var tracked: [TrackedEntry] = []
+        var movedAway: [Data] = []
         var index = records.startIndex
         while index < records.endIndex {
             let record = Data(records[index])
@@ -28,14 +30,15 @@ extension GitProbe {
             case UInt8(ascii: "#"):
                 applyHeader(record, to: &report)
             case UInt8(ascii: "1"):
-                if let file = ordinaryEntry(record) { report.files.append(file) }
+                if let entry = ordinaryEntry(record) { tracked.append(entry) }
             case UInt8(ascii: "2"):
                 // The original path is the next record.
                 guard index < records.endIndex else { continue }
                 let originalPath = Data(records[index])
                 index += 1
-                if let file = renamedEntry(record, originalPath: originalPath) {
-                    report.files.append(file)
+                if let (entry, movedFrom) = renamedEntry(record, originalPath: originalPath) {
+                    tracked.append(entry)
+                    if let movedFrom { movedAway.append(movedFrom) }
                 }
             case UInt8(ascii: "u"):
                 if let (_, path) = fields(record, count: 9) {
@@ -54,8 +57,60 @@ extension GitProbe {
                 continue
             }
         }
+        markDeletedFromWorkingTree(movedAway, in: &tracked, besides: report.files)
+        report.files.append(contentsOf: tracked.map(\.file))
         report.files.sort(by: listsBefore)
         return report
+    }
+
+    /// A `1` or `2` record's status letters, kept until every record is read
+    /// because a later record can change an earlier one's working-tree side.
+    private struct TrackedEntry {
+        let path: Data
+        /// A staged rename's previous path.
+        let originalPath: Data?
+        let index: UInt8
+        var worktree: UInt8
+
+        var file: ChangedFile {
+            let kind: ChangedFile.Kind =
+                if originalPath != nil {
+                    .renamed
+                } else if index == UInt8(ascii: "A") || worktree == UInt8(ascii: "A") {
+                    .added
+                } else if index == UInt8(ascii: "D") || worktree == UInt8(ascii: "D") {
+                    .deleted
+                } else {
+                    .modified
+                }
+            return ChangedFile(
+                path: path, originalPath: originalPath, kind: kind,
+                staging: GitProbe.staging(index: index, worktree: worktree))
+        }
+    }
+
+    /// The original paths of working-tree renames are still in the index but
+    /// gone from the working tree. One with a record of its own (a staged
+    /// rename moved on) gains the deletion there, as git reports it without
+    /// `git add -N` (`RD`); any other becomes an unstaged deletion (`.D`).
+    private static func markDeletedFromWorkingTree(
+        _ paths: [Data], in tracked: inout [TrackedEntry], besides others: [ChangedFile]
+    ) {
+        guard !paths.isEmpty else { return }
+        var positions: [Data: Int] = [:]
+        for (position, entry) in tracked.enumerated() { positions[entry.path] = position }
+        let otherPaths = Set(others.map(\.path))
+        for path in paths {
+            if let position = positions[path] {
+                tracked[position].worktree = UInt8(ascii: "D")
+            } else if !otherPaths.contains(path) {
+                positions[path] = tracked.count
+                tracked.append(
+                    TrackedEntry(
+                        path: path, originalPath: nil, index: UInt8(ascii: "."),
+                        worktree: UInt8(ascii: "D")))
+            }
+        }
     }
 
     private static func listsBefore(_ lhs: ChangedFile, _ rhs: ChangedFile) -> Bool {
@@ -80,35 +135,41 @@ extension GitProbe {
     }
 
     /// `1 XY sub mH mI mW hH hI path`.
-    private static func ordinaryEntry(_ record: Data) -> ChangedFile? {
+    private static func ordinaryEntry(_ record: Data) -> TrackedEntry? {
         guard let (fields, path) = fields(record, count: 7),
             let (index, worktree) = statusPair(fields[0])
         else { return nil }
-        let kind: ChangedFile.Kind =
-            if index == UInt8(ascii: "A") || worktree == UInt8(ascii: "A") {
-                .added
-            } else if index == UInt8(ascii: "D") || worktree == UInt8(ascii: "D") {
-                .deleted
-            } else {
-                .modified
-            }
-        return ChangedFile(
-            path: path, originalPath: nil, kind: kind,
-            staging: staging(index: index, worktree: worktree))
+        return TrackedEntry(path: path, originalPath: nil, index: index, worktree: worktree)
     }
 
     /// `2 XY sub mH mI mW hH hI Xscore path` followed by the original path.
-    /// With rename detection on and copies off, X is `R`.
-    private static func renamedEntry(_ record: Data, originalPath: Data) -> ChangedFile? {
+    /// Git never reports a rename on both sides of one path (wt-status.c
+    /// treats that as a bug). `X` is `R` for a staged rename. `Y` is `R` for
+    /// a working-tree rename, which git detects only against an intent-to-add
+    /// entry (`git add -N`): status pairs only staged renames, so the new
+    /// path reads as added and the original, returned as `movedFrom`, as
+    /// deleted from the working tree. A copy (`C`, ruled out by
+    /// `status.renames=true` wherever git knows that key) leaves its original
+    /// in place, so the new path reads as added.
+    private static func renamedEntry(
+        _ record: Data, originalPath: Data
+    ) -> (entry: TrackedEntry, movedFrom: Data?)? {
         guard let (fields, path) = fields(record, count: 8),
             let (index, worktree) = statusPair(fields[0])
         else { return nil }
-        let isRename = index == UInt8(ascii: "R")
-        return ChangedFile(
-            path: path,
-            originalPath: isRename ? originalPath : nil,
-            kind: isRename ? .renamed : .added,
-            staging: staging(index: index, worktree: worktree))
+        let renamed = UInt8(ascii: "R")
+        let copied = UInt8(ascii: "C")
+        let added = UInt8(ascii: "A")
+        if index == renamed {
+            let entry = TrackedEntry(
+                path: path, originalPath: originalPath, index: index, worktree: worktree)
+            return (entry, nil)
+        }
+        let entry = TrackedEntry(
+            path: path, originalPath: nil,
+            index: index == copied ? added : index,
+            worktree: worktree == renamed || worktree == copied ? added : worktree)
+        return (entry, worktree == renamed ? originalPath : nil)
     }
 
     private static func statusPair(_ field: Data) -> (UInt8, UInt8)? {

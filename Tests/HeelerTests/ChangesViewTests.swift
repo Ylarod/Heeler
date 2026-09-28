@@ -84,6 +84,22 @@ struct ChangesViewTests {
             })
     }
 
+    /// A staged rename moved on with `git add -N` lists each path once:
+    /// the rename, now also deleted from the working tree, and the addition.
+    @Test func aMovedStagedRenameShowsItsRenameAndItsAddition() async throws {
+        let (controller, window, _) = try await Self.host(
+            GitProbeRecordings.intentToAddMoveAfterStagedRename)
+        defer { window.isHidden = true }
+
+        var labels = Set<String>()
+        let shown = try await Self.eventually {
+            labels = Self.labels(in: controller)
+            return labels.contains("b.txt, renamed from a.txt, staged and unstaged")
+                && labels.contains("c.txt, added, unstaged")
+        }
+        #expect(shown, "rows missing: \(labels.sorted())")
+    }
+
     @Test func aDirectoryOutsideAWorkingTreeSaysSo() async throws {
         let transport = ScriptedTransport()
         await transport.scriptChangesReads([.failure(ChangesReadError.notAGitWorkingTree)])

@@ -238,6 +238,38 @@ struct GitProbeChangesParsingTests {
         #expect(try file("untracked.txt").detail == "Untracked")
     }
 
+    /// `git add -N` on a moved file makes git pair the move as a working-tree
+    /// rename (`2 .R`). Status pairs only staged renames, so the move reads
+    /// as the original's deletion plus the new path's addition, and the
+    /// deleted original sorts into place by its path.
+    @Test func anIntentToAddMoveReadsAsADeletionPlusAnAddition() throws {
+        let files = try Self.parse(GitProbeRecordings.intentToAddMove).changes.files
+        #expect(
+            Self.rows(files) == [
+                Row(path: "a.txt", kind: .deleted, staging: .unstaged),
+                Row(path: "b.txt", kind: .added, staging: .unstaged),
+            ])
+        #expect(
+            files.map(\.accessibilityLabel) == [
+                "a.txt, deleted, unstaged", "b.txt, added, unstaged",
+            ])
+    }
+
+    /// A staged rename moved on in the working tree and marked with
+    /// `git add -N`: its row keeps the staged rename and gains the
+    /// working-tree deletion, as git reports it without `-N` (`2 RD`), and
+    /// no path is listed twice.
+    @Test func anIntentToAddMoveOfAStagedRenameKeepsTheRenameAndItsDeletion() throws {
+        let files = try Self.parse(GitProbeRecordings.intentToAddMoveAfterStagedRename)
+            .changes.files
+        #expect(
+            Self.rows(files) == [
+                Row(path: "b.txt", kind: .renamed, staging: .both, original: "a.txt"),
+                Row(path: "c.txt", kind: .added, staging: .unstaged),
+            ])
+        #expect(files.first?.detail == "Renamed from a.txt · Staged and unstaged")
+    }
+
     /// Two Agents in one Checkout, one at its top and one in a subdirectory,
     /// read the same Changes; only the directory's own prefix differs.
     @Test func everyDirectoryInACheckoutReadsTheSameChanges() throws {

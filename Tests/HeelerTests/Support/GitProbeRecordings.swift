@@ -562,4 +562,142 @@ enum GitProbeRecordings {
 
         """.utf8))
 
+    /// An unstaged move whose new path was marked with `git add -N`
+    /// (`mv a.txt b.txt; git add -N b.txt`): git pairs the move as a
+    /// working-tree rename, `2 .R`.
+    static let intentToAddMove = (
+        stdout: Data(
+        """
+
+        __HEELER_GIT_F00D__ version begin
+        git version 2.54.0 (Apple Git-157)
+
+        __HEELER_GIT_F00D__ version rc=0
+
+        __HEELER_GIT_F00D__ home begin
+        /home/dev
+        __HEELER_GIT_F00D__ home rc=0
+
+        __HEELER_GIT_F00D__ discover begin
+        /home/dev/src/moved
+
+        /home/dev/src/moved/.git
+        .git
+
+        __HEELER_GIT_F00D__ discover rc=0
+
+        __HEELER_GIT_F00D__ status begin
+        # branch.oid 73cf7c33a6e24d09ace7b650d2782608861b5ddc\u{0}# branch.head main\u{0}2 .R N... 100644 100644 100644 4cb29ea38f70d7c61b2a3a25b02e3bdf44905402 4cb29ea38f70d7c61b2a3a25b02e3bdf44905402 R100 b.txt\u{0}a.txt\u{0}
+        __HEELER_GIT_F00D__ status rc=0
+
+        __HEELER_GIT_F00D__ numstat begin
+        0\t0\t\u{0}a.txt\u{0}b.txt\u{0}
+        __HEELER_GIT_F00D__ numstat rc=0
+
+        __HEELER_GIT_F00D__ head begin
+        1790503200 Add a.txt
+
+        __HEELER_GIT_F00D__ head rc=0
+
+        __HEELER_GIT_F00D__ done
+
+        """.utf8),
+        stderr: Data(
+        """
+
+        __HEELER_GIT_F00D__ version begin
+
+        __HEELER_GIT_F00D__ version end
+
+        __HEELER_GIT_F00D__ home begin
+
+        __HEELER_GIT_F00D__ home end
+
+        __HEELER_GIT_F00D__ discover begin
+
+        __HEELER_GIT_F00D__ discover end
+
+        __HEELER_GIT_F00D__ status begin
+
+        __HEELER_GIT_F00D__ status end
+
+        __HEELER_GIT_F00D__ numstat begin
+
+        __HEELER_GIT_F00D__ numstat end
+
+        __HEELER_GIT_F00D__ head begin
+
+        __HEELER_GIT_F00D__ head end
+
+        """.utf8))
+
+    /// A staged rename followed by an unstaged move of its new path marked
+    /// with `git add -N` (`git mv a.txt b.txt; mv b.txt c.txt; git add -N
+    /// c.txt`): a `2 R.` record for b.txt and a `2 .R` record moving it on.
+    static let intentToAddMoveAfterStagedRename = (
+        stdout: Data(
+        """
+
+        __HEELER_GIT_F00D__ version begin
+        git version 2.54.0 (Apple Git-157)
+
+        __HEELER_GIT_F00D__ version rc=0
+
+        __HEELER_GIT_F00D__ home begin
+        /home/dev
+        __HEELER_GIT_F00D__ home rc=0
+
+        __HEELER_GIT_F00D__ discover begin
+        /home/dev/src/restaged
+
+        /home/dev/src/restaged/.git
+        .git
+
+        __HEELER_GIT_F00D__ discover rc=0
+
+        __HEELER_GIT_F00D__ status begin
+        # branch.oid 73cf7c33a6e24d09ace7b650d2782608861b5ddc\u{0}# branch.head main\u{0}2 R. N... 100644 100644 100644 4cb29ea38f70d7c61b2a3a25b02e3bdf44905402 4cb29ea38f70d7c61b2a3a25b02e3bdf44905402 R100 b.txt\u{0}a.txt\u{0}2 .R N... 100644 100644 100644 4cb29ea38f70d7c61b2a3a25b02e3bdf44905402 4cb29ea38f70d7c61b2a3a25b02e3bdf44905402 R100 c.txt\u{0}b.txt\u{0}
+        __HEELER_GIT_F00D__ status rc=0
+
+        __HEELER_GIT_F00D__ numstat begin
+        0\t0\t\u{0}a.txt\u{0}c.txt\u{0}
+        __HEELER_GIT_F00D__ numstat rc=0
+
+        __HEELER_GIT_F00D__ head begin
+        1790503200 Add a.txt
+
+        __HEELER_GIT_F00D__ head rc=0
+
+        __HEELER_GIT_F00D__ done
+
+        """.utf8),
+        stderr: Data(
+        """
+
+        __HEELER_GIT_F00D__ version begin
+
+        __HEELER_GIT_F00D__ version end
+
+        __HEELER_GIT_F00D__ home begin
+
+        __HEELER_GIT_F00D__ home end
+
+        __HEELER_GIT_F00D__ discover begin
+
+        __HEELER_GIT_F00D__ discover end
+
+        __HEELER_GIT_F00D__ status begin
+
+        __HEELER_GIT_F00D__ status end
+
+        __HEELER_GIT_F00D__ numstat begin
+
+        __HEELER_GIT_F00D__ numstat end
+
+        __HEELER_GIT_F00D__ head begin
+
+        __HEELER_GIT_F00D__ head end
+
+        """.utf8))
+
 }

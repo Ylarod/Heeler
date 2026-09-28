@@ -87,7 +87,8 @@ struct ChangedFile: Sendable, Equatable, Identifiable {
         case added
         case deleted
         /// A staged rename; an unstaged move reads as a deletion plus an
-        /// untracked file.
+        /// untracked file, or plus an added file when the new path was
+        /// marked with `git add -N`.
         case renamed
         case untracked
         case conflicted
