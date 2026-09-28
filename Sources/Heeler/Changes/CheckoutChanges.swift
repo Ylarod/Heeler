@@ -28,6 +28,8 @@ struct CheckoutChanges: Sendable, Equatable {
     let files: [ChangedFile]
 
     var isClean: Bool { files.isEmpty }
+    /// Counts or latest-commit output exceeded its Host-side cap.
+    var isMetadataTruncated = false
 }
 
 /// A git working tree as git resolved it on the Host.
@@ -203,6 +205,8 @@ enum ChangesReadError: Error, Sendable, Equatable {
     case gitFailed(String)
     case gitMissing
     case gitTooOld(String)
+    case notOwnedByAccount
+    case directoryMissing
 
     var message: String {
         switch self {
@@ -218,6 +222,10 @@ enum ChangesReadError: Error, Sendable, Equatable {
             "Git couldn't be run on this Host. Install git and make it available to the SSH account."
         case .gitTooOld(let version):
             "This Host has git \(version). Changes requires git 2.17 or later."
+        case .notOwnedByAccount:
+            "Git's ownership protection refused this Checkout because it belongs to another user account on the Host. Heeler doesn't bypass that protection."
+        case .directoryMissing:
+            "This directory no longer exists on the Host."
         }
     }
 }
