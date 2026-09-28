@@ -285,6 +285,69 @@ struct AgentDetailChangesTests {
         await attach.leave().value
     }
 
+    /// Agent detail leaving the screen while Changes stays open (another
+    /// tab, or a view pushed over it) hands the chrome back to the terminal
+    /// theme's owner, and coming back claims it for Changes again.
+    @Test func changesClaimTheChromeAgainWhenAgentDetailComesBack() async throws {
+        let transport = ScriptedTransport()
+        await transport.scriptChangesReads([
+            .success(try ChangesStoreTests.read(GitProbeRecordings.clean))
+        ])
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let attach = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let suiteName = "changes-chrome-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let changes = AgentChangesPresentation {
+            ChangesStore(directory: { "/home/dev/src/clean" }) { request in
+                try await transport.readChanges(request)
+            }
+        }
+        var shownChanges: [Bool] = []
+        let detail = Self.makeDetail(
+            attach: attach, composer: composer,
+            inputMode: AgentInputModeSettings(defaults: defaults), defaults: defaults,
+            changes: changes, onShowsChanges: { shownChanges.append($0) })
+        let cover = CoveringPath()
+        let controller = UIHostingController(
+            rootView: CoverableStack(cover: cover, detail: detail))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+        try #require(
+            await ChangesViewTests.eventually {
+                controller.view.layoutIfNeeded()
+                return !AgentSurfaceReplacementTests.terminals(in: controller.view).isEmpty
+            })
+
+        changes.open()
+        try #require(
+            await ChangesViewTests.eventually {
+                ChangesViewTests.labels(in: controller).contains(ChangesStore.cleanMessage)
+            })
+        #expect(shownChanges.last == true)
+
+        cover.path = [1]
+        let covered = try await ChangesViewTests.eventually {
+            controller.view.layoutIfNeeded()
+            return shownChanges.last == false
+        }
+        try #require(covered, "covering never released the chrome: \(shownChanges)")
+
+        cover.path = []
+        let reclaimed = try await ChangesViewTests.eventually {
+            controller.view.layoutIfNeeded()
+            return shownChanges.last == true
+        }
+        #expect(reclaimed, "Changes never reclaimed the chrome: \(shownChanges)")
+        #expect(changes.store != nil)
+
+        await attach.leave().value
+    }
+
     private static func makeDetail(
         attach: AgentAttachStore,
         composer: AgentComposerStore,
@@ -349,5 +412,23 @@ struct AgentDetailChangesTests {
                 attach.terminalStatus == AttachTerminalStore.Status.live
             })
         return attach
+    }
+}
+
+/// A navigation path the test drives to push a view over Agent detail.
+@MainActor
+@Observable
+private final class CoveringPath {
+    var path: [Int] = []
+}
+
+private struct CoverableStack: View {
+    @Bindable var cover: CoveringPath
+    let detail: AgentDetailView
+
+    var body: some View {
+        NavigationStack(path: $cover.path) {
+            detail.navigationDestination(for: Int.self) { _ in Text("Covering") }
+        }
     }
 }

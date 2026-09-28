@@ -298,6 +298,9 @@ struct AgentDetailView: View {
             hasAppeared = true
             prepareRetainedAgent()
             updateFocus()
+            // Paired with the disappearance below: Changes still open when
+            // Agent detail comes back claim the chrome again.
+            if changes.store != nil { onShowsChanges?(true) }
         }
         .onChange(of: focusViewingState) {
             updateFocus()
