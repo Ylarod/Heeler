@@ -7,6 +7,21 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Changes shows what is uncommitted in the Checkout an Agent is working in,
+  without opening a terminal. Open it from the Agent's More menu, in
+  Composer or Direct Input, whenever the Agent has a working directory; it
+  takes the place of Agent detail, and Back returns to the Agent with its
+  draft and input mode as they were. A header names the Checkout by its Host
+  path, marks a linked Worktree, and shows the branch or detached commit and
+  the latest commit's subject and age. Below it, each changed file is listed
+  as modified, added, deleted, renamed, untracked, or conflicted, and as
+  staged, unstaged, or both, with conflicts first. Pull down to read it
+  again. Heeler reads the Checkout with git on the Host over SSH, without
+  running its hooks or file-system monitor and without rewriting its index,
+  and keeps nothing once Changes closes. (#382)
+
 ## [0.1.11] - 2026-09-28
 
 ### Added
