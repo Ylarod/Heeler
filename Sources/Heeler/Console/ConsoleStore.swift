@@ -385,6 +385,17 @@ final class ConsoleStore {
         }
     }
 
+    /// The Changes view's data source: one git read over the Host's live
+    /// Console connection. Uncached: the document lives only in the view
+    /// that shows it.
+    func readChanges(
+        _ request: ChangesReadRequest, on hostID: Host.ID
+    ) async throws -> CheckoutChangesRead {
+        try await projection(for: hostID).session.withTransport { transport in
+            try await transport.readChanges(request)
+        }
+    }
+
     /// Composer's one-shot delivery source. Prompts borrow the Host's current
     /// Console connection rather than dialing a parallel connection or holding
     /// an RPC open for Agent completion.

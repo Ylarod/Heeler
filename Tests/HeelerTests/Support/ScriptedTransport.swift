@@ -125,6 +125,12 @@ final actor ScriptedTransport: Transport {
     private(set) var sidebarLayoutReads = 0
     private var nextSidebarLayoutGate: ScriptedTransportCallGate?
     private var sidebarLayoutReadFailure: (any Error)?
+    /// Every Changes read received, in order.
+    private(set) var changesReadRequests: [ChangesReadRequest] = []
+    /// Consumed one per read; an unscripted read reports Changes as
+    /// unavailable, like a Transport without git.
+    private var changesReadOutcomes: [Result<CheckoutChangesRead, any Error>] = []
+    private var nextChangesReadGate: ScriptedTransportCallGate?
 
     init(
         snapshot: SessionSnapshot = .fixture(),
@@ -706,6 +712,27 @@ final actor ScriptedTransport: Transport {
         if let failure = notificationRegistrationWriteFailure { throw failure }
         notificationConfig = contents
         replacedNotificationConfigs.append(contents)
+    }
+
+    /// Queues the outcomes of the next Changes reads, in order.
+    func scriptChangesReads(_ outcomes: [Result<CheckoutChangesRead, any Error>]) {
+        changesReadOutcomes.append(contentsOf: outcomes)
+    }
+
+    /// Holds the next Changes read, after it is recorded, until `gate` opens.
+    func gateNextChangesRead(using gate: ScriptedTransportCallGate) {
+        nextChangesReadGate = gate
+    }
+
+    func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead {
+        changesReadRequests.append(request)
+        let outcome: Result<CheckoutChangesRead, any Error> =
+            changesReadOutcomes.isEmpty
+            ? .failure(ChangesReadError.unavailable) : changesReadOutcomes.removeFirst()
+        let gate = nextChangesReadGate
+        nextChangesReadGate = nil
+        if let gate { await gate.waitUntilOpen() }
+        return try outcome.get()
     }
 
     func gateNextSidebarLayoutRead(_ gate: ScriptedTransportCallGate) {

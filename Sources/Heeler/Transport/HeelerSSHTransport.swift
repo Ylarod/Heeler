@@ -1993,6 +1993,16 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
+    /// One Changes read: one script, one exec, a fresh nonce per request so
+    /// stale output or repository content cannot pass for its markers.
+    func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead {
+        let nonce = GitProbe.makeNonce()
+        let result = try await runGitScript(
+            GitProbe.changesScript(directory: request.directory, nonce: nonce))
+        return try GitProbe.parseChanges(
+            stdout: result.stdout, stderr: result.stderr, nonce: nonce)
+    }
+
     /// Internal plumbing for the purpose-built Changes reads. The script
     /// owns POSIX quoting, locale, output caps and completeness markers.
     /// The caller's deadline includes admission. Once dispatched, exec keeps

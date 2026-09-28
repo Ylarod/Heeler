@@ -242,6 +242,13 @@ protocol Transport: Sendable {
     /// figure is then shown without its window (#325).
     func modelContextWindow(selector: String) async throws -> Int?
 
+    /// Reads the Changes of the Checkout containing `request.directory`:
+    /// one git script over one exec, resolved and parsed by `GitProbe`.
+    /// Git-level outcomes throw `ChangesReadError`; a git read past its
+    /// deadline throws `TransportError.gitTimedOut`. Transports that cannot
+    /// run git on a Host throw `ChangesReadError.unavailable` by default.
+    func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead
+
     /// Whether the underlying connection to the Host is still alive. The
     /// reconnect machinery (#18) decides "re-subscribe on this connection or
     /// re-establish it" from this flag.
@@ -294,6 +301,12 @@ extension Transport {
 
     /// A transport without Host commands knows no model windows.
     func modelContextWindow(selector: String) async throws -> Int? { nil }
+
+    /// A transport without Host commands cannot run git, and says so
+    /// rather than reporting an empty Checkout.
+    func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead {
+        throw ChangesReadError.unavailable
+    }
 
     /// Non-SSH test doubles and alternative transports can state that SFTP is
     /// unavailable without importing or emulating an SSH library.

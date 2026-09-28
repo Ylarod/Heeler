@@ -214,3 +214,28 @@ enum ChangesReadError: Error, Sendable, Equatable {
         }
     }
 }
+
+extension CheckoutChanges {
+    /// What VoiceOver reads for the header, as one element: the Checkout,
+    /// its linked Worktree marker, the branch or detached commit, and the
+    /// latest commit with its age. It names the Checkout and never an
+    /// Agent, so every Agent inside one Checkout hears the same summary.
+    func accessibilitySummary(relativeTo now: Date, locale: Locale = .current) -> String {
+        var sentences = [
+            checkout.isLinkedWorktree
+                ? "Checkout \(checkout.displayPath), linked Worktree"
+                : "Checkout \(checkout.displayPath)"
+        ]
+        switch head.branch {
+        case .named(let name):
+            sentences.append("Branch \(name)")
+        case .detached:
+            sentences.append(head.branchTitle)
+        }
+        if let latest = head.latestCommit {
+            sentences.append(
+                "Latest commit: \(latest.subject), \(latest.age(relativeTo: now, locale: locale))")
+        }
+        return sentences.map { "\($0)." }.joined(separator: " ")
+    }
+}
