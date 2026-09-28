@@ -296,7 +296,7 @@ actor HeelerSSHTransport: Transport {
     static let maximumResponseBytes = 1_048_576
     /// Paths and shell syntax belong on stdin, never in the login shell's
     /// command line. In particular, do not prepend an environment assignment.
-    static let gitScriptCommand = "/bin/sh -s"
+    static let gitScriptCommand = GitProbe.shellInvocation
     static let maxConcurrentForwardingChannels =
         SSHChannelAdmission.Limits.production.ordinaryForwarding
     static let maxConcurrentExecChannels =
