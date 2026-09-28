@@ -108,6 +108,25 @@ struct ChangesUntrackedDirectoryStoreTests {
         #expect(store.untrackedDirectories.expansion(for: directory.path) == nil)
     }
 
+    @Test func aTimedOutRefreshKeepsExpandedDirectoriesAndTheKeptContent() async throws {
+        let transport = ScriptedTransport()
+        let (store, read, directory) = try await Self.loaded(transport)
+        let listing = try Self.listing()
+        await transport.scriptUntrackedDirectoryListings([.success(listing)])
+        await store.toggleDirectory(directory)
+
+        await transport.scriptChangesReads([.failure(TransportError.gitTimedOut)])
+        await store.refresh()
+        #expect(store.untrackedDirectories.expansion(for: directory.path) == .loaded(listing))
+        #expect(store.timedOutKeepingContent)
+        #expect(store.phase == .loaded(read.changes))
+
+        await transport.scriptChangesReads([.success(read)])
+        await store.refresh()
+        #expect(store.untrackedDirectories.expansion(for: directory.path) == nil)
+        #expect(!store.timedOutKeepingContent)
+    }
+
     @Test func aListingThatLandsAfterARefreshIsDiscarded() async throws {
         let transport = ScriptedTransport()
         let (store, read, directory) = try await Self.loaded(transport)
