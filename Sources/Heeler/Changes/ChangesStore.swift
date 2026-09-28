@@ -14,9 +14,38 @@ final class ChangesStore {
         case loaded(CheckoutChanges)
         /// The Agent's directory is not inside a git working tree.
         case notAGitWorkingTree
-        /// The read failed; carries what to show. Richer failure states
-        /// (limits, git version, ownership) arrive in #389.
+        /// An unclassified failure; carries git's first error line.
         case failed(String)
+        case gitMissing
+        case gitTooOld(String)
+        case notOwnedByAccount
+        case directoryMissing
+        case incomplete
+        case timedOut
+
+        /// A display-ready explanation keeps git knowledge out of views.
+        var failure: (title: String, message: String, symbol: String)? {
+            switch self {
+            case .loading, .loaded:
+                nil
+            case .notAGitWorkingTree:
+                ("Not a Git Working Tree", ChangesReadError.notAGitWorkingTree.message, "folder.badge.questionmark")
+            case .failed(let message):
+                ("Couldn't Read Changes", message, "exclamationmark.triangle")
+            case .gitMissing:
+                ("Git Not Found", ChangesReadError.gitMissing.message, "folder.badge.questionmark")
+            case .gitTooOld(let version):
+                ("Git Version Too Old", ChangesReadError.gitTooOld(version).message, "arrow.up.circle")
+            case .notOwnedByAccount:
+                ("Checkout Ownership Protected", ChangesReadError.notOwnedByAccount.message, "lock.shield")
+            case .directoryMissing:
+                ("Directory No Longer Exists", ChangesReadError.directoryMissing.message, "folder.badge.questionmark")
+            case .incomplete:
+                ("Incomplete Changes", ChangesReadError.incomplete.message, "exclamationmark.triangle")
+            case .timedOut:
+                ("Reading Changes Timed Out", "The Host took too long to read Changes. Pull to try again.", "clock")
+            }
+        }
     }
 
     static let cleanMessage = "No uncommitted changes"
@@ -27,6 +56,8 @@ final class ChangesStore {
     /// Where the Agent's directory sits inside the Checkout, raw bytes,
     /// from the latest successful read; empty at the top level.
     private(set) var directoryPrefix = Data()
+    /// A timed-out refresh keeps the last document, identity and scroll position.
+    private(set) var timedOutKeepingContent = false
 
     /// The Checkout the document describes. Views key their content on it,
     /// so a read resolving another Checkout replaces the document wholesale.
@@ -83,6 +114,7 @@ final class ChangesStore {
             let result = try await read(ChangesReadRequest(directory: directory))
             phase = .loaded(result.changes)
             directoryPrefix = result.directoryPrefix
+            timedOutKeepingContent = false
             hasRead = true
             fileDiff.closeIfCheckoutChanged(to: result.changes.checkout)
         } catch is CancellationError, TransportError.cancelled {
@@ -91,12 +123,35 @@ final class ChangesStore {
         } catch let error as ChangesReadError {
             hasRead = true
             directoryPrefix = Data()
-            phase = error == .notAGitWorkingTree ? .notAGitWorkingTree : .failed(error.message)
+            timedOutKeepingContent = false
+            if error == .notAGitWorkingTree {
+                phase = .notAGitWorkingTree
+            } else if error == .gitMissing {
+                phase = .gitMissing
+            } else if case .gitTooOld(let version) = error {
+                phase = .gitTooOld(version)
+            } else if error == .notOwnedByAccount {
+                phase = .notOwnedByAccount
+            } else if error == .directoryMissing {
+                phase = .directoryMissing
+            } else if error == .incomplete {
+                phase = .incomplete
+            } else {
+                phase = .failed(error.message)
+            }
         } catch let error as TransportError {
             hasRead = true
-            phase = .failed(error.presentation.explanation)
+            if error == .gitTimedOut, case .loaded = phase {
+                timedOutKeepingContent = true
+            } else {
+                timedOutKeepingContent = false
+                directoryPrefix = Data()
+                phase = error == .gitTimedOut ? .timedOut : .failed(error.presentation.explanation)
+            }
         } catch {
             hasRead = true
+            timedOutKeepingContent = false
+            directoryPrefix = Data()
             phase = .failed(error.localizedDescription)
         }
     }

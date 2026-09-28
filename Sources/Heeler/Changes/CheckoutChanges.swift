@@ -27,7 +27,11 @@ struct CheckoutChanges: Sendable, Equatable {
     /// Conflicted files first, then everything else by raw path bytes.
     let files: [ChangedFile]
 
-    var isClean: Bool { files.isEmpty }
+    var isClean: Bool { files.isEmpty && !isStatusTruncated }
+    /// The Host's status output was capped, so files.count is a lower bound.
+    var isStatusTruncated = false
+    /// Counts or latest-commit output exceeded its Host-side cap.
+    var isMetadataTruncated = false
 }
 
 /// A git working tree as git resolved it on the Host.
@@ -201,6 +205,10 @@ enum ChangesReadError: Error, Sendable, Equatable {
     case incomplete
     /// Git failed; carries git's first framed error line.
     case gitFailed(String)
+    case gitMissing
+    case gitTooOld(String)
+    case notOwnedByAccount
+    case directoryMissing
 
     var message: String {
         switch self {
@@ -212,6 +220,14 @@ enum ChangesReadError: Error, Sendable, Equatable {
             "The Host's reply ended early, so these Changes may be incomplete."
         case .gitFailed(let line):
             line
+        case .gitMissing:
+            "Git couldn't be run on this Host. Install git and make it available to the SSH account."
+        case .gitTooOld(let version):
+            "This Host has git \(version). Changes requires git 2.17 or later."
+        case .notOwnedByAccount:
+            "Git's ownership protection refused this Checkout because it belongs to another user account on the Host. Heeler doesn't bypass that protection."
+        case .directoryMissing:
+            "This directory no longer exists on the Host."
         }
     }
 }

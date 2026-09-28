@@ -18,7 +18,6 @@ struct ChangesView: View {
                 // A read resolving another Checkout replaces the whole view,
                 // scroll position included; a refresh of the same one keeps it.
                 .id(store.checkout)
-                .overlay { stateOverlay }
                 .opacity(store.fileDiff.current == nil ? 1 : 0)
                 .allowsHitTesting(store.fileDiff.current == nil)
                 .accessibilityHidden(store.fileDiff.current != nil)
@@ -58,6 +57,11 @@ struct ChangesView: View {
     private var list: some View {
         List {
             if case .loaded(let changes) = store.phase {
+                if store.timedOutKeepingContent {
+                    Section {
+                        ChangesTimeoutNotice()
+                    }
+                }
                 Section {
                     ChangesHeader(changes: changes)
                 }
@@ -66,7 +70,7 @@ struct ChangesView: View {
                         Text(ChangesStore.cleanMessage)
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(changes.files) { file in
+                        ForEach(changes.listedFiles) { file in
                             if isUntrackedDirectory(file) {
                                 ChangesFileRow(file: file)
                             } else {
@@ -76,6 +80,11 @@ struct ChangesView: View {
                                 .buttonStyle(.plain)
                             }
                         }
+                    }
+                }
+                if changes.listLimitNotice != nil || changes.isMetadataTruncated {
+                    Section {
+                        ChangesLimitNotice(changes: changes)
                     }
                 }
             }
@@ -89,29 +98,17 @@ struct ChangesView: View {
             defer { isPulling = false }
             await store.refresh()
         }
+        .overlay { stateOverlay }
     }
 
     @ViewBuilder
     private var stateOverlay: some View {
-        switch store.phase {
-        case .loading:
+        if store.phase == .loading {
             ProgressView("Reading Changes…")
-        case .loaded:
-            EmptyView()
-        case .notAGitWorkingTree:
-            ContentUnavailableView {
-                Label("Not a Git Working Tree", systemImage: "folder.badge.questionmark")
-            } description: {
-                Text(ChangesReadError.notAGitWorkingTree.message)
-            } actions: {
-                tryAgain
-            }
-        case .failed(let message):
-            ContentUnavailableView {
-                Label("Couldn't Read Changes", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(message)
-            } actions: {
+        } else if let failure = store.phase.failure {
+            ChangesFailureState(
+                title: failure.title, message: failure.message, symbol: failure.symbol
+            ) {
                 tryAgain
             }
         }

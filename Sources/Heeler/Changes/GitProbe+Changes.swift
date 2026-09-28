@@ -51,21 +51,26 @@ extension GitProbe {
     ) throws -> CheckoutChangesRead {
         let frames = Frames(stdout: stdout, stderr: stderr, nonce: nonce)
         guard frames.reachedEnd else { throw ChangesReadError.incomplete }
+        try validateChangesFraming(frames)
 
         let version = try frames.requiredSection(SectionName.version, cap: Cap.version)
-        guard version.status == 0 else { throw failure(version) }
+        try requireUsableGit(version)
         let home = try frames.requiredSection(SectionName.home, cap: Cap.home)
+        guard home.status == 0 else { throw failure(home) }
+        guard !home.isTruncated else { throw ChangesReadError.incomplete }
 
         let discover = try frames.requiredSection(SectionName.discover, cap: Cap.discover)
         guard discover.status == 0 else {
             throw classifyDiscoveryFailure(discover)
         }
+        guard !discover.isTruncated else { throw ChangesReadError.incomplete }
         // The script lists status only once git reports a top level. Git
         // older than 2.25 answers inside a git directory with an empty top
         // level and a zero status, which lands here too.
-        guard let status = try frames.section(SectionName.status, cap: Cap.status) else {
+        guard !discover.body.isEmpty, discover.body.first != 0x0A else {
             throw ChangesReadError.notAGitWorkingTree
         }
+        let status = try frames.requiredSection(SectionName.status, cap: Cap.status)
         let lines = discover.body.split(separator: 0x0A, omittingEmptySubsequences: false)
         // Four newline-terminated lines. A top level containing a newline
         // cannot be split by line and is not supported.
@@ -91,29 +96,25 @@ extension GitProbe {
             isLinkedWorktree: isLinkedWorktree(
                 gitDirectory: gitDirectory, commonDirectory: commonDirectory),
             displayPath: displayPath(topLevel, home: home.body))
-        let changes = CheckoutChanges(
+        var changes = CheckoutChanges(
             checkout: checkout,
             head: CheckoutHead(
                 branch: report.branch,
                 commit: report.commit,
                 latestCommit: head.status == 0 ? parseLatestCommit(head.body) : nil),
-            files: report.files)
+            files: report.files,
+            isStatusTruncated: status.isTruncated)
+        changes.isMetadataTruncated = try validateChangesMetadata(frames)
         return CheckoutChangesRead(changes: changes, directoryPrefix: prefix)
     }
 
     /// Classified from the command's framed stderr under the C locale.
     static func classifyDiscoveryFailure(_ section: Section) -> ChangesReadError {
-        let messages = String(decoding: section.messages, as: UTF8.self)
-        if messages.contains("not a git repository")
-            || messages.contains("must be run in a work tree")
-        {
-            return .notAGitWorkingTree
-        }
-        return failure(section)
+        failure(section)
     }
 
     static func failure(_ section: Section) -> ChangesReadError {
-        .gitFailed(section.firstMessageLine ?? "git exited with status \(section.status).")
+        classifyCommandFailure(section)
     }
 
     /// A linked Worktree's common directory is absolute and differs from its
