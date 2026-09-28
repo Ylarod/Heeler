@@ -69,7 +69,7 @@ final class WorktreeDetailStore {
     /// and only when something can open Changes after the sheet dismisses.
     var canShowChanges: Bool {
         guard showChangesHandler != nil else { return false }
-        switch removalPhase {
+        return switch removalPhase {
         case .removing, .removed: false
         case .idle, .failed, .stale, .unconfirmed: true
         }
