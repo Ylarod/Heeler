@@ -48,8 +48,18 @@ extension GitProbe {
         if !records.isEmpty { records.removeLast() }
         var isSeparateRepository = false
         var paths: [Data] = []
-        for record in records {
-            guard let path = untrackedPath(Data(record)) else { continue }
+        var index = records.startIndex
+        while index < records.endIndex {
+            let record = Data(records[index])
+            index += 1
+            // A rename or copy is two NUL fields (`2 … path`, then origPath).
+            // The original path is not a record: `? dir/original` would
+            // otherwise become the untracked file `dir/original`.
+            if record.first == UInt8(ascii: "2") {
+                if index < records.endIndex { index += 1 }
+                continue
+            }
+            guard let path = untrackedPath(record) else { continue }
             // Git prints the directory itself when it is a nested repository.
             if path == directory {
                 isSeparateRepository = true

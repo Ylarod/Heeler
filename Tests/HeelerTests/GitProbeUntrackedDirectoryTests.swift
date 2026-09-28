@@ -177,7 +177,7 @@ struct GitProbeUntrackedDirectoryTests {
             "newdir/sq'uote.txt",
             "newdir/tab\tname.txt",
             "newdir/trail\\",
-            "newdir/two\\bs.txt",
+            #"newdir/two\\bs.txt"#,
             "newdir/ünï.txt",
             "newdir/中文.txt",
         ]
@@ -202,6 +202,38 @@ struct GitProbeUntrackedDirectoryTests {
             "newdir/inner/secret.txt",
         ]
         #expect(Self.paths(listing).allSatisfy { !absent.contains($0) })
+    }
+
+    /// Apple Git 2.54.0, pathspec `? dir/`: a type-2 rename, then its original
+    /// path as the next NUL field, then the real untracked records.
+    @Test func aRenameOriginalPathIsNotAnUntrackedFile() throws {
+        let listing = try Self.parse(
+            GitProbeRecordings.untrackedListingRename, directory: "? dir/")
+        #expect(Self.paths(listing) == ["? dir/plain.txt", "? dir/untracked"])
+        #expect(listing.total == 2)
+        #expect(!listing.isTruncated)
+        #expect(!listing.isSeparateRepository)
+        #expect(listing.limitNotice == nil)
+        #expect(
+            listing.entries.allSatisfy {
+                $0.kind == .untracked && $0.staging == nil && $0.originalPath == nil
+            })
+        let absent = ["dir/original", "? dir/original", "? dir/renamed", "? dir/added.txt"]
+        #expect(Self.paths(listing).allSatisfy { !absent.contains($0) })
+    }
+
+    /// The original path was cut off the end of the status cap, so the rename
+    /// is dropped and the untracked record before it stays.
+    @Test func aRenameCutOffBeforeItsOriginalPathIsDropped() throws {
+        let header =
+            "2 R. N... 100644 100644 100644 "
+            + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "
+            + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa R100 dir/renamed"
+        let body = Data("? kept.txt\0\(header)\0dir/orig".utf8)
+        let listing = try Self.parse(Self.framed(body, status: 0), directory: "dir/")
+        #expect(Self.paths(listing) == ["kept.txt"])
+        #expect(listing.total == 1)
+        #expect(!listing.isTruncated)
     }
 
     @Test func aLiteralDirectoryNameListsOnlyItsOwnFile() throws {
