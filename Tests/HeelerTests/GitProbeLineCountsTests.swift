@@ -150,6 +150,27 @@ struct GitProbeLineCountsTests {
         #expect(try read(GitProbeRecordings.clean).head.upstream == nil)
     }
 
+    @Test func anUnbornHeadDoesNotClaimItsLiveUpstreamWasDeleted() throws {
+        let recording = GitProbeRecordings.countsUnbornWithLiveUpstream
+        let changes = try read(recording)
+        #expect(changes.head.isUnborn)
+        #expect(changes.head.upstream?.name == "origin/main")
+        #expect(changes.head.upstream?.state == .unknown)
+        #expect(changes.head.upstream?.summary == "Upstream origin/main, comparison unavailable")
+        #expect(changes.files.first { $0.displayPath == "staged.txt" }?.lineCounts
+            == .lines(added: 2, removed: 0))
+
+        // Synthetic ordering variant of the real recording: the unborn
+        // header must correct an upstream already seen by the parser.
+        let stdout = String(decoding: recording.stdout, as: UTF8.self)
+            .replacingOccurrences(of: "# branch.oid (initial)\0", with: "")
+            .replacingOccurrences(
+                of: "# branch.upstream origin/main\0",
+                with: "# branch.upstream origin/main\0# branch.oid (initial)\0")
+        #expect(try read((Data(stdout.utf8), recording.stderr)).head.upstream?.state == .unknown)
+        #expect(try read(GitProbeRecordings.upstreamGone).head.upstream?.state == .deleted)
+    }
+
     /// Replaces only the numeric section in a real read; altered bytes are
     /// synthetic parser edge cases, not further live-git recordings.
     private func replacingNumstat(

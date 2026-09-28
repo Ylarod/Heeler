@@ -68,6 +68,17 @@ struct ChangesStoreLineCountsTests {
         }
     }
 
+    @Test func anUnbornCheckoutKeepsItsLiveUpstreamWithoutClaimingDeletion() async throws {
+        let changes = try await load(GitProbeRecordings.countsUnbornWithLiveUpstream)
+        #expect(changes.head.isUnborn)
+        #expect(changes.head.upstream?.state == .unknown)
+        #expect(summary(changes).contains("Branch main. No commits yet."))
+        #expect(summary(changes).contains("Upstream origin/main, comparison unavailable."))
+        #expect(!summary(changes).contains("was deleted"))
+        #expect(changes.totals.trackedFiles == 1)
+        #expect(changes.totals.untrackedItems == 1)
+    }
+
     @Test func aRefreshReplacesCountsWithoutChangingRowIdentity() async throws {
         let transport = ScriptedTransport()
         let first = try ChangesStoreTests.read(GitProbeRecordings.tracking)

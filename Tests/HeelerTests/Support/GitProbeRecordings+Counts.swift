@@ -1,8 +1,9 @@
 import Foundation
 
-/// Real changes-script output recorded by the #387 scout with nonce F00D,
+/// Real changes-script output recorded with nonce F00D,
 /// /bin/sh -s and Apple Git 2.54.0. Only the home became /home/dev.
 /// The script options match GitProbe.changesScript; these are not hand-built.
+/// The original four recordings are from the #387 scout; later provenance is inline.
 extension GitProbeRecordings {
     /// A branch two commits ahead of and one behind its upstream, with a
     /// modified text file, a staged binary change and an untracked file.
@@ -72,8 +73,8 @@ extension GitProbeRecordings {
 
         """.utf8))
 
-    /// A branch whose upstream was deleted: `# branch.upstream` without
-    /// `# branch.ab`.
+    /// A branch with an existing HEAD whose upstream was deleted:
+    /// `# branch.upstream` without `# branch.ab`.
     static let upstreamGone = (
         stdout: Data(
         """
@@ -241,6 +242,79 @@ extension GitProbeRecordings {
 
         __HEELER_GIT_F00D__ head begin
         1790500000 Seed
+
+        __HEELER_GIT_F00D__ head rc=0
+
+        __HEELER_GIT_F00D__ done
+
+        """.utf8),
+        stderr: Data(
+        """
+
+        __HEELER_GIT_F00D__ version begin
+
+        __HEELER_GIT_F00D__ version end
+
+        __HEELER_GIT_F00D__ home begin
+
+        __HEELER_GIT_F00D__ home end
+
+        __HEELER_GIT_F00D__ discover begin
+
+        __HEELER_GIT_F00D__ discover end
+
+        __HEELER_GIT_F00D__ status begin
+
+        __HEELER_GIT_F00D__ status end
+
+        __HEELER_GIT_F00D__ numstat begin
+
+        __HEELER_GIT_F00D__ numstat end
+
+        __HEELER_GIT_F00D__ head begin
+
+        __HEELER_GIT_F00D__ head end
+
+        """.utf8))
+
+    /// An unborn main tracking an existing origin/main. Recorded in an
+    /// isolated environment with Apple Git 2.54.0, the same script/options,
+    /// /bin/sh -s and nonce F00D; only the home became /home/dev.
+    /// Seed: initialize an upstream with one commit; initialize this empty
+    /// Checkout, fetch origin, configure branch.main.remote=origin and
+    /// branch.main.merge=refs/heads/main, stage two text lines, leave one
+    /// untracked file. rev-parse --verify refs/remotes/origin/main succeeds,
+    /// but status emits branch.upstream without branch.ab because HEAD is unborn.
+    static let countsUnbornWithLiveUpstream = (
+        stdout: Data(
+        """
+
+        __HEELER_GIT_F00D__ version begin
+        git version 2.54.0 (Apple Git-157)
+
+        __HEELER_GIT_F00D__ version rc=0
+
+        __HEELER_GIT_F00D__ home begin
+        /home/dev
+        __HEELER_GIT_F00D__ home rc=0
+
+        __HEELER_GIT_F00D__ discover begin
+        /home/dev/src/unborn-tracking
+
+        /home/dev/src/unborn-tracking/.git
+        .git
+
+        __HEELER_GIT_F00D__ discover rc=0
+
+        __HEELER_GIT_F00D__ status begin
+        # branch.oid (initial)\u{0}# branch.head main\u{0}# branch.upstream origin/main\u{0}1 A. N... 000000 100644 100644 0000000000000000000000000000000000000000 814f4a422927b82f5f8a43f8fab6d3839e3983f2 staged.txt\u{0}? loose.txt\u{0}
+        __HEELER_GIT_F00D__ status rc=0
+
+        __HEELER_GIT_F00D__ numstat begin
+        2\t0\tstaged.txt\u{0}
+        __HEELER_GIT_F00D__ numstat rc=0
+
+        __HEELER_GIT_F00D__ head begin
 
         __HEELER_GIT_F00D__ head rc=0
 
