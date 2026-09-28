@@ -139,7 +139,9 @@ struct SSHTransportSettings: Sendable {
     /// It also bounds each individual PTY write and window-change on a live
     /// attach channel (`HeelerSSHTransport.runAttachChannel`).
     var requestTimeout: Duration = Self.defaultRequestTimeout
-    /// Bounds ordinary-session admission and the stdin script exchange.
+    /// Bounds the caller's wait for ordinary-session admission and script
+    /// execution. A remote watchdog also derives its bound from this value;
+    /// dispatched execs retain their lease until SSH observes their exit.
     /// Expiry reports `.gitTimedOut`, which does not trigger link recovery.
     var gitExecTimeout: Duration = Self.defaultGitExecTimeout
 }

@@ -493,6 +493,55 @@ struct HeelerSSHTransportBehaviorE2ETests {
             _ = try await transport.runGitScript(Data("{ sleep 30; } </dev/null\n".utf8))
         }
         #expect(started.duration(to: .now) < settings.requestTimeout)
+        // Do not send traffic or close the transport during this window.
+        // The package's abandoned-exec cleanup can invalidate it two seconds
+        // AFTER the caller sees the timeout; an immediate ping hid that race.
+        try await Task.sleep(for: .seconds(3))
+        try #require(await transport.ordinarySessionChannelCountForTesting() == 0)
+        #expect(await transport.isConnected)
+        #expect(try await transport.ping().protocolVersion == 17)
+        let result = try await transport.runGitScript(Data("printf 'still usable'\n".utf8))
+        #expect(result.stdout == Data("still usable".utf8))
+        #expect(result.stderr.isEmpty)
+        #expect(result.exitStatus == 0)
+        #expect(await transport.isConnected)
+    }
+
+    @Test("cancelling a running git script preserves SSH after the remote bound and cleanup window")
+    func cancelledGitScriptPreservesConnectionReuse() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        var settings = environment.directSettings()
+        settings.gitExecTimeout = .seconds(6)
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+        let observer = try await HeelerSSHTransport.connect(settings: environment.directSettings())
+        defer { Task { try? await observer.close() } }
+        let marker = try #require(RemoteShellPath.quotedAbsolute(
+            environment.countFilePath + ".git-cancel-" + UUID().uuidString))
+
+        let request = Task {
+            try await transport.runGitScript(
+                Data("{ : > \(marker); sleep 30; } </dev/null\n".utf8))
+        }
+        defer { request.cancel() }
+        // Observe dispatch on an independent SSH connection. Cancellation
+        // must hit a running script, not merely cancel channel admission.
+        let ready = try await observer.runGitScript(Data(
+            "{ while [ ! -f \(marker) ]; do sleep 1; done; rm -f \(marker); } </dev/null\n".utf8))
+        try #require(ready.exitStatus == 0)
+        let cancelledAt = ContinuousClock.now
+        request.cancel()
+        await #expect(throws: TransportError.cancelled) { _ = try await request.value }
+        #expect(cancelledAt.duration(to: .now) < settings.gitExecTimeout)
+
+        // Stay idle beyond BOTH the remote watchdog and the package's old
+        // two-second cleanup window. Early RPCs can accidentally let the old
+        // close handshake succeed, and an early defer-close hides invalidation.
+        try await Task.sleep(for: settings.gitExecTimeout + .seconds(3))
+        // The retained exec must have finished, not merely deferred its
+        // cleanup until after this test closes the connection again.
+        try #require(await transport.ordinarySessionChannelCountForTesting() == 0)
+        #expect(await transport.isConnected)
         #expect(try await transport.ping().protocolVersion == 17)
         let result = try await transport.runGitScript(Data("printf 'still usable'\n".utf8))
         #expect(result.stdout == Data("still usable".utf8))

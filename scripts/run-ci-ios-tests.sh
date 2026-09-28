@@ -1976,7 +1976,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
     HeelerSSHDirectStreamLocalE2ETests
-run_suite SharedFixtureE2ETests 106 6 0 \
+run_suite SharedFixtureE2ETests 107 6 0 \
     HeelerSSHPTYE2ETests \
     HeelerSSHJumpHostGateE2ETests \
     HeelerSSHTransportBehaviorE2ETests \
@@ -2021,6 +2021,8 @@ assert_behavior "git stdin bytes and fixed command" HeelerSSHTransportBehaviorE2
     '"git stdin scripts preserve bytes and use only the fixed shell on direct and Jump paths"'
 assert_behavior "git deadline isolation" HeelerSSHTransportBehaviorE2ETests \
     '"a git deadline surfaces its own error and preserves the SSH connection"'
+assert_behavior "git cancellation isolation" HeelerSSHTransportBehaviorE2ETests \
+    '"cancelling a running git script preserves SSH after the remote bound and cleanup window"'
 assert_behavior "PTY" HeelerSSHPTYE2ETests \
     '"PTY exec preserves raw IO, merged output, geometry, and exit status"'
 assert_behavior "resize" HeelerSSHTransportBehaviorE2ETests \

@@ -863,10 +863,11 @@ indirect enum TransportError: Error, Sendable, Equatable {
     case timedOut
     /// A Changes script exceeded its own deadline. This says nothing about
     /// link health and must not trigger a redial or an automatic retry: the
-    /// remote process can keep running after the local exec is abandoned.
+    /// exec can remain alive until its remote watchdog ends the process group.
     case gitTimedOut
-    /// The request's task was cancelled before completing; any channel it
-    /// held was closed.
+    /// The request's task was cancelled before completing. Resource cleanup
+    /// may outlive the caller; a dispatched git exec waits for its bounded
+    /// remote exit instead of abandoning the channel.
     case cancelled
     /// The channel produced bytes that do not decode as a herdr response.
     case malformedResponse(String)
