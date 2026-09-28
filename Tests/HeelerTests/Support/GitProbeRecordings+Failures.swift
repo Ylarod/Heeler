@@ -1,5 +1,7 @@
 import Foundation
 
+@testable import Heeler
+
 extension GitProbeRecordings {
     /// Synthetic edits of a recorded frame, for version variants, truncation
     /// and signal-loss cases that the current Host cannot produce directly.
