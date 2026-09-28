@@ -52,9 +52,14 @@ struct ChangesView: View {
                         Text(ChangesStore.cleanMessage)
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(changes.files) { file in
+                        ForEach(changes.listedFiles) { file in
                             ChangesFileRow(file: file)
                         }
+                    }
+                }
+                if changes.listLimitNotice != nil || changes.isMetadataTruncated {
+                    Section {
+                        ChangesLimitNotice(changes: changes)
                     }
                 }
             }

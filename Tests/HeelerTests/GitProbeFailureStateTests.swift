@@ -102,4 +102,74 @@ struct GitProbeFailureStateTests {
             .replacingOccurrences(of: "\n__HEELER_GIT_F00D__ done\n", with: "\n")
         #expect(Self.failure((Data(stdout.utf8), GitProbeRecordings.clean.stderr)) == .incomplete)
     }
+
+    @Test func theDisplayLimitPreservesTheFullModelAndExactTotal() throws {
+        let changes = try Self.parse(GitProbeRecordings.failureStatusWithFiles(2_345)).changes
+        #expect(changes.files.count == 2_345)
+        #expect(changes.listedFiles.count == 2_000)
+        #expect(!changes.isStatusTruncated)
+        #expect(changes.listedFiles.first?.id == changes.files.first?.id)
+        #expect(changes.listedFiles.last?.id == changes.files[1_999].id)
+        #expect(changes.listLimitNotice
+            == "Showing \(2_000.formatted()) of \(2_345.formatted()) changed files.")
+    }
+
+    @Test(arguments: [0, 1, 2_000])
+    func completeListsWithinTheLimitNeedNoNotice(count: Int) throws {
+        let changes = try Self.parse(GitProbeRecordings.failureStatusWithFiles(count)).changes
+        #expect(changes.listedFiles.count == count)
+        #expect(changes.listLimitNotice == nil)
+    }
+
+    @Test(arguments: [Int32(0), 141, 269])
+    func cappedStatusUsesLengthAndReportsALowerBound(status: Int32) throws {
+        let changes = try Self.parse(
+            GitProbeRecordings.failureStatusWithFiles(2_345, truncated: true, status: status)).changes
+        #expect(changes.isStatusTruncated)
+        #expect(changes.files.count == 2_345)
+        #expect(changes.listedFiles.count == 2_000)
+        #expect(changes.files.allSatisfy { !$0.displayPath.hasPrefix("partial-") })
+        #expect(changes.listLimitNotice
+            == "Showing \(2_000.formatted()) of more than \(2_345.formatted()) changed files.")
+    }
+
+    @Test func aTruncatedStatusWithNoCompleteFilesIsNotACleanCheckout() throws {
+        let changes = try Self.parse(
+            GitProbeRecordings.failureStatusWithFiles(0, truncated: true)).changes
+        #expect(changes.files.isEmpty)
+        #expect(!changes.isClean)
+        #expect(changes.listLimitNotice == "Showing 0 of more than 0 changed files.")
+    }
+
+    @Test func aSignalStatusWithoutExcessBytesIsAFailure() {
+        let recording = GitProbeRecordings.failureStatusWithFiles(1, status: 141)
+        #expect(Self.failure(recording) == .gitFailed("git exited with status 141."))
+    }
+
+    @Test func theSharedLimitNoticeSupportsDirectoryListings() {
+        #expect(CheckoutChanges.limitNotice(shown: 2_000, total: 2_345, isLowerBound: false, noun: "files")
+            == "Showing \(2_000.formatted()) of \(2_345.formatted()) files.")
+        #expect(CheckoutChanges.limitNotice(shown: 2_000, total: 2_345, isLowerBound: true, noun: "files")
+            == "Showing \(2_000.formatted()) of more than \(2_345.formatted()) files.")
+    }
+
+    @Test(arguments: ["numstat", "head"])
+    func cappedMetadataMarksTheReadWithoutClaimingTheFileTotalIsALowerBound(section: String) throws {
+        let cap = section == "head" ? GitProbe.Cap.head : GitProbe.Cap.numstat
+        let recording = GitProbeRecordings.failureReplacingSection(
+            section, in: GitProbeRecordings.clean, body: Data(repeating: 0x78, count: cap + 1))
+        let changes = try Self.parse(recording).changes
+        #expect(changes.isMetadataTruncated)
+        #expect(!changes.isStatusTruncated)
+        #expect(changes.listLimitNotice == nil)
+    }
+
+    @Test func changesInsideASubmoduleProduceOneRow() throws {
+        let changes = try Self.parse(GitProbeRecordings.failureChangedSubmodule).changes
+        #expect(changes.files.count == 1)
+        let file = try #require(changes.files.first)
+        #expect(file.path == Data("sub".utf8))
+        #expect(file.kind == .modified)
+        #expect(file.staging == .unstaged)
+    }
 }

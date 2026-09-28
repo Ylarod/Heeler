@@ -78,4 +78,30 @@ struct ChangesFailureViewTests {
         #expect(recovered)
         #expect(await transport.changesReadRequests.count == 2)
     }
+
+    @Test func aTruncatedStatusShowsALowerBoundInsteadOfClean() async throws {
+        let (controller, window, _) = try await ChangesViewTests.host(
+            GitProbeRecordings.failureStatusWithFiles(0, truncated: true))
+        defer { window.isHidden = true }
+        var labels = Set<String>()
+        let shown = try await ChangesViewTests.eventually {
+            labels = ChangesViewTests.labels(in: controller)
+            return labels.contains("Showing 0 of more than 0 changed files.")
+        }
+        #expect(shown, "Missing partial notice: \(labels.sorted())")
+        #expect(!labels.contains("No uncommitted changes"))
+    }
+
+    @Test func truncatedMetadataIsMarkedEvenWhenStatusIsComplete() async throws {
+        let recording = GitProbeRecordings.failureReplacingSection(
+            "head", in: GitProbeRecordings.clean,
+            body: Data(repeating: 0x78, count: GitProbe.Cap.head + 1))
+        let (controller, window, _) = try await ChangesViewTests.host(recording)
+        defer { window.isHidden = true }
+        let shown = try await ChangesViewTests.eventually {
+            ChangesViewTests.labels(in: controller).contains(
+                "Some Changes details were truncated.")
+        }
+        #expect(shown)
+    }
 }

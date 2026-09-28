@@ -31,3 +31,20 @@ struct ChangesTimeoutNotice: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+struct ChangesLimitNotice: View {
+    let changes: CheckoutChanges
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let notice = changes.listLimitNotice {
+                Text(notice)
+            }
+            if changes.isMetadataTruncated {
+                Text("Some Changes details were truncated.")
+            }
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+    }
+}

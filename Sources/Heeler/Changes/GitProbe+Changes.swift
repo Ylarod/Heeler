@@ -102,7 +102,8 @@ extension GitProbe {
                 branch: report.branch,
                 commit: report.commit,
                 latestCommit: head.status == 0 ? parseLatestCommit(head.body) : nil),
-            files: report.files)
+            files: report.files,
+            isStatusTruncated: status.isTruncated)
         changes.isMetadataTruncated = metadataIsTruncated
         return CheckoutChangesRead(changes: changes, directoryPrefix: prefix)
     }

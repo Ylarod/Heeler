@@ -105,4 +105,22 @@ struct ChangesStoreFailureStateTests {
         #expect(!store.timedOutKeepingContent)
         #expect(store.directoryPrefix.isEmpty)
     }
+
+    @Test func aTruncatedReadKeepsItsPartialStateInTheStore() async throws {
+        let transport = ScriptedTransport()
+        let partial = try ChangesStoreTests.read(
+            GitProbeRecordings.failureStatusWithFiles(2_345, truncated: true))
+        await transport.scriptChangesReads([.success(partial)])
+        let store = Self.store(transport)
+        await store.appear()
+        guard case .loaded(let changes) = store.phase else {
+            Issue.record("Expected a loaded partial read, got \(store.phase)")
+            return
+        }
+        #expect(changes.isStatusTruncated)
+        #expect(changes.files.count == 2_345)
+        #expect(changes.listedFiles.count == 2_000)
+        #expect(changes.listLimitNotice
+            == "Showing \(2_000.formatted()) of more than \(2_345.formatted()) changed files.")
+    }
 }

@@ -27,7 +27,9 @@ struct CheckoutChanges: Sendable, Equatable {
     /// Conflicted files first, then everything else by raw path bytes.
     let files: [ChangedFile]
 
-    var isClean: Bool { files.isEmpty }
+    var isClean: Bool { files.isEmpty && !isStatusTruncated }
+    /// The Host's status output was capped, so files.count is a lower bound.
+    var isStatusTruncated = false
     /// Counts or latest-commit output exceeded its Host-side cap.
     var isMetadataTruncated = false
 }

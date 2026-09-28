@@ -278,4 +278,25 @@ extension GitProbeRecordings {
         "discover", in: failureReplacingSection(
             "version", in: plain, body: Data("git version 2.24.0\n".utf8)),
         body: Data("\n\n/home/dev/bare\n.\n".utf8))
+
+    /// Synthetic large status based on the recorded clean read. A final
+    /// partial record fills the Host cap, independently of the exit status.
+    static func failureStatusWithFiles(
+        _ count: Int, truncated: Bool = false, status: Int32 = 0
+    ) -> (stdout: Data, stderr: Data) {
+        var body = Data("# branch.oid (initial)\0# branch.head main\0".utf8)
+        for index in 0..<count { body.append(Data("? file-\(index).txt\0".utf8)) }
+        if truncated {
+            body.append(Data("? partial-".utf8))
+            body.append(Data(repeating: UInt8(ascii: "x"), count: GitProbe.Cap.status + 1 - body.count))
+        }
+        return failureReplacingSection("status", in: clean, body: body, status: status)
+    }
+
+    /// Status body recorded with /bin/sh -s and Apple Git 2.54.0 using the
+    /// Changes script's exact neutralizing and status options in an isolated
+    /// scratch home. The submodule has a modified tracked file and a new file.
+    /// Spliced into a clean F00D recording; the surrounding frames are synthetic.
+    static let failureChangedSubmodule = failureReplacingSection(
+        "status", in: clean, body: Data("# branch.oid d180ae44fdfcaa7ab4972c6e04052325e32dcf48\0# branch.head main\01 .M S.MU 160000 160000 160000 9e2b20442f62fe5820fc3ab7c5fb887df78f48e3 9e2b20442f62fe5820fc3ab7c5fb887df78f48e3 sub\0".utf8))
 }
