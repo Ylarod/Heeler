@@ -65,6 +65,10 @@ final class ChangesStore {
         if case .loaded(let changes) = phase { changes.checkout } else { nil }
     }
 
+    /// Expanded untracked directories. A successful read collapses them; a
+    /// failed read keeps them until the next success.
+    let untrackedDirectories: UntrackedDirectoryExpansions
+
     @ObservationIgnored private let directory: @MainActor () -> String?
     @ObservationIgnored private let read:
         @Sendable (ChangesReadRequest) async throws -> CheckoutChangesRead
@@ -81,11 +85,14 @@ final class ChangesStore {
         read: @escaping @Sendable (ChangesReadRequest) async throws -> CheckoutChangesRead,
         readPatch: @escaping @Sendable (FilePatchRequest) async throws -> FilePatch = { _ in
             throw ChangesReadError.unavailable
-        }
+        },
+        listUntrackedDirectory: @escaping @Sendable (UntrackedDirectoryRequest) async throws
+            -> UntrackedDirectoryListing = { _ in throw ChangesReadError.unavailable }
     ) {
         self.directory = directory
         self.read = read
         self.fileDiff = FileDiffPresenter(read: readPatch)
+        self.untrackedDirectories = UntrackedDirectoryExpansions(list: listUntrackedDirectory)
     }
 
     /// Reads once per presentation; returning to the view reads nothing
@@ -112,6 +119,7 @@ final class ChangesStore {
         }
         do {
             let result = try await read(ChangesReadRequest(directory: directory))
+            untrackedDirectories.collapseAll()
             phase = .loaded(result.changes)
             directoryPrefix = result.directoryPrefix
             timedOutKeepingContent = false

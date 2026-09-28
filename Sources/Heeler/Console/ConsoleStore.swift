@@ -385,6 +385,16 @@ final class ConsoleStore {
         }
     }
 
+    /// The Changes view's listing for one untracked directory. Uncached, like
+    /// the document itself: the expansion lives only in the view's store.
+    func listUntrackedDirectory(
+        _ request: UntrackedDirectoryRequest, on hostID: Host.ID
+    ) async throws -> UntrackedDirectoryListing {
+        try await projection(for: hostID).session.withTransport { transport in
+            try await transport.listUntrackedDirectory(request)
+        }
+    }
+
     /// The Changes view's data source: one git read over the Host's live
     /// Console connection. Uncached: the document lives only in the view
     /// that shows it.

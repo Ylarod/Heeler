@@ -242,6 +242,16 @@ protocol Transport: Sendable {
     /// figure is then shown without its window (#325).
     func modelContextWindow(selector: String) async throws -> Int?
 
+    /// Lists the files inside one untracked directory: one git script over
+    /// one exec, using the top level from the latest Changes read. Entries
+    /// carry no line counts. Git-level outcomes throw `ChangesReadError`; a
+    /// git read past its deadline throws `TransportError.gitTimedOut`.
+    /// Transports that cannot run git on a Host throw
+    /// `ChangesReadError.unavailable` by default.
+    func listUntrackedDirectory(
+        _ request: UntrackedDirectoryRequest
+    ) async throws -> UntrackedDirectoryListing
+
     /// Reads the Changes of the Checkout containing `request.directory`:
     /// one git script over one exec, resolved and parsed by `GitProbe`.
     /// Git-level outcomes throw `ChangesReadError`; a git read past its
@@ -306,6 +316,13 @@ extension Transport {
 
     /// A transport without Host commands knows no model windows.
     func modelContextWindow(selector: String) async throws -> Int? { nil }
+
+    /// A transport without Host commands cannot list an untracked directory.
+    func listUntrackedDirectory(
+        _ request: UntrackedDirectoryRequest
+    ) async throws -> UntrackedDirectoryListing {
+        throw ChangesReadError.unavailable
+    }
 
     /// A transport without Host commands cannot run git, and says so
     /// rather than reporting an empty Checkout.

@@ -71,8 +71,8 @@ struct ChangesView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(changes.listedFiles) { file in
-                            if isUntrackedDirectory(file) {
-                                ChangesFileRow(file: file)
+                            if file.isUntrackedDirectory {
+                                ChangesUntrackedDirectoryRows(directory: file, store: store)
                             } else {
                                 Button { store.openDiff(file) } label: {
                                     ChangesFileRow(file: file)
@@ -120,10 +120,6 @@ struct ChangesView: View {
         }
         .disabled(store.isRefreshing)
     }
-}
-
-private func isUntrackedDirectory(_ file: ChangedFile) -> Bool {
-    file.kind == .untracked && file.path.last == 0x2F
 }
 
 /// The Checkout, its branch or detached commit, and the latest commit. One
@@ -179,7 +175,7 @@ private struct ChangesHeader: View {
 
 /// One file: a change-kind badge beside its path, which wraps under itself
 /// rather than under the badge, and its kind and staging below.
-private struct ChangesFileRow: View {
+struct ChangesFileRow: View {
     let file: ChangedFile
 
     var body: some View {
