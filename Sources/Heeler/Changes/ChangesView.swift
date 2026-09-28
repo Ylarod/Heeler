@@ -52,6 +52,9 @@ struct ChangesView: View {
             }
         }
         .listStyle(.insetGrouped)
+        // One ground for every state, so the first read lands without a flash.
+        .scrollContentBackground(.hidden)
+        .background(Color(uiColor: .systemGroupedBackground))
         .refreshable {
             isPulling = true
             defer { isPulling = false }
@@ -115,8 +118,15 @@ private struct ChangesHeader: View {
                             .background(Capsule().fill(.quaternary))
                     }
                 }
-                Label(changes.head.branchTitle, systemImage: "arrow.triangle.branch")
-                    .font(.subheadline)
+                HStack(spacing: 6) {
+                    Image(
+                        systemName: changes.head.branch == .detached
+                            ? "smallcircle.filled.circle" : "arrow.triangle.branch")
+                        .imageScale(.small)
+                        .foregroundStyle(.secondary)
+                    Text(changes.head.branchTitle)
+                }
+                .font(.subheadline)
                 if let latest = changes.head.latestCommit {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(latest.subject)
