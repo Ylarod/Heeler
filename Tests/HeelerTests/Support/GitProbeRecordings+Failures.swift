@@ -271,13 +271,14 @@ extension GitProbeRecordings {
         messages: "fatal: unsafe repository ('/home/dev/repo' is owned by someone else)\n")
 
     /// Source-derived, not captured live: rev-parse before git 2.25 prints
-    /// an empty --show-toplevel inside a git directory with a zero status.
-    /// The Changes script therefore skips status, numstat and head.
+    /// nothing for --show-toplevel inside a git directory with a zero status.
+    /// Only --show-prefix prints the leading newline. The Changes script
+    /// therefore skips status, numstat and head.
     /// https://github.com/git/git/blob/v2.24.0/builtin/rev-parse.c
     static let failureOldEmptyTopLevel = failureReplacingSection(
         "discover", in: failureReplacingSection(
             "version", in: plain, body: Data("git version 2.24.0\n".utf8)),
-        body: Data("\n\n/home/dev/bare\n.\n".utf8))
+        body: Data("\n/home/dev/bare\n.\n".utf8))
 
     /// Synthetic large status based on the recorded clean read. A final
     /// partial record fills the Host cap, independently of the exit status.

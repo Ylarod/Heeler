@@ -69,6 +69,19 @@ struct GitProbeFailureStateTests {
         #expect(Self.failure(recording) == .gitFailed(message))
     }
 
+    @Test(arguments: [
+        "No such file or directory", "detected dubious ownership", "not a git repository",
+        "unsafe repository is owned by someone else",
+        "xcode-select: No developer tools were found",
+        "xcrun: invalid active developer path",
+    ])
+    func diagnosticWordsInsideAPathDoNotChangeTheFailure(path: String) {
+        let message = "fatal: cannot change to '/home/dev/\(path)': Permission denied"
+        let recording = GitProbeRecordings.failureReplacingSection(
+            "discover", in: GitProbeRecordings.plain, status: 128, messages: message + "\n")
+        #expect(Self.failure(recording) == .gitFailed(message))
+    }
+
     @Test(arguments: ["discover", "status", "numstat", "head"])
     func laterCommandFailuresAreAlsoClassified(section: String) {
         let missing = GitProbeRecordings.failureReplacingSection(
@@ -101,6 +114,15 @@ struct GitProbeFailureStateTests {
         let stdout = String(decoding: GitProbeRecordings.clean.stdout, as: UTF8.self)
             .replacingOccurrences(of: "\n__HEELER_GIT_F00D__ done\n", with: "\n")
         #expect(Self.failure((Data(stdout.utf8), GitProbeRecordings.clean.stderr)) == .incomplete)
+    }
+
+    @Test func anEarlierGitErrorDoesNotHideAMissingLaterFramedStatus() {
+        let failed = GitProbeRecordings.failureReplacingSection(
+            "status", in: GitProbeRecordings.clean, status: 128,
+            messages: "fatal: unable to read index\n")
+        let stdout = String(decoding: failed.stdout, as: UTF8.self)
+            .replacingOccurrences(of: "\n__HEELER_GIT_F00D__ head rc=0\n", with: "\n")
+        #expect(Self.failure((Data(stdout.utf8), failed.stderr)) == .incomplete)
     }
 
     @Test func theDisplayLimitPreservesTheFullModelAndExactTotal() throws {

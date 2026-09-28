@@ -25,8 +25,8 @@ extension GitProbe {
     /// succeeds. Its framed message is the evidence, not the channel status.
     static func isGitMissing(_ section: Section) -> Bool {
         if section.status == 127 { return true }
-        let messages = String(decoding: section.messages, as: UTF8.self).lowercased()
-        return (messages.contains("xcode-select:") && messages.contains("no developer tools were found"))
-            || (messages.contains("xcrun:") && messages.contains("invalid active developer path"))
+        let line = section.firstMessageLine?.lowercased() ?? ""
+        return (line.hasPrefix("xcode-select:") && line.contains("no developer tools were found"))
+            || (line.hasPrefix("xcrun:") && line.contains("invalid active developer path"))
     }
 }

@@ -1,23 +1,35 @@
 import Foundation
 
 extension GitProbe {
+    /// Even a failed command is not a complete read if a later command began
+    /// without reporting its status. Zero-byte bodies avoid copying output
+    /// here; the regular parse applies each command's own cap afterwards.
+    static func validateChangesFraming(_ frames: Frames) throws {
+        for name in [
+            SectionName.version, SectionName.home, SectionName.discover,
+            SectionName.status, SectionName.numstat, SectionName.head,
+        ] {
+            _ = try frames.section(name, cap: 0)
+        }
+    }
+
     /// Git's C-locale diagnostics distinguish an absent directory from an
     /// inaccessible one. No ownership failure ever changes Host config.
     static func classifyCommandFailure(_ section: Section) -> ChangesReadError {
         if isGitMissing(section) { return .gitMissing }
-        let messages = String(decoding: section.messages, as: UTF8.self)
-        if messages.contains("detected dubious ownership")
-            || (messages.contains("unsafe repository") && messages.contains("owned by someone else"))
+        let line = section.firstMessageLine ?? "git exited with status \(section.status)."
+        if line.hasPrefix("fatal: detected dubious ownership in repository at ")
+            || (line.hasPrefix("fatal: unsafe repository (") && line.hasSuffix("is owned by someone else)"))
         {
             return .notOwnedByAccount
         }
-        if messages.contains("cannot change to") && messages.contains("No such file or directory") {
+        if line.hasPrefix("fatal: cannot change to '") && line.hasSuffix("': No such file or directory") {
             return .directoryMissing
         }
-        if messages.contains("not a git repository") || messages.contains("must be run in a work tree") {
+        if line.hasPrefix("fatal: not a git repository") || line == "fatal: this operation must be run in a work tree" {
             return .notAGitWorkingTree
         }
-        return .gitFailed(section.firstMessageLine ?? "git exited with status \(section.status).")
+        return .gitFailed(line)
     }
 
     /// Counts and latest-commit reads must not silently turn failures into

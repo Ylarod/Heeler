@@ -33,7 +33,7 @@ final class ChangesStore {
             case .failed(let message):
                 ("Couldn't Read Changes", message, "exclamationmark.triangle")
             case .gitMissing:
-                ("Git Not Found", ChangesReadError.gitMissing.message, "questionmark.folder")
+                ("Git Not Found", ChangesReadError.gitMissing.message, "folder.badge.questionmark")
             case .gitTooOld(let version):
                 ("Git Version Too Old", ChangesReadError.gitTooOld(version).message, "arrow.up.circle")
             case .notOwnedByAccount:

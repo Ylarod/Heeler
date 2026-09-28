@@ -51,6 +51,7 @@ extension GitProbe {
     ) throws -> CheckoutChangesRead {
         let frames = Frames(stdout: stdout, stderr: stderr, nonce: nonce)
         guard frames.reachedEnd else { throw ChangesReadError.incomplete }
+        try validateChangesFraming(frames)
 
         let version = try frames.requiredSection(SectionName.version, cap: Cap.version)
         try requireUsableGit(version)
