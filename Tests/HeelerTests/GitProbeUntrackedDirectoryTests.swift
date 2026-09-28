@@ -296,7 +296,8 @@ struct GitProbeUntrackedDirectoryTests {
         #expect(Self.paths(listing).last == "f1999.txt")
         #expect(
             listing.limitNotice
-                == "Showing \(2_000.formatted()) of \(2_001.formatted()) files.")
+                == CheckoutChanges.limitNotice(
+                    shown: 2_000, total: 2_001, isLowerBound: false, noun: "files"))
     }
 
     @Test(arguments: [141, 0])

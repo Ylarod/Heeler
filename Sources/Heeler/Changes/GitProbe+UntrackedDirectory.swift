@@ -33,7 +33,7 @@ extension GitProbe {
         stderr: Data,
         nonce: String,
         directory: Data,
-        displayLimit: Int = UntrackedDirectoryLimit.count,
+        displayLimit: Int = CheckoutChanges.displayLimit,
         cap: Int = Cap.status
     ) throws -> UntrackedDirectoryListing {
         let frames = Frames(stdout: stdout, stderr: stderr, nonce: nonce)
@@ -77,8 +77,9 @@ extension GitProbe {
             total: paths.count,
             isTruncated: section.isTruncated,
             isSeparateRepository: isSeparateRepository,
-            limitNotice: UntrackedDirectoryLimit.notice(
-                shown: shown.count, total: paths.count, isLowerBound: section.isTruncated))
+            limitNotice: CheckoutChanges.limitNotice(
+                shown: shown.count, total: paths.count,
+                isLowerBound: section.isTruncated, noun: "files"))
     }
 
     /// `? <path>`. Tracked rows, headers and ignored records are not entries.
@@ -91,21 +92,5 @@ extension GitProbe {
         let path = record.dropFirst(2)
         guard !path.isEmpty else { return nil }
         return Data(path)
-    }
-}
-
-/// The Changes list's display ceiling and its sentence, kept privately until
-/// #389's shared helper replaces them.
-private enum UntrackedDirectoryLimit {
-    static let count = 2_000
-
-    /// "Showing 2,000 of 2,345 files." when the total is known, and
-    /// "Showing 2,000 of more than 2,345 files." when the status cap cut it.
-    static func notice(shown: Int, total: Int, isLowerBound: Bool) -> String? {
-        guard isLowerBound || total > shown else { return nil }
-        if isLowerBound {
-            return "Showing \(shown.formatted()) of more than \(total.formatted()) files."
-        }
-        return "Showing \(shown.formatted()) of \(total.formatted()) files."
     }
 }
