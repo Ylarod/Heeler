@@ -79,14 +79,14 @@ struct ChangesFailureViewTests {
         #expect(await transport.changesReadRequests.count == 2)
     }
 
-    @Test func aTruncatedStatusShowsALowerBoundInsteadOfClean() async throws {
+    @Test func aTruncatedStatusWithoutFilesExplainsTheCutReplyInsteadOfClean() async throws {
         let (controller, window, _) = try await ChangesViewTests.host(
             GitProbeRecordings.failureStatusWithFiles(0, truncated: true))
         defer { window.isHidden = true }
         var labels = Set<String>()
         let shown = try await ChangesViewTests.eventually {
             labels = ChangesViewTests.labels(in: controller)
-            return labels.contains("Showing 0 of more than 0 changed files.")
+            return labels.contains("The Host's reply was truncated before any files could be listed.")
         }
         #expect(shown, "Missing partial notice: \(labels.sorted())")
         #expect(!labels.contains("No uncommitted changes"))

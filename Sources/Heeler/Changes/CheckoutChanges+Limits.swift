@@ -17,6 +17,9 @@ extension CheckoutChanges {
     /// bound even when fewer than the display limit's records fit in it.
     static func limitNotice(shown: Int, total: Int, isLowerBound: Bool, noun: String) -> String? {
         guard shown < total || isLowerBound else { return nil }
+        if total == 0, isLowerBound {
+            return "The Host's reply was truncated before any files could be listed."
+        }
         let totalText = isLowerBound ? "more than \(total.formatted())" : total.formatted()
         return "Showing \(shown.formatted()) of \(totalText) \(noun)."
     }

@@ -85,7 +85,6 @@ extension GitProbe {
 
         // A cut status can end on SIGPIPE; the kept records are still valid.
         guard status.status == 0 || status.isTruncated else { throw failure(status) }
-        let metadataIsTruncated = try validateChangesMetadata(frames)
         // Counts belong to a later slice; their framed status is still
         // required, because completeness covers every command.
         _ = try frames.requiredSection(SectionName.numstat, cap: Cap.numstat)
@@ -105,7 +104,7 @@ extension GitProbe {
                 latestCommit: head.status == 0 ? parseLatestCommit(head.body) : nil),
             files: report.files,
             isStatusTruncated: status.isTruncated)
-        changes.isMetadataTruncated = metadataIsTruncated
+        changes.isMetadataTruncated = try validateChangesMetadata(frames)
         return CheckoutChangesRead(changes: changes, directoryPrefix: prefix)
     }
 
