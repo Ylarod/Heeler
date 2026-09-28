@@ -1993,6 +1993,19 @@ actor HeelerSSHTransport: Transport {
         }
     }
 
+    /// One directory listing: one script, one exec, a fresh nonce per request.
+    func listUntrackedDirectory(
+        _ request: UntrackedDirectoryRequest
+    ) async throws -> UntrackedDirectoryListing {
+        let nonce = GitProbe.makeNonce()
+        let result = try await runGitScript(
+            GitProbe.untrackedDirectoryScript(
+                topLevel: request.topLevel, directory: request.directory, nonce: nonce))
+        return try GitProbe.parseUntrackedDirectory(
+            stdout: result.stdout, stderr: result.stderr, nonce: nonce,
+            directory: request.directory)
+    }
+
     /// One Changes read: one script, one exec, a fresh nonce per request so
     /// stale output or repository content cannot pass for its markers.
     func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead {

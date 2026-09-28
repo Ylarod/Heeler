@@ -25,6 +25,11 @@ struct UntrackedDirectoryListing: Sendable, Equatable {
     let isSeparateRepository: Bool
     /// Nil when every entry fits. Otherwise the display-limit sentence.
     let limitNotice: String?
+
+    /// Shown instead of child rows when git would not descend.
+    var repositoryNotice: String? {
+        isSeparateRepository ? "This directory is a separate Git repository." : nil
+    }
 }
 
 extension ChangedFile {

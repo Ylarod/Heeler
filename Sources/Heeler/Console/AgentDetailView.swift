@@ -112,6 +112,9 @@ struct AgentDetailView: View {
                         },
                         read: { request in
                             try await console.readChanges(request, on: hostID)
+                        },
+                        listUntrackedDirectory: { request in
+                            try await console.listUntrackedDirectory(request, on: hostID)
                         })
                 })
         _openTerminal = State(

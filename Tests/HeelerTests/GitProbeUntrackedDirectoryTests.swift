@@ -187,6 +187,7 @@ struct GitProbeUntrackedDirectoryTests {
         #expect(!listing.isSeparateRepository)
         #expect(listing.limitNotice == nil)
         #expect(listing.directory == Data("newdir/".utf8))
+        #expect(listing.repositoryNotice == nil)
         #expect(
             listing.entries.allSatisfy {
                 $0.kind == .untracked && $0.staging == nil && $0.originalPath == nil
@@ -219,6 +220,7 @@ struct GitProbeUntrackedDirectoryTests {
         #expect(listing.total == 0)
         #expect(listing.limitNotice == nil)
         #expect(!listing.isTruncated)
+        #expect(listing.repositoryNotice == "This directory is a separate Git repository.")
     }
 
     @Test func anEmptyStatusIsAnEmptyListing() throws {

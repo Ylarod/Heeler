@@ -125,6 +125,12 @@ final actor ScriptedTransport: Transport {
     private(set) var sidebarLayoutReads = 0
     private var nextSidebarLayoutGate: ScriptedTransportCallGate?
     private var sidebarLayoutReadFailure: (any Error)?
+    /// Every untracked-directory listing received, in order.
+    private(set) var untrackedDirectoryRequests: [UntrackedDirectoryRequest] = []
+    /// Consumed one per listing; an unscripted listing reports Changes as
+    /// unavailable, like a Transport without git.
+    private var untrackedDirectoryOutcomes: [Result<UntrackedDirectoryListing, any Error>] = []
+    private var nextUntrackedDirectoryGate: ScriptedTransportCallGate?
     /// Every Changes read received, in order.
     private(set) var changesReadRequests: [ChangesReadRequest] = []
     /// Consumed one per read; an unscripted read reports Changes as
@@ -712,6 +718,31 @@ final actor ScriptedTransport: Transport {
         if let failure = notificationRegistrationWriteFailure { throw failure }
         notificationConfig = contents
         replacedNotificationConfigs.append(contents)
+    }
+
+    /// Queues the outcomes of the next untracked-directory listings, in order.
+    func scriptUntrackedDirectoryListings(
+        _ outcomes: [Result<UntrackedDirectoryListing, any Error>]
+    ) {
+        untrackedDirectoryOutcomes.append(contentsOf: outcomes)
+    }
+
+    /// Holds the next listing, after it is recorded, until `gate` opens.
+    func gateNextUntrackedDirectoryListing(using gate: ScriptedTransportCallGate) {
+        nextUntrackedDirectoryGate = gate
+    }
+
+    func listUntrackedDirectory(
+        _ request: UntrackedDirectoryRequest
+    ) async throws -> UntrackedDirectoryListing {
+        untrackedDirectoryRequests.append(request)
+        let outcome: Result<UntrackedDirectoryListing, any Error> =
+            untrackedDirectoryOutcomes.isEmpty
+            ? .failure(ChangesReadError.unavailable) : untrackedDirectoryOutcomes.removeFirst()
+        let gate = nextUntrackedDirectoryGate
+        nextUntrackedDirectoryGate = nil
+        if let gate { await gate.waitUntilOpen() }
+        return try outcome.get()
     }
 
     /// Queues the outcomes of the next Changes reads, in order.

@@ -49,7 +49,11 @@ struct ChangesView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(changes.files) { file in
-                            ChangesFileRow(file: file)
+                            if file.isUntrackedDirectory {
+                                ChangesUntrackedDirectoryRows(directory: file, store: store)
+                            } else {
+                                ChangesFileRow(file: file)
+                            }
                         }
                     }
                 }
@@ -151,7 +155,7 @@ private struct ChangesHeader: View {
 
 /// One file: a change-kind badge beside its path, which wraps under itself
 /// rather than under the badge, and its kind and staging below.
-private struct ChangesFileRow: View {
+struct ChangesFileRow: View {
     let file: ChangedFile
 
     var body: some View {

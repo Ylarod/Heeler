@@ -15,10 +15,10 @@ extension GitProbe {
     ) -> Data {
         var body = Data("top=".utf8)
         body.append(singleQuoted(topLevel))
-        body.append(
-            Data(
-                "\nsec \(Cap.status) \(SectionName.untracked) g -C \"$top\" status --porcelain=v2 -z --untracked-files=all -- "
-                    .utf8))
+        let command =
+            "\nsec \(Cap.status) \(SectionName.untracked) "
+            + "g -C \"$top\" status --porcelain=v2 -z --untracked-files=all -- "
+        body.append(Data(command.utf8))
         body.append(singleQuoted(directory))
         body.append(Data("\n".utf8))
         return script(nonce: nonce, body: body)
