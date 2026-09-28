@@ -132,6 +132,11 @@ final actor ScriptedTransport: Transport {
     private var changesReadOutcomes: [Result<CheckoutChangesRead, any Error>] = []
     private var nextChangesReadGate: ScriptedTransportCallGate?
 
+    /// Every lazy file-patch read received, in order.
+    private(set) var filePatchRequests: [FilePatchRequest] = []
+    private var filePatchReadOutcomes: [Result<FilePatch, any Error>] = []
+    private var nextFilePatchReadGate: ScriptedTransportCallGate?
+
     init(
         snapshot: SessionSnapshot = .fixture(),
         serverInfo: ServerInfo = ServerInfo(version: "0.7.5-fake", protocolVersion: 17)
@@ -731,6 +736,27 @@ final actor ScriptedTransport: Transport {
             ? .failure(ChangesReadError.unavailable) : changesReadOutcomes.removeFirst()
         let gate = nextChangesReadGate
         nextChangesReadGate = nil
+        if let gate { await gate.waitUntilOpen() }
+        return try outcome.get()
+    }
+
+    /// Queues the outcomes of the next file-patch reads, in order.
+    func scriptFilePatchReads(_ outcomes: [Result<FilePatch, any Error>]) {
+        filePatchReadOutcomes.append(contentsOf: outcomes)
+    }
+
+    /// Holds the next file-patch read until `gate` opens, even if cancelled.
+    func gateNextFilePatchRead(using gate: ScriptedTransportCallGate) {
+        nextFilePatchReadGate = gate
+    }
+
+    func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch {
+        filePatchRequests.append(request)
+        let outcome: Result<FilePatch, any Error> =
+            filePatchReadOutcomes.isEmpty
+            ? .failure(ChangesReadError.unavailable) : filePatchReadOutcomes.removeFirst()
+        let gate = nextFilePatchReadGate
+        nextFilePatchReadGate = nil
         if let gate { await gate.waitUntilOpen() }
         return try outcome.get()
     }

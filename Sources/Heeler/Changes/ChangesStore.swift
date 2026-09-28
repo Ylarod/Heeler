@@ -41,14 +41,20 @@ final class ChangesStore {
     @ObservationIgnored private var isReading = false
     @ObservationIgnored private var hasRead = false
 
+    let fileDiff: FileDiffPresenter
+
     /// `directory` is asked on every read, so an Agent that moved to another
     /// Checkout is read where it is now.
     init(
         directory: @escaping @MainActor () -> String?,
-        read: @escaping @Sendable (ChangesReadRequest) async throws -> CheckoutChangesRead
+        read: @escaping @Sendable (ChangesReadRequest) async throws -> CheckoutChangesRead,
+        readPatch: @escaping @Sendable (FilePatchRequest) async throws -> FilePatch = { _ in
+            throw ChangesReadError.unavailable
+        }
     ) {
         self.directory = directory
         self.read = read
+        self.fileDiff = FileDiffPresenter(read: readPatch)
     }
 
     /// Reads once per presentation; returning to the view reads nothing
@@ -78,6 +84,7 @@ final class ChangesStore {
             phase = .loaded(result.changes)
             directoryPrefix = result.directoryPrefix
             hasRead = true
+            fileDiff.closeIfCheckoutChanged(to: result.changes.checkout)
         } catch is CancellationError, TransportError.cancelled {
             // Left mid-read: nothing from it is shown, and the next
             // appearance reads again.

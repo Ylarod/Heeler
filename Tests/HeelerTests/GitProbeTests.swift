@@ -454,7 +454,7 @@ struct GitProbeChangesParsingTests {
 
 /// Just enough POSIX sh word parsing to check quoting: single-quoted spans,
 /// backslash escapes outside quotes, and the word's end at unquoted blank.
-private struct ShellWord {
+struct ShellWord {
     let value: String
     /// True when nothing but `\'` sits outside single quotes.
     let isQuotedOnly: Bool

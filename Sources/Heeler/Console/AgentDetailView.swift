@@ -112,6 +112,9 @@ struct AgentDetailView: View {
                         },
                         read: { request in
                             try await console.readChanges(request, on: hostID)
+                        },
+                        readPatch: { request in
+                            try await console.readFilePatch(request, on: hostID)
                         })
                 })
         _openTerminal = State(
