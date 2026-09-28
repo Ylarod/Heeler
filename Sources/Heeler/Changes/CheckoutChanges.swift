@@ -26,6 +26,7 @@ struct CheckoutChanges: Sendable, Equatable {
     let head: CheckoutHead
     /// Conflicted files first, then everything else by raw path bytes.
     let files: [ChangedFile]
+    var totals = ChangesTotals()
 
     var isClean: Bool { files.isEmpty }
 }
@@ -139,6 +140,7 @@ struct ChangedFile: Sendable, Equatable, Identifiable {
     let originalPath: Data?
     let kind: Kind
     let staging: Staging?
+    var lineCounts: LineCounts? = nil
 
     var id: Data { path }
 
@@ -240,3 +242,20 @@ extension CheckoutChanges {
         return sentences.map { "\($0)." }.joined(separator: " ")
     }
 }
+
+/// Tracked text counts against HEAD, or a binary change without line counts.
+enum LineCounts: Sendable, Equatable {
+    case lines(added: Int, removed: Int)
+    case binary
+}
+
+/// Computed before any display limit. Untracked directories count as one item.
+struct ChangesTotals: Sendable, Equatable {
+    var trackedFiles = 0
+    var untrackedItems = 0
+    var added = 0
+    var removed = 0
+    var linesAreComplete = true
+    var linesAreAvailable = true
+}
+

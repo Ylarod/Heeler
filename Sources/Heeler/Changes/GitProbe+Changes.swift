@@ -80,9 +80,8 @@ extension GitProbe {
 
         // A cut status can end on SIGPIPE; the kept records are still valid.
         guard status.status == 0 || status.isTruncated else { throw failure(status) }
-        // Counts belong to a later slice; their framed status is still
-        // required, because completeness covers every command.
-        _ = try frames.requiredSection(SectionName.numstat, cap: Cap.numstat)
+        // Counts require a framed status too, even when git cannot compute them.
+        let numstat = try frames.requiredSection(SectionName.numstat, cap: Cap.numstat)
         let head = try frames.requiredSection(SectionName.head, cap: Cap.head)
 
         let report = parseStatus(status.body)
@@ -97,7 +96,8 @@ extension GitProbe {
                 branch: report.branch,
                 commit: report.commit,
                 latestCommit: head.status == 0 ? parseLatestCommit(head.body) : nil),
-            files: report.files)
+            files: countedFiles(report.files, numstat: numstat),
+            totals: changesTotals(report.files, numstat: numstat))
         return CheckoutChangesRead(changes: changes, directoryPrefix: prefix)
     }
 
