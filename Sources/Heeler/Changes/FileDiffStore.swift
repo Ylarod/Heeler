@@ -31,8 +31,11 @@ final class FileDiffStore {
         return loadedLimit == .initial ? .canLoadMore : .tooLarge
     }
 
-    /// Kept in the model so the file's line counts can be appended here.
-    var tooLargeMessage: String { "This file is too large to display in full." }
+    /// The footer and VoiceOver share the counts from the opened file.
+    var tooLargeMessage: String {
+        "This file is too large to display in full."
+            + (file.lineCounts.map { " " + $0.summary } ?? "")
+    }
 
     @ObservationIgnored private let read:
         @Sendable (FilePatchRequest) async throws -> FilePatch
