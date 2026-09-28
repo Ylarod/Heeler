@@ -168,7 +168,7 @@ private struct ChangesHeader: View {
                     }
                 }
                 ChangesHeadDetails(head: changes.head)
-                ChangesTotalsLine(totals: changes.totals)
+                ChangesTotalsLine(summary: changes.totalsSummary)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(

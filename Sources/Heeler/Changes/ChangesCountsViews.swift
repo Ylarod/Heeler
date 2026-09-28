@@ -16,10 +16,10 @@ struct ChangesHeadDetails: View {
 }
 
 struct ChangesTotalsLine: View {
-    let totals: ChangesTotals
+    let summary: String
 
     var body: some View {
-        Text(totals.summary)
+        Text(summary)
             .font(.subheadline)
             .monospacedDigit()
             .foregroundStyle(.secondary)

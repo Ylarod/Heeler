@@ -47,7 +47,7 @@ extension GitProbe {
     /// `.notAGitWorkingTree` when git finds no working tree, and
     /// `.gitFailed` with git's first error line otherwise.
     static func parseChanges(
-        stdout: Data, stderr: Data, nonce: String
+        stdout: Data, stderr: Data, nonce: String, statusCap: Int = Cap.status
     ) throws -> CheckoutChangesRead {
         let frames = Frames(stdout: stdout, stderr: stderr, nonce: nonce)
         guard frames.reachedEnd else { throw ChangesReadError.incomplete }
@@ -70,7 +70,7 @@ extension GitProbe {
         guard !discover.body.isEmpty, discover.body.first != 0x0A else {
             throw ChangesReadError.notAGitWorkingTree
         }
-        let status = try frames.requiredSection(SectionName.status, cap: Cap.status)
+        let status = try frames.requiredSection(SectionName.status, cap: statusCap)
         let lines = discover.body.split(separator: 0x0A, omittingEmptySubsequences: false)
         // Four newline-terminated lines. A top level containing a newline
         // cannot be split by line and is not supported.

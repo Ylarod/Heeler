@@ -107,6 +107,32 @@ struct GitProbeLineCountsTests {
         #expect(changes.totals.accessibilitySummary.contains("At least 2 lines added"))
     }
 
+    @Test func aCappedStatusMakesTheVisibleAndVoiceOverHeaderFileCountALowerBound() throws {
+        let recording = GitProbeRecordings.tracking
+        let frames = GitProbe.Frames(
+            stdout: recording.stdout, stderr: recording.stderr, nonce: GitProbeRecordings.nonce)
+        let status = try frames.requiredSection(GitProbe.SectionName.status, cap: GitProbe.Cap.status)
+        // Cut the real status after app.txt and inside the next record.
+        let firstFile = try #require(status.body.range(of: Data("app.txt\0".utf8)))
+        let changes = try GitProbe.parseChanges(
+            stdout: recording.stdout, stderr: recording.stderr,
+            nonce: GitProbeRecordings.nonce, statusCap: firstFile.upperBound + 3).changes
+
+        #expect(changes.isStatusTruncated)
+        #expect(changes.files.map(\.displayPath) == ["app.txt"])
+        #expect(changes.totals.trackedFiles == 1)
+        #expect(changes.totals.added == 3)
+        #expect(changes.totals.removed == 1)
+        #expect(changes.totalsSummary == "more than 1 file changed · +3 −1 lines · 0 untracked items")
+        #expect(changes.accessibilitySummary(
+            relativeTo: Date(timeIntervalSince1970: 1_790_600_000), locale: Locale(identifier: "en_US"))
+            .contains("more than 1 file changed. 3 lines added, 1 line removed in tracked files."))
+
+        let complete = try read(recording)
+        #expect(!complete.isStatusTruncated)
+        #expect(complete.totalsSummary == "2 files changed · +3 −1 lines · 1 untracked item")
+    }
+
     @Test func aFailedCountCommandKeepsTheFileListWithoutInventingCounts() throws {
         let changes = try read(replacingNumstat(Data("4\t0\tconflict.txt\0".utf8), status: 128))
         #expect(changes.files.count == 22)

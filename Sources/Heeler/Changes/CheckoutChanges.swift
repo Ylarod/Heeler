@@ -247,6 +247,12 @@ enum ChangesReadError: Error, Sendable, Equatable {
 }
 
 extension CheckoutChanges {
+    /// Both totals summaries start with the files-changed count, which is
+    /// only a lower bound when the Host capped its status output.
+    private var fileCountQualifier: String { isStatusTruncated ? "more than " : "" }
+
+    var totalsSummary: String { fileCountQualifier + totals.summary }
+
     /// What VoiceOver reads for the header, as one element: the Checkout,
     /// its linked Worktree marker, the branch or detached commit, and the
     /// latest commit with its age. It names the Checkout and never an
@@ -269,7 +275,7 @@ extension CheckoutChanges {
         }
         if head.isUnborn { sentences.append("No commits yet") }
         if let upstream = head.upstream { sentences.append(upstream.accessibilitySummary) }
-        sentences.append(totals.accessibilitySummary)
+        sentences.append(fileCountQualifier + totals.accessibilitySummary)
         return sentences.map { "\($0)." }.joined(separator: " ")
     }
 }
