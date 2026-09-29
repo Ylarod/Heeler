@@ -176,22 +176,25 @@ final class ChangesStore {
     /// Called inside the Host gate, which is released on local completion.
     private func readAndApply(directory: String, id: UUID, automatic: Bool) async {
         guard !Task.isCancelled, readID == id else { return }
-        let readStartedWhileWorking = autoRefresh.status == .working
+        autoRefresh.readSawWorking = autoRefresh.status == .working
         do {
             let result = try await read(ChangesReadRequest(directory: directory))
             try Task.checkCancellation()
             guard readID == id else { return }
             let previous = phase
+            let hadRead = hasRead
             untrackedDirectories.collapseAll()
             phase = .loaded(result.changes)
             directoryPrefix = result.directoryPrefix
             timedOutKeepingContent = false
             hasRead = true
             readAt = now()
-            autoRefresh.readWasWhileWorking = readStartedWhileWorking || autoRefresh.status == .working
+            autoRefresh.readWasWhileWorking = autoRefresh.readSawWorking || autoRefresh.status == .working
             fileDiff.listDidRefresh(result.changes)
-            if automatic, case .loaded(let old) = previous, old.files != result.changes.files {
-                announce("Checkout Changes updated.")
+            if automatic, hadRead {
+                let previousFiles: [ChangedFile]?
+                if case .loaded(let old) = previous { previousFiles = old.files } else { previousFiles = nil }
+                if previousFiles != result.changes.files { announce("Checkout Changes updated.") }
             }
         } catch is CancellationError, TransportError.cancelled {
             // Left mid-read: nothing from it is shown, and the next

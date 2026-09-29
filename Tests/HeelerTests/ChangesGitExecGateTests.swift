@@ -237,6 +237,28 @@ struct ChangesGitExecGateTests {
         await a.value
     }
 
+    @Test func aTimedOutLocalExecReleasesTheNextStoreWithoutARetry() async throws {
+        let transport = ScriptedTransport()
+        let read = try ChangesStoreTests.read(GitProbeRecordings.clean)
+        await transport.scriptChangesReads([.failure(TransportError.gitTimedOut), .success(read)])
+        let localExec = ScriptedTransportCallGate()
+        await transport.gateNextChangesRead(using: localExec)
+        let gate = GitExecGate()
+        let first = Self.store(transport, gate: gate)
+        let second = Self.store(transport, gate: gate)
+        let a = Task { await first.appear() }
+        await localExec.waitForEntry()
+        let b = Task { await second.appear() }
+        await Self.drain()
+        #expect(second.phase == .loading)
+        await localExec.open()
+        await a.value
+        await b.value
+        #expect(first.phase == .timedOut)
+        #expect(second.phase == .loaded(read.changes))
+        #expect(await transport.changesReadRequests.count == 2)
+    }
+
     private static func drain() async {
         for _ in 0..<100 { await Task.yield() }
     }

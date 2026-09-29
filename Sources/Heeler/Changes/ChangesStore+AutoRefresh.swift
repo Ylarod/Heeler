@@ -8,9 +8,11 @@ import Observation
 final class ChangesAutoRefresh {
     var status: AgentStatus?
     var readWasWhileWorking = false
+    @ObservationIgnored var readSawWorking = false
     @ObservationIgnored var hasBaseline = false
     @ObservationIgnored var pending = false
     @ObservationIgnored var statusTask: Task<Void, Never>?
+    @ObservationIgnored var statusID = UUID()
     @ObservationIgnored var debounce: Task<Void, Never>?
     @ObservationIgnored var debounceID = UUID()
     @ObservationIgnored let agentStatus: (@MainActor () -> AsyncStream<ConsoleStore.AgentStatusUpdate>)?
@@ -34,9 +36,13 @@ extension ChangesStore {
     /// SwiftUI owns this task across both the list and an open diff. A fresh
     /// appearance gets a fresh stream; its first value is always a baseline.
     func followAgentStatus() async {
+        guard !Task.isCancelled else { return }
         startFollowingAgentStatus()
         guard let task = autoRefresh.statusTask else { return }
-        defer { cancel() }
+        let id = autoRefresh.statusID
+        defer {
+            if autoRefresh.statusID == id { cancel() }
+        }
         await withTaskCancellationHandler {
             await task.value
         } onCancel: {
@@ -47,7 +53,9 @@ extension ChangesStore {
     /// Also start on appear so a store used without a hosted view consumes
     /// the opening status. The loop never retains the store across an await.
     func startFollowingAgentStatus() {
-        guard autoRefresh.statusTask == nil, !Task.isCancelled else { return }
+        guard !Task.isCancelled else { return }
+        if let task = autoRefresh.statusTask, !task.isCancelled { return }
+        autoRefresh.statusID = UUID()
         autoRefresh.hasBaseline = false
         let stream = autoRefresh.agentStatus?() ?? AsyncStream { _ in }
         autoRefresh.statusTask = Task { [weak self] in
@@ -61,6 +69,12 @@ extension ChangesStore {
     private func receiveAgentStatus(_ status: AgentStatus?) {
         let previous = autoRefresh.status
         autoRefresh.status = status
+        if status == .working {
+            // Once editing starts, the displayed snapshot stays suspect until
+            // a read that never overlaps Working succeeds.
+            autoRefresh.readWasWhileWorking = true
+            if activeRead != nil { autoRefresh.readSawWorking = true }
+        }
         guard autoRefresh.hasBaseline else {
             autoRefresh.hasBaseline = true
             return
@@ -103,6 +117,7 @@ extension ChangesStore {
     /// Back invalidates replies immediately, even if a test transport ignores
     /// cancellation. The gate itself waits for that local call to end.
     func cancel() {
+        autoRefresh.statusID = UUID()
         autoRefresh.statusTask?.cancel()
         autoRefresh.statusTask = nil
         dropPendingAutomaticRefresh()
