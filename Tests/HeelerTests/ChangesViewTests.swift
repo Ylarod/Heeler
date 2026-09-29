@@ -81,6 +81,45 @@ struct AgentChangesPresentationTests {
                     "/home/dev/src/app/pkg",
                 ])
     }
+    @Test func insertingClosesChangesAndHandsTheReferenceBackExactlyOnce() async throws {
+        let read = try ChangesStoreTests.read(GitProbeRecordings.subdir)
+        let presentation = AgentChangesPresentation {
+            ChangesStore(directory: { "/home/dev/src/app/pkg" }) { _ in read }
+        }
+        presentation.open()
+        let store = try #require(presentation.store)
+        await store.appear()
+        let file = ChangedFile(
+            path: Data("pkg/renamed.txt".utf8), originalPath: nil,
+            kind: .modified, staging: .unstaged)
+        store.insert(file: file)
+        #expect(presentation.store == nil)
+        #expect(presentation.takePendingInsertion() == "renamed.txt ")
+        #expect(presentation.takePendingInsertion() == nil)
+
+        // A departing menu cannot hand another reference to the next view.
+        store.insert(file: file)
+        #expect(presentation.takePendingInsertion() == nil)
+    }
+
+    @Test func worktreeInsertionsStayAbsoluteAndAnOrdinaryBackInsertsNothing() async throws {
+        let read = try ChangesStoreTests.read(GitProbeRecordings.subdir)
+        let presentation = AgentChangesPresentation(makeStoreIn: { directory in
+            ChangesStore(directory: { directory }) { _ in read }
+        })
+        presentation.open(directory: "/work/other/pkg")
+        let store = try #require(presentation.store)
+        await store.appear()
+        let file = ChangedFile(
+            path: Data("pkg/renamed.txt".utf8), originalPath: nil,
+            kind: .modified, staging: .unstaged)
+        store.insert(file: file)
+        #expect(presentation.takePendingInsertion() == "/home/dev/src/app/pkg/renamed.txt ")
+
+        presentation.open()
+        presentation.close()
+        #expect(presentation.takePendingInsertion() == nil)
+    }
 }
 
 /// The Changes view hosted in a window, read the way VoiceOver reads it.
@@ -507,6 +546,106 @@ struct AgentDetailChangesTests {
                 attach.terminalStatus == AttachTerminalStore.Status.live
             })
         return attach
+    }
+    @Test(arguments: [AgentInputMode.composer, .direct])
+    func insertingARemovedLineReturnsWithoutSendingAndWaitsForAttach(mode: AgentInputMode) async throws {
+        let transport = ScriptedTransport()
+        await transport.scriptChangesReads([
+            .success(try ChangesStoreTests.read(GitProbeRecordings.subdir))
+        ])
+        let patch = FilePatch(
+            files: GitProbe.parsePatchFiles(Data("""
+                diff --git a/pkg/modified.txt b/pkg/modified.txt
+                @@ -1,3 +1,3 @@
+                 first
+                -old
+                +new
+                 last
+
+                """.utf8), isTruncated: false), isTruncated: false)
+        await transport.scriptFilePatchReads([.success(patch)])
+        let composer = AgentComposerStore(target: "w1:p1") { params in
+            try await transport.promptAgent(params)
+        }
+        composer.replaceDraft(with: "keep this draft")
+        let attach = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let suiteName = "changes-reference-detail-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let inputMode = AgentInputModeSettings(defaults: defaults)
+        inputMode.select(mode)
+        let changes = AgentChangesPresentation {
+            ChangesStore(
+                directory: { "/home/dev/src/app/pkg" },
+                read: { try await transport.readChanges($0) },
+                readPatch: { try await transport.readFilePatch($0) })
+        }
+        let detail = Self.makeDetail(
+            attach: attach, composer: composer, inputMode: inputMode, defaults: defaults,
+            changes: changes, onShowsChanges: { _ in })
+        let controller = UIHostingController(rootView: NavigationStack { detail })
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
+        defer { window.isHidden = true }
+        try #require(await ChangesViewTests.eventually {
+            controller.view.layoutIfNeeded()
+            return !AgentSurfaceReplacementTests.terminals(in: controller.view).isEmpty
+        })
+
+        changes.open()
+        let store = try #require(changes.store)
+        try #require(await ChangesViewTests.eventually {
+            controller.view.layoutIfNeeded()
+            return store.checkout != nil && attach.terminalStatus == .stopped
+        })
+        let file = ChangedFile(
+            path: Data("pkg/modified.txt".utf8), originalPath: nil,
+            kind: .modified, staging: .unstaged)
+        store.openDiff(file)
+        let diff = try #require(store.fileDiff.current)
+        await diff.appear()
+        try #require(await ChangesViewTests.eventually {
+            ChangesViewTests.labels(in: controller).contains("Removed, line 2: old")
+        })
+        composer.setDraftSelection(NSRange(location: 5, length: 0))
+        let gate = ScriptedTransportCallGate()
+        defer { Task { await gate.open() } }
+        if mode == .direct { await transport.gateNextAttach(using: gate) }
+
+        store.insert(line: 1)
+        try #require(await ChangesViewTests.eventually {
+            controller.view.layoutIfNeeded()
+            return changes.store == nil && !AgentSurfaceReplacementTests.terminals(in: controller.view).isEmpty
+        })
+        if mode == .direct {
+            await gate.waitForEntry()
+            #expect(await transport.attachInputs.compactMap(Self.keystrokes).isEmpty)
+            await gate.open()
+            try #require(await ChangesViewTests.eventually { attach.input.liveGeneration != nil })
+            #expect(attach.terminalStatus == .connecting)
+            #expect(await transport.attachInputs.compactMap(Self.keystrokes).isEmpty)
+            #expect(await transport.emitAttachOutput(Data("rebuilt".utf8)))
+            try #require(await ChangesViewTests.eventually {
+                await transport.attachInputs.compactMap(Self.keystrokes) == [Data("modified.txt:2 ".utf8)]
+            })
+            #expect(composer.draft == "keep this draft")
+        } else {
+            try #require(await ChangesViewTests.eventually {
+                composer.draft == "keep modified.txt:2 this draft"
+            })
+            #expect(await transport.attachInputs.compactMap(Self.keystrokes).isEmpty)
+        }
+        #expect(inputMode.mode == mode)
+        #expect(composer.messages.isEmpty)
+        #expect(await transport.agentPromptParams.isEmpty)
+        await attach.leave().value
+        let writes = await transport.attachInputs.compactMap(Self.keystrokes)
+        #expect(writes == (mode == .direct ? [Data("modified.txt:2 ".utf8)] : []))
+        #expect(!writes.contains { $0.contains(0x0D) || $0.contains(0x0A) })
+    }
+
+    nonisolated private static func keystrokes(_ input: TerminalAttachInput) -> Data? {
+        if case .keystrokes(let data) = input { data } else { nil }
     }
 }
 

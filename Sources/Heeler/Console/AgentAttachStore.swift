@@ -271,6 +271,10 @@ final class AgentAttachStore {
         _ = input.insertSnippet(text, bracketedPaste: bracketedPaste)
     }
 
+    func insertReference(_ text: String) {
+        input.insertReferenceWhenLive(text)
+    }
+
     func cancelPaste() {
         input.cancelPaste()
     }
@@ -595,6 +599,7 @@ final class AgentAttachStore {
         invalidateAttachLinkOpen()
         attachLinkOpenFailure = nil
         input.cancelPaste()
+        input.discardHeldInsertion()
         return enqueueLifecycleTransition { [self] in
             composer.abandonDroppedImagesForTeardown()
             await staging.leave()
@@ -628,6 +633,7 @@ final class AgentAttachStore {
         preservingOnStageActivationRecovery: Bool
     ) -> Task<Void, Never> {
         guard lifecycleState != .left else {
+            input.discardHeldInsertion()
             return lifecycleTask ?? Task {}
         }
         if preservingOnStageActivationRecovery,
@@ -649,6 +655,7 @@ final class AgentAttachStore {
         attachLinkOpenFailure = nil
         linkIndex.clear()
         input.cancelPaste()
+        input.discardHeldInsertion()
         // Strongly captured on purpose: the owner is `@State` on a view
         // SwiftUI discards right after `onDisappear`, so this task is often
         // the store's last holder. A weak capture silently skips the

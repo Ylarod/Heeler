@@ -44,6 +44,9 @@ final class TerminalInputController {
     /// time: the review sheet is what the user is looking at, so the framing
     /// they agreed to is the framing that was true when they were shown it.
     private var pendingPasteIsBracketed = false
+    /// A channel can own a writer before the Attach client is ready for input.
+    private var readyGeneration: SessionGeneration?
+    private var heldInsertion = ""
 
     var canConfirmPaste: Bool {
         writer != nil && pendingPasteText != nil
@@ -57,6 +60,7 @@ final class TerminalInputController {
         nextGeneration &+= 1
         let generation = SessionGeneration(value: nextGeneration)
         liveGeneration = generation
+        readyGeneration = nil
         userMessageIndex.reset()
         self.writer = writer
         self.scroller = scroller
@@ -66,6 +70,7 @@ final class TerminalInputController {
     func endSession(_ generation: SessionGeneration, preservingPendingPaste: Bool = false) {
         guard generation == liveGeneration else { return }
         liveGeneration = nil
+        readyGeneration = nil
         writer = nil
         scroller = nil
         userMessageIndex.reset()
@@ -79,6 +84,7 @@ final class TerminalInputController {
     /// interaction, so it remains pending for the replacement session.
     func detachSessionForReplacement() {
         liveGeneration = nil
+        readyGeneration = nil
         writer = nil
         scroller = nil
         userMessageIndex.reset()
@@ -138,6 +144,37 @@ final class TerminalInputController {
             using: writer,
             source: .snippet)
         return true
+    }
+
+    /// Changes returns to a rebuilding Attach. Keep its single-line reference
+    /// until the client produces output, then use the same writer as Snippets.
+    /// Ordinary Snippets still require a writer and never enter this holding path.
+    @discardableResult
+    func insertReferenceWhenLive(_ text: String) -> Bool {
+        guard !text.isEmpty,
+            text.unicodeScalars.allSatisfy({
+                !CharacterSet.controlCharacters.contains($0)
+                    && !CharacterSet.newlines.contains($0)
+            })
+        else { return false }
+        if let readyGeneration, readyGeneration == liveGeneration {
+            return insertSnippet(text, bracketedPaste: false)
+        }
+        heldInsertion += text
+        return true
+    }
+
+    func sessionDidBecomeLive(_ generation: SessionGeneration) {
+        guard generation == liveGeneration else { return }
+        readyGeneration = generation
+        let text = heldInsertion
+        heldInsertion = ""
+        if !text.isEmpty { insertSnippet(text, bracketedPaste: false) }
+    }
+
+    /// Only a departure discards text; ending or replacing a pipeline keeps it.
+    func discardHeldInsertion() {
+        heldInsertion = ""
     }
 
     @discardableResult

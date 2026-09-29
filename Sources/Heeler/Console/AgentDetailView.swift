@@ -357,7 +357,16 @@ struct AgentDetailView: View {
         // so it comes back the same way, through retention and rejoin.
         .onChange(of: changes.store == nil) { _, showsTerminal in
             onShowsChanges?(!showsTerminal)
-            if showsTerminal { applyTerminalAccess() }
+            if showsTerminal {
+                applyTerminalAccess()
+                if let text = changes.takePendingInsertion() {
+                    if inputMode.isDirect {
+                        attach.insertReference(text)
+                    } else {
+                        composer.insertIntoDraft(text)
+                    }
+                }
+            }
         }
         .onChange(of: openTerminal.shell != nil || openTerminal.isOpening, initial: true) {
             _, showsShellTerminal in

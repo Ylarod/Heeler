@@ -23,6 +23,7 @@ struct ChangesView: View {
                 .accessibilityHidden(store.fileDiff.current != nil)
             if let diff = store.fileDiff.current {
                 FileDiffView(store: diff)
+                    .environment(\.changesReferenceActions, ChangesReferenceActions(store: store))
                     .id(ObjectIdentifier(diff))
             }
         }
@@ -79,6 +80,7 @@ struct ChangesView: View {
                                     ChangesFileRow(file: file)
                                 }
                                 .buttonStyle(.plain)
+                                .changedFileReferenceMenu(file, store: store)
                             }
                         }
                     }
