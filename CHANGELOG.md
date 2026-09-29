@@ -26,7 +26,10 @@ Entries reference the issue that motivated them.
   again when that Agent stops working, waiting while no row shows it. They
   stay hidden while the Checkout is clean, unreadable, or not yet read, and
   shorten from 1,000 lines, as in 1.2K or 12.3K, when the row is short of
-  room. Changes opens on the row's latest read while it reads again, and
+  room. Agent detail's status line, just above the input and keyboard,
+  shows the same totals beside the Host's latency and reads them as a row
+  does while it shows, so they stay current on iPhone, where the list is
+  hidden. Changes opens on the row's latest read while it reads again, and
   hands its read back to the row. Tap a file to read its diff: green
   additions and red removals (blue and mauve with Differentiate Without
   Color), changed words outlined inside a changed line, long lines wrapping

@@ -2,7 +2,8 @@ import Foundation
 
 /// The Agents list's Changes totals, read by the list itself: one store per
 /// Agent, made when its row first shows and kept while the Agent is in the
-/// catalog. A store reads once its row has settled on screen, then after
+/// catalog. Agent detail's status line shows the same totals and counts as
+/// one more row. A store reads once its row has settled on screen, then after
 /// each exit from Working. Those reads wait while no row shows the Agent,
 /// so an exit seen with the list off screen reads when a row comes back,
 /// and while open Changes of the same Checkout read in its place: closing
@@ -132,4 +133,13 @@ final class AgentRowChanges {
         entries[agent.id] = entry
         return entry
     }
+}
+
+/// One Agent's list store, as Agent detail's status line shows it.
+@MainActor
+struct AgentDetailChanges {
+    let rows: AgentRowChanges
+    let agent: ConsoleAgent
+
+    var store: ChangesStore? { rows.store(for: agent) }
 }

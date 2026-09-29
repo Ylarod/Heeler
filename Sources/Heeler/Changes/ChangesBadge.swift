@@ -101,12 +101,17 @@ enum ChangesBadgePalette {
     static let removedInk = DiffPalette.adaptive(light: 0xB42318, dark: 0xFFA198)
 }
 
-/// The totals at the trailing end of an Agents list row's first detail
-/// line: "+12 −7", green and red. Not a control; the row opens the Agent,
-/// and the Agent menu opens Changes. Exact totals come first; a row without
-/// room takes the shortened form.
+/// An Agent's Checkout totals, "+12 −7" in green and red, at the trailing
+/// end of its Agents list row's first detail line and of Agent detail's
+/// status line. Not a control; the row opens the Agent, and the Agent menu
+/// opens Changes. Exact totals come first; a line without room takes the
+/// shortened form.
 struct ChangesRowTotals: View {
     let store: ChangesStore
+    /// The surrounding line's size, so the totals match its text.
+    var font: Font = .caption.weight(.semibold)
+    /// Where the totals show, as UI tests find them.
+    var identifier = "agent-row-changes"
     @Environment(\.locale) private var locale
 
     var body: some View {
@@ -127,14 +132,13 @@ struct ChangesRowTotals: View {
             Text(badge.removedText(style, locale: locale))
                 .foregroundStyle(Color(uiColor: ChangesBadgePalette.removedInk))
         }
-        .font(.caption.weight(.semibold))
+        .font(font)
         .monospacedDigit()
         .lineLimit(1)
         .fixedSize()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Changes: " + badge.accessibilityValue)
         // VoiceOver hears exact counts either way; this says which one shows.
-        .accessibilityIdentifier(
-            style == .exact ? "agent-row-changes.exact" : "agent-row-changes.compact")
+        .accessibilityIdentifier(identifier + (style == .exact ? ".exact" : ".compact"))
     }
 }

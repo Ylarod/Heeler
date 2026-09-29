@@ -103,6 +103,8 @@ struct AgentComposerView: View {
     /// Read-only projection of the Host's own connection telemetry; nil
     /// whenever there is nothing proven to show.
     let hostTelemetry: HostTelemetryPresentation?
+    /// The Agent's Checkout totals for the status row.
+    var changes: AgentDetailChanges? = nil
     /// The terminal theme's luminance, not the system appearance. The status
     /// row sits directly on the themed terminal surface, so hierarchical
     /// styles and the status inks must resolve against that background — a
@@ -155,6 +157,7 @@ struct AgentComposerView: View {
                 AgentDetailStatusChrome(
                     status: status,
                     hostTelemetry: hostTelemetry,
+                    changes: changes,
                     chromeColorScheme: chromeColorScheme)
 
                 VStack(spacing: 0) {

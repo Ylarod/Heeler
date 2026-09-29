@@ -887,6 +887,11 @@ struct AgentTerminalView: View {
             latency: console.hostLatencies[agent.hostID])
     }
 
+    /// The Agent's list store, so the status line shows the row's totals.
+    private var statusChanges: AgentDetailChanges {
+        AgentDetailChanges(rows: console.rowChanges, agent: agent)
+    }
+
     private var directInputPresentation: AgentDirectInputPresentation {
         AgentDirectInputPresentation.resolve(
             usesToolsKeyboard: usesDirectToolsKeyboard,
@@ -1128,6 +1133,7 @@ struct AgentTerminalView: View {
                 presentation: .init(
                     status: agent.agent.status,
                     hostTelemetry: hostTelemetry,
+                    changes: statusChanges,
                     chromeColorScheme: terminal.themes.selection(for: colorScheme)
                         .chromeColorScheme(for: colorScheme),
                     isKeyboardUp: directSwitcherKeyboardIsUp,
@@ -1164,6 +1170,7 @@ struct AgentTerminalView: View {
             store: composer,
             status: agent.agent.status,
             hostTelemetry: hostTelemetry,
+            changes: statusChanges,
             chromeColorScheme: terminal.themes.selection(for: colorScheme)
                 .chromeColorScheme(for: colorScheme),
             switcher: agentSwitcher,

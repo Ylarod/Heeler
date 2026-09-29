@@ -484,8 +484,9 @@ struct AgentRowChangesTests {
         #expect(Self.texts(store) == "+2 \u{2212}0")
     }
 
-    /// With the list off screen, as on iPhone while Agent detail shows, an
-    /// exit from Working costs the Host nothing until a row comes back.
+    /// With nothing on screen showing the Agent, as on iPhone while another
+    /// tab shows, an exit from Working costs the Host nothing until a row
+    /// comes back.
     @Test func anExitWhileNoRowShowsTheAgentReadsWhenARowReturns() async throws {
         let transport = ScriptedTransport()
         let first = try ChangesBadgeTests.read(added: 12, removed: 7)
@@ -534,6 +535,77 @@ struct AgentRowChangesTests {
         await Self.waitUntilSettled(store, .loaded(second.changes))
         #expect(await transport.changesReadRequests.count == 2)
         #expect(fixture.rows.store(for: fixture.agent) === store)
+    }
+
+    /// Agent detail's status line shows the row's totals just before the
+    /// Host's latency, at that line's size, and counts as a row while it
+    /// shows: with no list row on screen, as on iPhone, an exit from Working
+    /// still rereads, and stops once the line goes.
+    @Test func theDetailStatusLineShowsTheTotalsAndCountsAsARow() async throws {
+        let transport = ScriptedTransport()
+        let first = try ChangesBadgeTests.read(added: 12, removed: 7)
+        let second = try ChangesBadgeTests.read(added: 1, removed: 1)
+        await transport.scriptChangesReads([.success(first), .success(second)])
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.working)
+        defer { feed.finish() }
+        let fixture = Self.fixture(transport: transport, clock: clock, feed: feed)
+        defer { fixture.rows.retain { _ in false } }
+        let controller = UIHostingController(
+            rootView: AnyView(
+                AgentDetailStatusChrome(
+                    status: .idle,
+                    hostTelemetry: HostTelemetryPresentation(
+                        status: .connected, latency: .milliseconds(12)),
+                    changes: AgentDetailChanges(rows: fixture.rows, agent: fixture.agent),
+                    chromeColorScheme: .dark)
+                    .environment(\.locale, Locale(identifier: "en_US"))))
+        controller.safeAreaRegions = []
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 80), rootViewController: controller)
+        defer { window.isHidden = true }
+        // The line appears on a later hosting pass; its row then settles.
+        for _ in 0..<100 {
+            if await !clock.durations.isEmpty { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(await clock.durations == [.milliseconds(300)])
+        await Self.drain()
+        await clock.fireAll()
+        let store = try #require(fixture.rows.store(for: fixture.agent))
+        await Self.waitUntilSettled(store, .loaded(first.changes))
+
+        let root: UIView = controller.view
+        let totals = try #require(await Self.frame(
+            labeled: "Changes: 12 lines added, 7 lines removed", in: root))
+        let latency = try #require(AccessibilityProbe.frame(
+            labeled: "Host API connection latency", in: root))
+        #expect(abs(totals.midY - latency.midY) <= 1, "\(totals) and \(latency) sit on different lines")
+        #expect(abs(totals.height - latency.height) <= 1, "\(totals) and \(latency) differ in size")
+        #expect(totals.maxX <= latency.minX, "\(totals) overlaps \(latency)")
+        #expect(latency.minX - totals.maxX <= 8.5, "\(totals) sits apart from \(latency)")
+
+        await Self.exitWorking(feed, clock: clock)
+        await Self.waitUntilSettled(store, .loaded(second.changes))
+        #expect(await transport.changesReadRequests.count == 2)
+
+        controller.rootView = AnyView(EmptyView())
+        controller.view.layoutIfNeeded()
+        await Self.drain()
+        await Self.exitWorking(feed, clock: clock)
+        #expect(await transport.changesReadRequests.count == 2)
+    }
+
+    /// The totals publish after the read settles; the hosted line lays
+    /// them out on its next pass.
+    private static func frame(labeled label: String, in root: UIView) async -> CGRect? {
+        for _ in 0..<50 {
+            root.setNeedsLayout()
+            root.layoutIfNeeded()
+            if let frame = AccessibilityProbe.frame(labeled: label, in: root) { return frame }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return nil
     }
 
     @Test func aTimedOutRefreshHidesTheTotalsAndTheNextSuccessRestoresThem() async throws {

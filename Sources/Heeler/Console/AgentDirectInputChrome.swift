@@ -9,6 +9,7 @@ struct AgentDirectInputChromeContext {
     struct Presentation {
         let status: AgentStatus
         let hostTelemetry: HostTelemetryPresentation?
+        let changes: AgentDetailChanges?
         let chromeColorScheme: ColorScheme
         /// Ghostty first-responder / tools intent for the switcher toggle glyph.
         let isKeyboardUp: Bool
@@ -60,6 +61,7 @@ struct AgentDirectInputChrome: View {
                 AgentDetailStatusChrome(
                     status: presentation.status,
                     hostTelemetry: presentation.hostTelemetry,
+                    changes: presentation.changes,
                     chromeColorScheme: presentation.chromeColorScheme)
 
                 // Immediately above the Agent list/switcher strip. Keyboard
