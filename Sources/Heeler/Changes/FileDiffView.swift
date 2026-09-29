@@ -139,6 +139,7 @@ private struct FileDiffDocumentView<Footer: View>: View {
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isHeader)
             .accessibilityRotorEntry(id: row.id, in: rotor)
+            .diffFileReferenceMenu(file)
         case .hunk(let hunk):
             Text(hunk.title)
                 .font(.callout.monospaced().weight(.semibold))
@@ -149,8 +150,11 @@ private struct FileDiffDocumentView<Footer: View>: View {
                 .background(Color(uiColor: .secondarySystemBackground))
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityRotorEntry(id: row.id, in: rotor)
+                .diffHunkReferenceMenu(hunk)
         case .line(let line):
             FileDiffLineRow(line: line, numberDigits: numberDigits)
+                .diffLineContextMenu(line)
+                .diffLineAccessibilityActions(line)
         }
     }
 

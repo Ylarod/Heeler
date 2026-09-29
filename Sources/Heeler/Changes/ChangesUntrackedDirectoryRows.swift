@@ -37,6 +37,7 @@ struct ChangesUntrackedDirectoryRows: View {
         .accessibilityLabel(directory.accessibilityLabel)
         .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
         .accessibilityHint("Lists the files inside")
+        .changedFileReferenceMenu(directory, store: store)
         .onDisappear {
             for task in toggleTasks { task.cancel() }
         }
@@ -77,11 +78,13 @@ struct ChangesUntrackedDirectoryRows: View {
                 if entry.path.last == UInt8(ascii: "/") {
                     ChangesFileRow(file: entry)
                         .padding(.leading, 18)
+                        .changedFileReferenceMenu(entry, store: store)
                 } else {
                     Button { store.openDiff(entry) } label: {
                         ChangesFileRow(file: entry)
                     }
                     .buttonStyle(.plain)
+                    .changedFileReferenceMenu(entry, store: store)
                     .padding(.leading, 18)
                 }
             }

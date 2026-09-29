@@ -155,7 +155,7 @@ struct ChangesReferenceTests {
 
     private static func loadedDiff(
         _ transport: ScriptedTransport, patch: String,
-        file: ChangedFile = Self.file("pkg/modified.txt")
+        file: ChangedFile? = nil
     ) async throws -> ChangesStore {
         await transport.scriptChangesReads([
             .success(try ChangesStoreTests.read(GitProbeRecordings.subdir))
@@ -166,7 +166,7 @@ struct ChangesReferenceTests {
         await transport.scriptFilePatchReads([.success(parsed)])
         let store = Self.store(transport)
         await store.appear()
-        store.openDiff(file)
+        store.openDiff(file ?? Self.file("pkg/modified.txt"))
         let diff = try #require(store.fileDiff.current)
         await diff.appear()
         return store

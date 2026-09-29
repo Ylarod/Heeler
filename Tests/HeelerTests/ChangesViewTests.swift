@@ -565,7 +565,7 @@ struct AgentDetailChangesTests {
                 """.utf8), isTruncated: false), isTruncated: false)
         await transport.scriptFilePatchReads([.success(patch)])
         let composer = AgentComposerStore(target: "w1:p1") { params in
-            try await transport.agentPrompt(params)
+            try await transport.promptAgent(params)
         }
         composer.replaceDraft(with: "keep this draft")
         let attach = try await Self.makeLiveAttach(transport: transport, composer: composer)
@@ -644,7 +644,7 @@ struct AgentDetailChangesTests {
         #expect(!writes.contains { $0.contains(0x0D) || $0.contains(0x0A) })
     }
 
-    private static func keystrokes(_ input: TerminalAttachInput) -> Data? {
+    nonisolated private static func keystrokes(_ input: TerminalAttachInput) -> Data? {
         if case .keystrokes(let data) = input { data } else { nil }
     }
 }
