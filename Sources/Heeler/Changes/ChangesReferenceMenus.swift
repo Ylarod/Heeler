@@ -163,19 +163,29 @@ private struct DiffLineAccessibilityActions: ViewModifier {
     let qualifier: String?
     @Environment(\.changesReferenceActions) private var actions
 
-    func body(content: Content) -> some View {
-        // Availability changes the commands, not the row's view structure.
-        content.accessibilityActions {
-            if let actions {
-                Button { actions.copyLine(lineID) } label: { name("Copy", "Line") }
-                Button { actions.copyHunk(containingLine: lineID) } label: { name("Copy", "Hunk") }
-                if actions.pathAvailability != .unavailable {
-                    Button { actions.copyPath() } label: { name("Copy", "Path") }
-                }
-                if actions.pathAvailability == .copyAndInsert {
-                    Button { actions.insertLine(lineID) } label: { name("Insert", "Line Reference") }
-                }
+    @ViewBuilder func body(content: Content) -> some View {
+        if let actions {
+            // One file-level choice, with a flat chain of accessibility
+            // attachments in each branch, instead of a modifier per action.
+            switch actions.pathAvailability {
+            case .copyAndInsert:
+                content
+                    .accessibilityAction(named: name("Copy", "Line")) { actions.copyLine(lineID) }
+                    .accessibilityAction(named: name("Copy", "Hunk")) { actions.copyHunk(containingLine: lineID) }
+                    .accessibilityAction(named: name("Copy", "Path")) { actions.copyPath() }
+                    .accessibilityAction(named: name("Insert", "Line Reference")) { actions.insertLine(lineID) }
+            case .copy:
+                content
+                    .accessibilityAction(named: name("Copy", "Line")) { actions.copyLine(lineID) }
+                    .accessibilityAction(named: name("Copy", "Hunk")) { actions.copyHunk(containingLine: lineID) }
+                    .accessibilityAction(named: name("Copy", "Path")) { actions.copyPath() }
+            case .unavailable:
+                content
+                    .accessibilityAction(named: name("Copy", "Line")) { actions.copyLine(lineID) }
+                    .accessibilityAction(named: name("Copy", "Hunk")) { actions.copyHunk(containingLine: lineID) }
             }
+        } else {
+            content
         }
     }
 
