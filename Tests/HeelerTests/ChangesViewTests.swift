@@ -35,6 +35,52 @@ struct AgentChangesPresentationTests {
         #expect(presentation.store?.phase == .loading)
         #expect(made == 2)
     }
+
+    /// Worktree Details and the dirty-removal refusal hand that Worktree's
+    /// directory. The Agent menu hands nil, so the next open follows the Agent
+    /// again instead of keeping the Worktree path.
+    @Test func openingForAWorktreeReadsThatDirectory() async throws {
+        let transport = ScriptedTransport()
+        var handed: [String?] = []
+        let presentation = AgentChangesPresentation(makeStoreIn: { fixed in
+            handed.append(fixed)
+            return ChangesStore(directory: { fixed ?? "/home/dev/src/app/pkg" }) { request in
+                try await transport.readChanges(request)
+            }
+        })
+
+        presentation.open(directory: "/work/Heeler-wt")
+        let store = try #require(presentation.store)
+        await store.appear()
+        #expect(handed == ["/work/Heeler-wt"])
+        #expect(
+            await transport.changesReadRequests
+                == [ChangesReadRequest(directory: "/work/Heeler-wt")])
+
+        let shown = presentation.store
+        presentation.open(directory: "/other")
+        #expect(presentation.store === shown)
+        #expect(handed == ["/work/Heeler-wt"])
+
+        await store.refresh()
+        #expect(
+            await transport.changesReadRequests.map(\.directory)
+                == ["/work/Heeler-wt", "/work/Heeler-wt"])
+
+        presentation.close()
+        #expect(presentation.store == nil)
+
+        presentation.open()
+        let followed = try #require(presentation.store)
+        await followed.appear()
+        #expect(handed == ["/work/Heeler-wt", nil])
+        #expect(
+            await transport.changesReadRequests.map(\.directory)
+                == [
+                    "/work/Heeler-wt", "/work/Heeler-wt",
+                    "/home/dev/src/app/pkg",
+                ])
+    }
 }
 
 /// The Changes view hosted in a window, read the way VoiceOver reads it.

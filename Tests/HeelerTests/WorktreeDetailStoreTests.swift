@@ -1,5 +1,7 @@
 import Foundation
+import SwiftUI
 import Testing
+import UIKit
 
 @testable import Heeler
 
@@ -156,9 +158,222 @@ struct WorktreeDetailStoreTests {
         #expect(!store.showsFeedback)
     }
 
+    @Test func showChangesFromDetailsHandsTheWorktreeDirectory() {
+        var handed: [String] = []
+        let store = makeStore(
+            list: { _ in Self.list(branch: "feat/issue-99") },
+            remove: { _ in throw CancellationError() },
+            showChanges: { handed.append($0) })
+
+        #expect(store.canShowChanges)
+        #expect(store.changesDirectory == "/work/Heeler-wt")
+        store.showChanges()
+
+        #expect(handed == ["/work/Heeler-wt"])
+        #expect(store.removalPhase == .idle)
+    }
+
+    @Test func worktreeDetailsShowsChangesForItsDirectory() async throws {
+        var handed: [String] = []
+        let store = makeStore(
+            list: { _ in Self.list(branch: "feat/issue-99") },
+            remove: { _ in throw CancellationError() },
+            showChanges: { handed.append($0) })
+        let controller = UIHostingController(
+            rootView: WorktreeDetailView(store: store) { _ in })
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+
+        let shown = try await ChangesViewTests.eventually {
+            ChangesViewTests.labels(in: controller).contains("Show Changes")
+        }
+        try #require(shown, "Show Changes never appeared")
+        #expect(ChangesViewTests.activate("Show Changes", in: controller.view))
+        #expect(handed == ["/work/Heeler-wt"])
+    }
+
+    @Test func aDirtyRefusalOffersChangesForTheWorktreeDirectory() async throws {
+        var handed: [String] = []
+        let store = try await refusedStore(
+            showChanges: { handed.append($0) },
+            error: HerdrAPIError(
+                code: "dirty_worktree_requires_force", message: "dirty"))
+
+        #expect(store.refusalOffersChanges)
+        #expect(store.showsFeedback)
+        guard case .failed(let message) = store.removalPhase else {
+            Issue.record("a dirty Worktree should stay on the detail")
+            return
+        }
+        #expect(message.contains("modified or untracked files"))
+
+        store.showChanges()
+
+        #expect(handed == ["/work/Heeler-wt"])
+        #expect(!store.showsFeedback)
+        #expect(!store.refusalOffersChanges)
+        #expect(store.removalPhase == .idle)
+    }
+
+    @Test func aDirtyRefusalOverTheTransportAlsoOffersChanges() async throws {
+        var handed: [String] = []
+        let store = try await refusedStore(
+            showChanges: { handed.append($0) },
+            error: TransportError.apiRejected(
+                code: "dirty_worktree_requires_force", message: "dirty"))
+
+        #expect(store.refusalOffersChanges)
+        store.showChanges()
+        #expect(handed == ["/work/Heeler-wt"])
+        #expect(store.removalPhase == .idle)
+    }
+
+    @Test func otherRefusalsDoNotOfferChanges() async throws {
+        let missing = try await refusedStore(
+            showChanges: { _ in },
+            error: HerdrAPIError(code: "workspace_not_found", message: "gone"))
+        #expect(!missing.refusalOffersChanges)
+        #expect(missing.showsFeedback)
+        #expect(missing.canShowChanges)
+
+        let unreachable = try await refusedStore(
+            showChanges: { _ in },
+            error: TransportError.sshUnreachable(detail: "down"))
+        #expect(!unreachable.refusalOffersChanges)
+        #expect(unreachable.canShowChanges)
+    }
+
+    @Test func dismissingTheRefusalWithdrawsTheOffer() async throws {
+        let store = try await refusedStore(
+            showChanges: { _ in },
+            error: HerdrAPIError(
+                code: "dirty_worktree_requires_force", message: "dirty"))
+
+        #expect(store.refusalOffersChanges)
+        store.dismissFeedback()
+        #expect(!store.refusalOffersChanges)
+        #expect(!store.showsFeedback)
+        #expect(store.removalPhase == .idle)
+    }
+
+    @Test func noChangesWhileRemovingOrWithoutAHandler() async throws {
+        var handed: [String] = []
+        let store = makeStore(
+            list: { _ in Self.list(branch: "feat/issue-99") },
+            remove: { request in
+                WorktreeRemovalReceipt(request: request, affectedAgentIDs: [])
+            },
+            showChanges: { handed.append($0) })
+        store.prepareConfirmation()
+        let request = try #require(store.beginRemoval())
+        #expect(!store.canShowChanges)
+        store.showChanges()
+        #expect(handed.isEmpty)
+
+        await store.finishRemoval(request)
+        guard case .removed = store.removalPhase else {
+            Issue.record("removal should succeed")
+            return
+        }
+        #expect(!store.canShowChanges)
+        store.showChanges()
+        #expect(handed.isEmpty)
+
+        let without = makeStore(
+            list: { _ in Self.list(branch: "feat/issue-99") },
+            remove: { _ in throw CancellationError() })
+        #expect(!without.canShowChanges)
+        without.showChanges()
+    }
+
+    /// Show Changes stages the Worktree directory and dismisses the sheet
+    /// before Changes exists. Back is a new handoff beside Agent detail, so
+    /// the sheet does not return and Changes is not opened again.
+    @Test func theSheetDismissesBeforeChangesOpensAndBackLeavesItDismissed() async throws {
+        let transport = ScriptedTransport()
+        var handed: [String?] = []
+        let presentation = AgentChangesPresentation(makeStoreIn: { fixed in
+            handed.append(fixed)
+            return ChangesStore(directory: { fixed }) { request in
+                try await transport.readChanges(request)
+            }
+        })
+        let handoff = WorktreeChangesHandoff()
+        var sheetPresented = true
+        let store = makeStore(
+            list: { _ in Self.list(branch: "feat/issue-99") },
+            remove: { _ in throw CancellationError() },
+            showChanges: { directory in
+                sheetPresented = handoff.stage(directory)
+            })
+
+        store.showChanges()
+        #expect(!sheetPresented)
+        #expect(handoff.pendingDirectory == "/work/Heeler-wt")
+        #expect(presentation.store == nil)
+
+        handoff.openChangesAfterDismissal { directory in
+            presentation.open(directory: directory)
+        }
+        let changes = try #require(presentation.store)
+        await changes.appear()
+        #expect(handed == ["/work/Heeler-wt"])
+        #expect(
+            await transport.changesReadRequests
+                == [ChangesReadRequest(directory: "/work/Heeler-wt")])
+
+        presentation.close()
+        #expect(presentation.store == nil)
+
+        // Back builds a new terminal, so its handoff has nothing staged and
+        // a dismissal opens nothing.
+        let restored = WorktreeChangesHandoff()
+        restored.openChangesAfterDismissal { directory in
+            presentation.open(directory: directory)
+        }
+        #expect(restored.pendingDirectory == nil)
+        #expect(presentation.store == nil)
+        #expect(handed == ["/work/Heeler-wt"])
+    }
+
+    @Test func dirtyClassificationMatchesTheRefusalCode() {
+        let dirty = HerdrAPIError(
+            code: "dirty_worktree_requires_force", message: "dirty")
+        #expect(WorktreeRemovalRefusal.dirtyCode == "dirty_worktree_requires_force")
+        #expect(WorktreeRemovalRefusal.isDirty(dirty))
+        #expect(
+            WorktreeRemovalRefusal.isDirty(
+                TransportError.apiRejected(
+                    code: "dirty_worktree_requires_force", message: "dirty")))
+        #expect(
+            !WorktreeRemovalRefusal.isDirty(
+                HerdrAPIError(code: "workspace_not_found", message: "gone")))
+        #expect(
+            !WorktreeRemovalRefusal.isDirty(
+                TransportError.sshUnreachable(detail: "down")))
+        #expect(!WorktreeRemovalRefusal.isDirty(WorktreeRemovalError.staleIdentity))
+    }
+
+    private func refusedStore(
+        showChanges: @escaping (String) -> Void,
+        error: some Error
+    ) async throws -> WorktreeDetailStore {
+        let store = makeStore(
+            list: { _ in Self.list(branch: "feat/issue-99") },
+            remove: { _ in throw error },
+            showChanges: showChanges)
+        store.prepareConfirmation()
+        let request = try #require(store.beginRemoval())
+        await store.finishRemoval(request)
+        return store
+    }
+
     private func makeStore(
         list: @escaping (String) async throws -> WorktreeListResponse,
-        remove: @escaping (WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt
+        remove: @escaping (WorktreeRemovalRequest) async throws -> WorktreeRemovalReceipt,
+        showChanges: ((String) -> Void)? = nil
     ) -> WorktreeDetailStore {
         let checkout = RepositoryCheckout(
             repoKey: "/work/Heeler/.git",
@@ -174,7 +389,8 @@ struct WorktreeDetailStoreTests {
             checkout: checkout,
             list: list,
             remove: remove,
-            hasWorkingAgent: { true })
+            hasWorkingAgent: { true },
+            showChanges: showChanges)
     }
 
     private static func list(

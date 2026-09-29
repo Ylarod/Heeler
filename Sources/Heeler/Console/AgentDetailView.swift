@@ -102,12 +102,12 @@ struct AgentDetailView: View {
         let openingDirectory = agent.directory
         _changes = State(
             initialValue: changesPresentation
-                ?? AgentChangesPresentation { [console] in
+                ?? AgentChangesPresentation { [console] fixedDirectory in
                     ChangesStore(
                         // Where the Agent is now: a later read follows it
                         // into another Checkout.
                         directory: {
-                            console.agents.first { $0.id == agentID }?.directory
+                            fixedDirectory ?? console.agents.first { $0.id == agentID }?.directory
                                 ?? openingDirectory
                         },
                         read: { request in
@@ -283,6 +283,9 @@ struct AgentDetailView: View {
                     // Any Agent with a directory, whatever its worktree
                     // metadata: git resolves the Checkout on the Host.
                     showChanges: agent.directory == nil ? nil : { changes.open() },
+                    showWorktreeChanges: { directory in
+                        changes.open(directory: directory)
+                    },
                     composer: composer,
                     attachStore: attach,
                     retainedSurface: retainedAgent?.surfaceRetention,
