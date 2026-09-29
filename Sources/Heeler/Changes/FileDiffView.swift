@@ -62,7 +62,6 @@ private struct FileDiffDocumentView<Footer: View>: View {
     @State private var usableWidth: CGFloat?
     /// Not observable: writing it as the user scrolls would rebuild every row.
     @State private var anchor = DiffScrollAnchor<Row.ID>()
-    @State private var contentInsetTop: CGFloat = 0
 
     init(patch: FilePatch, refreshError: String?, @ViewBuilder footer: () -> Footer) {
         self.patch = patch
@@ -132,22 +131,25 @@ private struct FileDiffDocumentView<Footer: View>: View {
             .accessibilityIdentifier("file-diff-scroll")
             .backgroundPreferenceValue(DiffLineFramesKey.self) { anchors in
                 GeometryReader { proxy in
-                    let line = DiffLineFrames.lineID(
-                        in: anchors, chrome: max(contentInsetTop, proxy.safeAreaInsets.top),
-                        proxy: proxy)
+                    // The reader's origin is the unobscured edge `scrollTo` uses.
+                    // `safeAreaInsets.top` still reports the bar, and adding it
+                    // selects the next row.
+                    let probe: CGFloat = 4
+                    let inspection = DiffLineFrames.inspect(
+                        in: anchors, probe: probe, pendingLine: anchor.pendingLine, proxy: proxy)
+                    let _ = anchor.observe(
+                        line: inspection.line.map(Row.ID.line),
+                        pendingFrame: inspection.pendingFrame,
+                        probe: probe,
+                        readerHeight: proxy.size.height)
                     Color.clear
                         .allowsHitTesting(false)
-                        .onAppear { anchor.note(line.map(Row.ID.line)) }
-                        .onChange(of: line) { _, new in
-                            anchor.note(new.map(Row.ID.line))
-                        }
                 }
             }
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentInsets.top
-            } action: { _, inset in
-                guard abs(inset - contentInsetTop) >= 0.5 else { return }
-                contentInsetTop = inset
+                geometry.containerSize.height
+            } action: { _, height in
+                anchor.noteContainerHeight(height)
             }
             .onGeometryChange(for: CGFloat.self) { proxy in
                 DiffLayoutPolicy.usableWidth(
@@ -324,7 +326,12 @@ private struct FileDiffDocumentView<Footer: View>: View {
     private func keepTopLine(for layout: DiffLayout, proxy: ScrollViewProxy) {
         anchor.adopt(proxy)
         guard anchor.needsRestore, let top = anchor.top else { return }
-        anchor.restore(anchorTarget(for: top, layout: layout))
+        let target = anchorTarget(for: top, layout: layout)
+        guard case .line(let line) = target else {
+            anchor.cancelRestore()
+            return
+        }
+        anchor.restore(target, line: line)
     }
 
 }
@@ -342,45 +349,71 @@ private struct DiffLineFramesKey: PreferenceKey {
 }
 
 private enum DiffLineFrames {
-    /// The line whose frame contains the point just below the top chrome.
-    static func lineID(
-        in anchors: [Int: Anchor<CGRect>], chrome: CGFloat, proxy: GeometryProxy
-    ) -> Int? {
-        let edge = chrome + 4
+    struct Inspection {
+        var line: Int?
+        var pendingFrame: CGRect?
+    }
+
+    /// The line whose frame contains the probe, plus the pending row's frame.
+    static func inspect(
+        in anchors: [Int: Anchor<CGRect>],
+        probe: CGFloat,
+        pendingLine: Int?,
+        proxy: GeometryProxy
+    ) -> Inspection {
         var bestID: Int?
         var bestMinY = CGFloat.greatestFiniteMagnitude
+        var pendingFrame: CGRect?
         for (id, anchor) in anchors {
             let frame = proxy[anchor]
-            guard frame.minY <= edge, frame.maxY > edge, frame.minY < bestMinY else { continue }
+            if id == pendingLine {
+                pendingFrame = frame
+            }
+            guard frame.minY <= probe, frame.maxY > probe, frame.minY < bestMinY else { continue }
             bestMinY = frame.minY
             bestID = id
         }
-        return bestID
+        return Inspection(line: bestID, pendingFrame: pendingFrame)
     }
 }
 
 /// Topmost row. Not observable: publishing it would rebuild every line.
 ///
 /// The remembered line is the one crossing the readable edge, below the top
-/// chrome. A layout change scrolls that row back. A restore always clears,
-/// including when its target never appears.
+/// chrome, sampled into this class without invalidating the view. A layout
+/// change scrolls that row back. The first jump uses estimated heights; the
+/// next settled frames nudge it until the row contains the probe again.
+/// A restore always clears, including when its target never appears.
 @MainActor
 private final class DiffScrollAnchor<ID: Hashable> {
     var top: ID?
     var needsRestore = false
+    private(set) var pendingLine: Int?
     private var proxy: ScrollViewProxy?
     private var pending: ID?
+    private var live: ID?
     private var generation = 0
     private var frozen = false
     private var seenLayout: String?
     private var seenWidth: CGFloat?
     private var seenColumn: CGFloat?
+    private var containerHeight: CGFloat = 0
+    private var sampleToken = 0
+    private var sampleProbe: CGFloat = 0
+    private var sampleContainerHeight: CGFloat = 0
+    private var samplePendingFrame: CGRect?
+    private var correctionAnchorY: CGFloat = 0
 
     func adopt(_ proxy: ScrollViewProxy) {
         self.proxy = proxy
     }
 
-    /// Freeze the current top line once a real width is already on screen.
+    func noteContainerHeight(_ height: CGFloat) {
+        guard height > 1 else { return }
+        containerHeight = height
+    }
+
+    /// Freeze the line sampled before this pass once a real width is on screen.
     /// The first resolved width is the appearance transition, not a switch.
     func holdIfChanging(layoutKey: String, width: CGFloat?, columnWidth: CGFloat) {
         let hadWidth = seenWidth != nil
@@ -392,56 +425,118 @@ private final class DiffScrollAnchor<ID: Hashable> {
             widthChanged = false
         }
         let columnChanged = seenColumn.map { abs(columnWidth - $0) >= 0.01 } ?? false
-        if hadWidth, top != nil, layoutChanged || widthChanged || columnChanged {
-            if !frozen { frozen = true }
-            needsRestore = true
+        if hadWidth, layoutChanged || widthChanged || columnChanged {
+            if !frozen, let live {
+                top = live
+                frozen = true
+                needsRestore = true
+            } else if frozen, top != nil {
+                // A second switch can arrive before the first restore confirms.
+                needsRestore = true
+            }
         }
         seenLayout = layoutKey
         if let width { seenWidth = width }
         seenColumn = columnWidth
     }
 
-    func note(_ id: ID?) {
-        guard let id else { return }
-        if frozen {
-            if let pending, id == pending {
-                self.pending = nil
-                frozen = false
-                top = id
-            }
-            return
-        }
-        top = id
+    /// Latest probe sample. Ignored while a restore is in flight so the new
+    /// layout cannot replace the line captured at the change.
+    func observe(line: ID?, pendingFrame: CGRect?, probe: CGFloat, readerHeight: CGFloat) {
+        sampleToken &+= 1
+        sampleProbe = probe
+        sampleContainerHeight = containerHeight > 1 ? containerHeight : readerHeight
+        samplePendingFrame = pendingFrame
+        guard let line, !frozen else { return }
+        live = line
+        top = line
     }
 
-    func restore(_ target: ID) {
+    func cancelRestore() {
+        generation += 1
+        endRestore(generation)
+    }
+
+    func restore(_ target: ID, line: Int) {
         top = target
         pending = target
+        pendingLine = line
         frozen = true
         needsRestore = false
+        correctionAnchorY = 0
         generation += 1
         let generation = generation
         Task { [weak self] in
-            for _ in 0..<8 {
-                await Task.yield()
-                guard let self, self.generation == generation, self.pending != nil else { return }
-                self.scrollPending()
-                try? await Task.sleep(for: .milliseconds(32))
-            }
-            self?.endRestore(generation)
+            await self?.finishRestore(generation)
         }
+    }
+
+    private func finishRestore(_ generation: Int) async {
+        await Task.yield()
+        guard self.generation == generation, pending != nil else { return }
+        let tokenBeforeScroll = sampleToken
+        scrollPending(anchorY: 0)
+        try? await Task.sleep(for: .milliseconds(48))
+        guard self.generation == generation, pending != nil else { return }
+        var lastMinY: CGFloat?
+        var corrections = 0
+        var coarseRetries = 0
+        var holdStreak = 0
+        for _ in 0..<24 {
+            guard self.generation == generation, pending != nil else { return }
+            if samplePendingFrame == nil, coarseRetries < 5, holdStreak == 0, corrections == 0 {
+                scrollPending(anchorY: 0)
+                coarseRetries += 1
+            }
+            try? await Task.sleep(for: .milliseconds(32))
+            guard self.generation == generation, pending != nil else { return }
+            // Preferences stop once the jump lands. Re-read that same frame
+            // so two stable samples can finish without another invalidation.
+            guard sampleToken != tokenBeforeScroll else { continue }
+            guard let frame = samplePendingFrame,
+                frame.height > 1,
+                sampleContainerHeight > frame.height + 1
+            else { continue }
+            let probe = sampleProbe
+            let holds = frame.minY <= probe && frame.maxY > probe
+            if holds {
+                holdStreak += 1
+                if holdStreak >= 2 {
+                    endRestore(generation)
+                    return
+                }
+                lastMinY = frame.minY
+                continue
+            }
+            holdStreak = 0
+            let settled = lastMinY.map { abs(frame.minY - $0) < 0.5 } ?? false
+            lastMinY = frame.minY
+            guard settled, corrections < 4 else { continue }
+            let desiredMinY = probe - min(CGFloat(8), frame.height * 0.5)
+            let span = sampleContainerHeight - frame.height
+            guard span > 1, desiredMinY.isFinite, frame.minY.isFinite else { continue }
+            correctionAnchorY -= (frame.minY - desiredMinY) / span
+            correctionAnchorY = min(max(correctionAnchorY, -0.25), 1.25)
+            corrections += 1
+            lastMinY = nil
+            scrollPending(anchorY: correctionAnchorY)
+        }
+        endRestore(generation)
     }
 
     private func endRestore(_ generation: Int) {
         guard self.generation == generation else { return }
         pending = nil
+        pendingLine = nil
         frozen = false
+        needsRestore = false
+        if let live { top = live }
     }
 
-    private func scrollPending() {
+    private func scrollPending(anchorY: CGFloat) {
         guard let proxy, let pending else { return }
         withTransaction(Transaction(animation: nil)) {
-            proxy.scrollTo(pending, anchor: .top)
+            proxy.scrollTo(pending, anchor: UnitPoint(x: 0.5, y: anchorY))
         }
     }
 }
