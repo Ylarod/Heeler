@@ -1976,7 +1976,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
     HeelerSSHDirectStreamLocalE2ETests
-run_suite SharedFixtureE2ETests 113 7 0 \
+run_suite SharedFixtureE2ETests 114 7 0 \
     HeelerSSHPTYE2ETests \
     HeelerSSHJumpHostGateE2ETests \
     HeelerSSHTransportBehaviorE2ETests \
@@ -2143,6 +2143,11 @@ assert_behavior "weak-network descriptor reclamation" WeakNetworkE2ETests \
 # notice it sticking true on a dead connection.
 assert_behavior "disconnect is reported" WeakNetworkE2ETests \
     '"a severed link makes the transport report itself disconnected"'
+# The opposite case: a git read that overruns its deadline is a Changes
+# failure, never a link failure, so the Host keeps its connection, its
+# transport generation and its attached terminal (#395).
+assert_behavior "git overrun keeps the Host connection" WeakNetworkE2ETests \
+    '"a git overrun shows timed out without redialing the Host or rebuilding its terminal"'
 
 fi
 
