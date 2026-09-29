@@ -633,6 +633,7 @@ final class AgentAttachStore {
         preservingOnStageActivationRecovery: Bool
     ) -> Task<Void, Never> {
         guard lifecycleState != .left else {
+            input.discardHeldInsertion()
             return lifecycleTask ?? Task {}
         }
         if preservingOnStageActivationRecovery,

@@ -31,6 +31,10 @@ struct AgentReferenceInsertionTests {
             await attach.leaveInteractionsForRetention().value
         } else {
             await attach.leave().value
+            // A return can enqueue input before a channel owner permits rejoin.
+            // Leaving again must discard it even though the pipeline is stopped.
+            attach.insertReference("also-discard.swift ")
+            await attach.leave().value
             attach.rejoin()
             try #require(await ChangesViewTests.eventually { attach.terminalStatus == .waitingForSize })
             attach.viewDidResize(cols: 80, rows: 24)
