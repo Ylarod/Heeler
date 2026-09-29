@@ -171,6 +171,15 @@ final class ChangesStore {
         startRead()
     }
 
+    /// A read the user asked for on Agent detail's store: owned by the store,
+    /// as `startRefresh()`'s is, so leaving Changes neither cancels it nor
+    /// loses an automatic refresh queued behind it. Cancelling the caller
+    /// ends only its wait. A read already running is awaited instead.
+    func refreshOwnedByStore() async {
+        guard let task = startRead() ?? activeRead else { return }
+        await task.value
+    }
+
     /// Starts a read owned by the store; nil while one is running.
     @discardableResult
     func startRead(automatic: Bool = false) -> Task<Void, Never>? {

@@ -15,8 +15,8 @@ struct ChangesView: View {
     /// One read per opening of a shared store: coming back from a view
     /// pushed over Changes reads nothing new, as `appear()` does.
     @State private var hasStartedOpeningRead = false
-    /// Try Again's read. Like the first read's `.task`, it ends when Changes
-    /// leave the screen rather than running on for a store nobody shows.
+    /// Try Again's wait for its read, which ends when Changes leave the
+    /// screen; see `refreshOnRequest()` for which reads end with it.
     @State private var retry: Task<Void, Never>?
 
     var body: some View {
@@ -121,9 +121,22 @@ struct ChangesView: View {
         .refreshable {
             isPulling = true
             defer { isPulling = false }
-            await store.refresh()
+            await refreshOnRequest()
         }
         .overlay { stateOverlay }
+    }
+
+    /// Pull to refresh and Try Again. A Worktree's read, like its first
+    /// read's `.task`, ends when Changes leave the screen rather than running
+    /// on for a store nobody shows. Agent detail's store keeps the read, as
+    /// it keeps the opening one: Back hands it, and an automatic refresh
+    /// queued behind it, to the switcher badge.
+    private func refreshOnRequest() async {
+        if sharesAgentDetailStore {
+            await store.refreshOwnedByStore()
+        } else {
+            await store.refresh()
+        }
     }
 
     @ViewBuilder
@@ -141,7 +154,7 @@ struct ChangesView: View {
 
     private var tryAgain: some View {
         Button("Try Again") {
-            retry = Task { await store.refresh() }
+            retry = Task { await refreshOnRequest() }
         }
         .disabled(store.isRefreshing)
     }

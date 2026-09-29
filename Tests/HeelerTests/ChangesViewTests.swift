@@ -253,6 +253,157 @@ struct ChangesViewTests {
         func markCancelled() { wasCancelled = true }
     }
 
+    /// Agent detail's store outlives Changes, so Try Again's read there is
+    /// the store's: Back neither cancels it nor loses the refresh an exit
+    /// from Working queued behind it, which the switcher badge needs.
+    @Test func backKeepsATryAgainReadOnAgentDetailsStoreAndTheRefreshBehindIt() async throws {
+        let transport = ScriptedTransport()
+        let updated = try ChangesBadgeTests.read(added: 1, removed: 1)
+        let latest = try ChangesBadgeTests.read(added: 2, removed: 0)
+        await transport.scriptChangesReads([
+            .failure(ChangesReadError.notAGitWorkingTree), .success(updated), .success(latest),
+        ])
+        let clock = ChangesManualSleeper()
+        let feed = AgentChangesFollowTests.StatusFeed(.working)
+        defer { feed.finish() }
+        let shown = try await Self.hostAgentDetailsChanges(
+            transport: transport, clock: clock, feed: feed)
+        defer {
+            shown.window.isHidden = true
+            shown.changes.stopFollowingAgent()
+        }
+        try #require(
+            await Self.eventually {
+                Self.labels(in: shown.controller).contains("Not a Git Working Tree")
+            })
+
+        let hold = ScriptedTransportCallGate()
+        await transport.gateNextChangesRead(using: hold)
+        try #require(
+            await Self.eventually { Self.activate("Try Again", in: shown.controller.view) })
+        try #require(await Self.eventually { await transport.changesReadRequests.count == 2 })
+        try await Self.leaveWorkingThenGoBack(shown, transport: transport, clock: clock, feed: feed)
+
+        await hold.open()
+        let refreshed = try await Self.eventually {
+            shown.store.phase == .loaded(latest.changes) && shown.store.activeRead == nil
+        }
+        #expect(refreshed, "Back lost the refresh queued behind Try Again: \(shown.store.phase)")
+        #expect(await transport.changesReadRequests.count == 3)
+    }
+
+    /// A pull on Agent detail's store is kept past Back in the same way.
+    @Test func backKeepsAPulledReadOnAgentDetailsStoreAndTheRefreshBehindIt() async throws {
+        let transport = ScriptedTransport()
+        let first = try ChangesBadgeTests.read(added: 12, removed: 7)
+        let updated = try ChangesBadgeTests.read(added: 1, removed: 1)
+        let latest = try ChangesBadgeTests.read(added: 2, removed: 0)
+        await transport.scriptChangesReads([.success(first), .success(updated), .success(latest)])
+        let clock = ChangesManualSleeper()
+        let feed = AgentChangesFollowTests.StatusFeed(.working)
+        defer { feed.finish() }
+        let shown = try await Self.hostAgentDetailsChanges(
+            transport: transport, clock: clock, feed: feed)
+        defer {
+            shown.window.isHidden = true
+            shown.changes.stopFollowingAgent()
+        }
+        try #require(
+            await Self.eventually {
+                Self.labels(in: shown.controller).contains { $0.hasPrefix("Checkout ~/src/tracking") }
+            })
+
+        let hold = ScriptedTransportCallGate()
+        await transport.gateNextChangesRead(using: hold)
+        try #require(Self.pull(in: shown.controller.view), "Changes has no refresh control")
+        let pulled = try await Self.eventually { await transport.changesReadRequests.count == 2 }
+        try #require(pulled, "the pull never read")
+        try await Self.leaveWorkingThenGoBack(shown, transport: transport, clock: clock, feed: feed)
+
+        await hold.open()
+        let refreshed = try await Self.eventually {
+            shown.store.phase == .loaded(latest.changes) && shown.store.activeRead == nil
+        }
+        #expect(refreshed, "Back lost the refresh queued behind the pull: \(shown.store.phase)")
+        #expect(await transport.changesReadRequests.count == 3)
+    }
+
+    private struct ShownAgentChanges {
+        let changes: AgentChangesPresentation
+        let store: ChangesStore
+        let controller: UIHostingController<AnyView>
+        let window: UIWindow
+    }
+
+    /// Agent detail's own Changes as the Agent menu shows them: its store,
+    /// already following the Agent's status, opened after that following
+    /// began. Back closes them, and the test then takes them off screen.
+    private static func hostAgentDetailsChanges(
+        transport: ScriptedTransport,
+        clock: ChangesManualSleeper,
+        feed: AgentChangesFollowTests.StatusFeed
+    ) async throws -> ShownAgentChanges {
+        let changes = AgentChangesFollowTests.presentation(
+            transport: transport, clock: clock, feed: feed)
+        changes.startFollowingAgent()
+        await AgentChangesFollowTests.drain()
+        changes.open()
+        let store = try #require(changes.store)
+        #expect(store === changes.agentStore)
+        let controller = UIHostingController(
+            rootView: AnyView(
+                NavigationStack {
+                    ChangesView(store: store, sharesAgentDetailStore: true) { changes.close() }
+                }))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            rootViewController: controller)
+        return ShownAgentChanges(
+            changes: changes, store: store, controller: controller, window: window)
+    }
+
+    /// The Agent leaves Working while the requested read runs, so its
+    /// refresh waits; then Back, and Changes leave the screen.
+    private static func leaveWorkingThenGoBack(
+        _ shown: ShownAgentChanges,
+        transport: ScriptedTransport,
+        clock: ChangesManualSleeper,
+        feed: AgentChangesFollowTests.StatusFeed
+    ) async throws {
+        feed.send(.done)
+        await AgentChangesFollowTests.drain()
+        await clock.fireAll()
+        await AgentChangesFollowTests.drain()
+        #expect(await transport.changesReadRequests.count == 2)
+        #expect(shown.store.activeRead != nil)
+
+        try #require(await Self.eventually { Self.activate("Back", in: shown.controller.view) })
+        #expect(shown.changes.store == nil)
+        shown.controller.rootView = AnyView(Text("Agent detail"))
+        let left = try await Self.eventually {
+            Self.labels(in: shown.controller).contains("Agent detail")
+        }
+        try #require(left, "Changes never left the screen")
+        await AgentChangesFollowTests.drain()
+    }
+
+    /// Pulls the list down as a finger does: SwiftUI's refresh control runs
+    /// the view's refresh action when its value changes.
+    static func pull(in root: UIView) -> Bool {
+        root.layoutIfNeeded()
+        func control(in view: UIView) -> UIRefreshControl? {
+            if let control = view as? UIRefreshControl { return control }
+            for subview in view.subviews {
+                if let control = control(in: subview) { return control }
+            }
+            return nil
+        }
+        guard let refresh = control(in: root) else { return false }
+        refresh.beginRefreshing()
+        refresh.sendActions(for: .valueChanged)
+        return true
+    }
+
     @Test func backReturnsThroughTheBarButton() async throws {
         let (controller, window, backs) = try await Self.host(GitProbeRecordings.clean)
         defer { window.isHidden = true }
