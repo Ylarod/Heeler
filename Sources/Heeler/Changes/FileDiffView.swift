@@ -13,7 +13,9 @@ struct FileDiffView: View {
                 ProgressView("Reading Diff…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .loaded(let patch):
-                FileDiffDocumentView(patch: patch, refreshError: store.refreshError) {
+                FileDiffDocumentView(
+                    patch: patch, file: store.file, refreshError: store.refreshError
+                ) {
                     FileDiffFooter(store: store) {
                         action = Task { await store.loadMore() }
                     }
@@ -54,34 +56,43 @@ struct FileDiffView: View {
 /// hunk must not cause SwiftUI to lay out every line when its header appears.
 private struct FileDiffDocumentView<Footer: View>: View {
     let patch: FilePatch
+    /// The Changes list's file: its kind, staging, and line counts.
+    let file: ChangedFile
     let refreshError: String?
     let footer: Footer
     private let rows: [Row]
     private let pairedRows: [Row]
     private let pairRowIDByLineID: [Int: Int]
+    private let wordChanges: [Int: [Range<Int>]]
     private let numberDigits: Int
     @Namespace private var rotor
     @Environment(\.diffLayoutSettings) private var injectedSettings
-    @ScaledMetric(relativeTo: .callout) private var columnWidth: CGFloat =
+    @ScaledMetric(relativeTo: .footnote) private var columnWidth: CGFloat =
         DiffLayoutPolicy.defaultColumnWidth
-    @ScaledMetric(relativeTo: .caption) private var digitWidth: CGFloat =
+    @ScaledMetric(relativeTo: .caption2) private var digitWidth: CGFloat =
         DiffLayoutPolicy.defaultDigitWidth
-    @ScaledMetric(relativeTo: .callout) private var glyphWidth: CGFloat =
+    @ScaledMetric(relativeTo: .footnote) private var glyphWidth: CGFloat =
         DiffLayoutPolicy.defaultGlyphWidth
     @State private var usableWidth: CGFloat?
     /// Not observable: writing it as the user scrolls would rebuild every row.
     @State private var anchor = DiffScrollAnchor<Row.ID>()
 
-    init(patch: FilePatch, refreshError: String?, @ViewBuilder footer: () -> Footer) {
+    init(
+        patch: FilePatch, file: ChangedFile, refreshError: String?,
+        @ViewBuilder footer: () -> Footer
+    ) {
         self.patch = patch
+        self.file = file
         self.refreshError = refreshError
         self.footer = footer()
         var rows: [Row] = []
         var maximumNumber = 1
+        var wordChanges: [Int: [Range<Int>]] = [:]
         for file in patch.files {
             rows.append(.file(file))
-            for hunk in file.hunks {
-                rows.append(.hunk(hunk))
+            for (index, hunk) in file.hunks.enumerated() {
+                rows.append(.hunk(hunk, unchangedBefore: file.unchangedLinesBefore(hunkAt: index)))
+                wordChanges.merge(DiffWordChanges.ranges(in: hunk)) { _, new in new }
                 for line in hunk.lines {
                     rows.append(.line(line))
                     maximumNumber = max(maximumNumber, max(line.oldNumber ?? 0, line.newNumber ?? 0))
@@ -89,13 +100,14 @@ private struct FileDiffDocumentView<Footer: View>: View {
             }
         }
         self.rows = rows
+        self.wordChanges = wordChanges
         numberDigits = String(maximumNumber).count
         var paired: [Row] = []
         var lineMap: [Int: Int] = [:]
         for file in patch.files {
             paired.append(.file(file))
-            for hunk in file.hunks {
-                paired.append(.hunk(hunk))
+            for (index, hunk) in file.hunks.enumerated() {
+                paired.append(.hunk(hunk, unchangedBefore: file.unchangedLinesBefore(hunkAt: index)))
                 for side in SideBySideDiff.rows(for: hunk) {
                     paired.append(.pair(side))
                     if let left = side.left { lineMap[left.id] = side.id }
@@ -143,6 +155,11 @@ private struct FileDiffDocumentView<Footer: View>: View {
                     footer
                 }
                 .scrollTargetLayout()
+                .coordinateSpace(.named(DiffHatch.coordinateSpace))
+                // The rows' own width. Deriving it from the scroll view's
+                // safe area counted a sidebar beside the diff twice: the
+                // view already excluded it and still reported it as inset.
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { usableWidth = $0 }
             }
             .accessibilityIdentifier("file-diff-scroll")
             .backgroundPreferenceValue(DiffLineFramesKey.self) { anchors in
@@ -167,12 +184,6 @@ private struct FileDiffDocumentView<Footer: View>: View {
             } action: { _, height in
                 anchor.noteContainerHeight(height)
             }
-            .onGeometryChange(for: CGFloat.self) { proxy in
-                DiffLayoutPolicy.usableWidth(
-                    width: proxy.size.width,
-                    leadingInset: proxy.safeAreaInsets.leading,
-                    trailingInset: proxy.safeAreaInsets.trailing)
-            } action: { usableWidth = $0 }
             .onAppear { anchor.adopt(scroll) }
             .onChange(of: decision.layout) { _, layout in
                 keepTopLine(for: layout, proxy: scroll)
@@ -241,43 +252,51 @@ private struct FileDiffDocumentView<Footer: View>: View {
     private func rowView(_ row: Row) -> some View {
         switch row {
         case .pair(let pair):
-            FileDiffSideBySideRow(row: pair, numberDigits: numberDigits)
-        case .file(let file):
-            VStack(alignment: .leading, spacing: 6) {
-                Text(file.newPath ?? file.oldPath ?? "File")
-                    .font(.headline.monospaced())
-                if let summary = file.summary {
-                    Text(summary)
-                        .font(.callout)
-                }
-                if file.isBinary, file.summary == nil {
-                    Label("Binary file", systemImage: "doc")
-                        .font(.callout)
-                }
-            }
-            .fixedSize(horizontal: false, vertical: true)
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
-            .accessibilityRotorEntry(id: row.id, in: rotor)
-            .diffFileReferenceMenu(file)
-        case .hunk(let hunk):
-            Text(hunk.title)
-                .font(.callout.monospaced().weight(.semibold))
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(uiColor: .secondarySystemBackground))
+            FileDiffSideBySideRow(row: pair, numberDigits: numberDigits, wordChanges: wordChanges)
+        case .file(let diffFile):
+            fileBar(diffFile)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityRotorEntry(id: row.id, in: rotor)
+                .diffFileReferenceMenu(diffFile)
+        case .hunk(let hunk, let unchangedBefore):
+            FileDiffHunkBand(hunk: hunk, unchangedLinesBefore: unchangedBefore)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityRotorEntry(id: row.id, in: rotor)
                 .diffHunkReferenceMenu(hunk)
         case .line(let line):
-            FileDiffLineRow(line: line, numberDigits: numberDigits)
+            DiffLineRow(
+                line: line, numbers: [line.oldNumber, line.newNumber], numberDigits: numberDigits,
+                gutterLeading: DiffLayoutPolicy.numberSpacing,
+                wordChanges: wordChanges[line.id] ?? [])
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(line.accessibilityLabel)
+                .accessibilityIdentifier("file-diff-line-\(line.id)")
                 .diffLineContextMenu(line)
                 .diffLineAccessibilityActions(line)
         }
+    }
+
+    /// The list's file describes a one-file patch. An edited rename that
+    /// git split in two describes each side from the patch itself.
+    private func fileBar(_ diffFile: DiffFile) -> FileDiffFileBar {
+        let isWholePatch = patch.files.count == 1
+        let kind: ChangedFile.Kind =
+            if isWholePatch { file.kind }
+            else if diffFile.oldPath == nil { .added }
+            else if diffFile.newPath == nil { .deleted }
+            else { .modified }
+        let detail = isWholePatch
+            ? file.detail
+            : ([kind.title] + [file.staging?.title].compactMap(\.self)).joined(separator: " · ")
+        let counts: LineCounts? =
+            if diffFile.isBinary { nil }
+            else if isWholePatch, let lineCounts = file.lineCounts { lineCounts }
+            else if patch.isTruncated { nil }
+            else { diffFile.lineCounts }
+        return FileDiffFileBar(
+            path: diffFile.newPath ?? diffFile.oldPath ?? "File", kind: kind, detail: detail,
+            summary: diffFile.summary ?? (diffFile.isBinary ? "Binary file." : nil),
+            lineCounts: counts, showsPath: !isWholePatch)
     }
 
     private enum Row: Identifiable {
@@ -288,14 +307,14 @@ private struct FileDiffDocumentView<Footer: View>: View {
         }
 
         case file(DiffFile)
-        case hunk(DiffHunk)
+        case hunk(DiffHunk, unchangedBefore: Int?)
         case line(DiffLine)
         case pair(SideBySideRow)
 
         var id: ID {
             switch self {
             case .file(let file): .file(file.id)
-            case .hunk(let hunk): .hunk(hunk.id)
+            case .hunk(let hunk, _): .hunk(hunk.id)
             case .line(let line): .line(line.id)
             case .pair(let pair): .line(pair.id)
             }
@@ -573,44 +592,6 @@ private final class DiffScrollAnchor<ID: Hashable> {
         withTransaction(Transaction(animation: nil)) {
             proxy.scrollTo(pending, anchor: UnitPoint(x: 0.5, y: anchorY))
         }
-    }
-}
-
-private struct FileDiffLineRow: View {
-    let line: DiffLine
-    let numberDigits: Int
-    @ScaledMetric(relativeTo: .caption) private var digitWidth: CGFloat = 8
-    @ScaledMetric(relativeTo: .callout) private var glyphWidth: CGFloat = 12
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(line.oldNumber.map(String.init) ?? "")
-                .frame(width: digitWidth * CGFloat(numberDigits), alignment: .trailing)
-            Text(line.newNumber.map(String.init) ?? "")
-                .frame(width: digitWidth * CGFloat(numberDigits), alignment: .trailing)
-            Text(line.glyph)
-                .font(.callout.monospaced().weight(.semibold))
-                .frame(width: glyphWidth)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(line.text.isEmpty ? " " : line.text)
-                    .font(.callout.monospaced())
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if line.missingNewline {
-                    Text("No newline at end of file")
-                        .font(.caption.italic())
-                }
-            }
-            .fixedSize(horizontal: false, vertical: true)
-        }
-        .font(.caption.monospaced())
-        .foregroundStyle(Color(uiColor: DiffPalette.ink(for: line.kind)))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 3)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: DiffPalette.background(for: line.kind)))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(line.accessibilityLabel)
-        .accessibilityIdentifier("file-diff-line-\(line.id)")
     }
 }
 

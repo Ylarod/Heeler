@@ -25,10 +25,15 @@ Entries reference the issue that motivated them.
   stay hidden while the Checkout is clean, unreadable, or not yet read, and
   shorten from 1,000 lines, as in 1.2K or 12.3K, when the row is short of
   room. Changes opens on the row's latest read while it reads again, and
-  hands its read back to the row. Heeler reads the Checkout with git on the
-  Host over SSH, without running its hooks or file-system monitor and
-  without rewriting its index, and keeps nothing once the Agent leaves the
-  list. (#382)
+  hands its read back to the row. Tap a file to read its diff: green
+  additions and red removals (blue and mauve with Differentiate Without
+  Color), changed words outlined inside a changed line, long lines wrapping
+  under their own indentation, and each hunk marked with how many unchanged
+  lines it skips. On an iPad the diff shows side by side wherever 50 columns
+  fit on each side, including beside the sidebar. Heeler reads the Checkout
+  with git on the Host over SSH, without running its hooks or file-system
+  monitor and without rewriting its index, and keeps nothing once the Agent
+  leaves the list. (#382)
 
 ## [0.1.11] - 2026-09-28
 

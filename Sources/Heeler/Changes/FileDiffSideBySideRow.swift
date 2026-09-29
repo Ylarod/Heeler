@@ -6,11 +6,14 @@ import UIKit
 struct FileDiffSideBySideRow: View {
     let row: SideBySideRow
     let numberDigits: Int
+    /// Changed words per line id, for the whole patch.
+    var wordChanges: [Int: [Range<Int>]] = [:]
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             FileDiffSideBySideCell(
                 line: row.left, number: row.left?.oldNumber, numberDigits: numberDigits,
+                wordChanges: row.left.flatMap { wordChanges[$0.id] } ?? [],
                 showsContextMenu: showsCellMenu(isLeft: true))
             Rectangle()
                 .fill(Color(uiColor: .separator))
@@ -19,6 +22,7 @@ struct FileDiffSideBySideRow: View {
                 .accessibilityHidden(true)
             FileDiffSideBySideCell(
                 line: row.right, number: row.right?.newNumber, numberDigits: numberDigits,
+                wordChanges: row.right.flatMap { wordChanges[$0.id] } ?? [],
                 showsContextMenu: showsCellMenu(isLeft: false))
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -44,55 +48,29 @@ struct FileDiffSideBySideRow: View {
     }
 }
 
-/// One column of a side-by-side row. `line` is nil for an unpaired side.
-/// `number` is the old number on the left and the new number on the right,
-/// including for a context line shown on both sides.
+/// One column of a side-by-side row. `line` is nil for an unpaired side,
+/// which is hatched. `number` is the old number on the left and the new
+/// number on the right, including for a context line shown on both sides.
 struct FileDiffSideBySideCell: View {
     let line: DiffLine?
     let number: Int?
     let numberDigits: Int
+    var wordChanges: [Range<Int>] = []
     var showsContextMenu: Bool
-    @ScaledMetric(relativeTo: .caption) private var digitWidth: CGFloat =
-        DiffLayoutPolicy.defaultDigitWidth
-    @ScaledMetric(relativeTo: .callout) private var glyphWidth: CGFloat =
-        DiffLayoutPolicy.defaultGlyphWidth
 
     var body: some View {
         Group {
             if let line {
-                HStack(alignment: .firstTextBaseline, spacing: DiffLayoutPolicy.stackSpacing) {
-                    Text(number.map(String.init) ?? "")
-                        .frame(width: digitWidth * CGFloat(numberDigits), alignment: .trailing)
-                    Text(line.glyph)
-                        .font(.callout.monospaced().weight(.semibold))
-                        .frame(width: glyphWidth)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(line.text.isEmpty ? " " : line.text)
-                            .font(.callout.monospaced())
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        if line.missingNewline {
-                            Text("No newline at end of file")
-                                .font(.caption.italic())
-                        }
-                    }
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-                .font(.caption.monospaced())
-                .foregroundStyle(Color(uiColor: DiffPalette.ink(for: line.kind)))
-                .padding(.horizontal, DiffLayoutPolicy.horizontalPadding)
-                .padding(.vertical, 3)
+                DiffLineRow(
+                    line: line, numbers: [number], numberDigits: numberDigits,
+                    gutterLeading: DiffLayoutPolicy.gutterLeadingPadding,
+                    wordChanges: wordChanges, fillsHeight: true)
             } else {
-                Color.clear
+                DiffHatch()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(uiColor: background))
         .modifier(SideBySideCellLineMenu(line: showsContextMenu ? line : nil))
-    }
-
-    private var background: UIColor {
-        guard let line else { return DiffPalette.blankBackground }
-        return DiffPalette.background(for: line.kind)
     }
 }
 

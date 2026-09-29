@@ -32,36 +32,48 @@ struct DiffLayoutDecision: Equatable, Sendable {
     var toggle: DiffLayoutToggle
 }
 
-/// Column threshold for Side by Side. The usable width excludes the area
-/// under a floating sidebar. At the default text size the threshold sits
-/// above 1056 pt (a 13-inch iPad landscape beside a sidebar at its 320 pt
-/// minimum) and below the full 1376 pt width.
+/// Column threshold for Side by Side. The usable width is the width the
+/// diff's rows lay out in, beside or under a sidebar. With four-digit line numbers at the default
+/// text size the threshold is 942 pt, so Side by Side fits a 13-inch iPad in
+/// portrait and beside its sidebar at either width, but not an 11-inch
+/// iPad in portrait (834 pt) or beside its sidebar in landscape.
 enum DiffLayoutPolicy {
     /// Text columns each side must fit before Side by Side is offered.
     static let minimumColumnsPerSide = 50
-    /// SF Mono's advance at the 16 pt callout size (0.618 em). The research
-    /// note's 10.51 pt at 17 pt is the same ratio. `@ScaledMetric` grows
-    /// this with Dynamic Type.
-    static let defaultColumnWidth: CGFloat = 9.89
-    /// Horizontal padding on one side of a side-by-side cell. Both edges count.
-    static let horizontalPadding: CGFloat = 12
-    /// Gap between the line number, the glyph, and the text.
-    static let stackSpacing: CGFloat = 8
-    /// One monospaced digit at the caption size. `@ScaledMetric` grows it.
-    static let defaultDigitWidth: CGFloat = 8
-    /// The callout glyph column. `@ScaledMetric` grows it with the text.
-    static let defaultGlyphWidth: CGFloat = 12
+    /// SF Mono's advance at the 13 pt footnote size (0.618 em).
+    /// `@ScaledMetric` grows this with Dynamic Type.
+    static let defaultColumnWidth: CGFloat = 8.03
+    /// Space before a side-by-side cell's line number.
+    static let gutterLeadingPadding: CGFloat = 10
+    /// Space before a unified row's first line number, and after each
+    /// line number, all inside the gutter's wash.
+    static let numberSpacing: CGFloat = 6
+    /// Space after the text.
+    static let trailingPadding: CGFloat = 12
+    /// One monospaced digit at the 11 pt caption2 size. `@ScaledMetric`
+    /// grows it.
+    static let defaultDigitWidth: CGFloat = 6.8
+    /// The sign column at the footnote size. `@ScaledMetric` grows it with
+    /// the text.
+    static let defaultGlyphWidth: CGFloat = 14
     /// The hairline between the two columns, counted once for the row.
     static let dividerWidth: CGFloat = 1
 
-    /// Chrome before the text on one side: both paddings, both gaps, the
-    /// line-number run, and the glyph. A four-digit number is 84 pt at the
-    /// default size (32 + 12 + 16 + 24).
+    /// Chrome beside the text on one side: the gutter with its line number,
+    /// the sign, and the trailing padding. A four-digit number is 69.2 pt
+    /// at the default size (10 + 27.2 + 6 + 14 + 12).
     static func sideChrome(digitWidth: CGFloat, glyphWidth: CGFloat, numberDigits: Int) -> CGFloat {
-        horizontalPadding * 2
-            + stackSpacing * 2
+        gutterLeadingPadding
             + digitWidth * CGFloat(max(numberDigits, 1))
+            + numberSpacing
             + glyphWidth
+            + trailingPadding
+    }
+
+    /// A gutter holding `numbers` line numbers, with `leading` before the
+    /// first and `numberSpacing` after each.
+    static func gutterWidth(leading: CGFloat, numberWidth: CGFloat, numbers: Int) -> CGFloat {
+        leading + CGFloat(numbers) * (numberWidth + numberSpacing)
     }
 
     static func requiredWidth(
@@ -73,10 +85,6 @@ enum DiffLayoutPolicy {
         let text = CGFloat(minimumColumnsPerSide) * columnWidth
         let side = sideChrome(digitWidth: digitWidth, glyphWidth: glyphWidth, numberDigits: numberDigits)
         return 2 * (side + text) + dividerWidth
-    }
-
-    static func usableWidth(width: CGFloat, leadingInset: CGFloat, trailingInset: CGFloat) -> CGFloat {
-        width - leadingInset - trailingInset
     }
 
     static func resolve(

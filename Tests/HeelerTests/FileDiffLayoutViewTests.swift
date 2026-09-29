@@ -45,7 +45,7 @@ struct FileDiffLayoutViewTests {
         defer { cleanup() }
         let (controller, window) = try await host(
             patch: Self.pairedPatch(), settings: settings,
-            size: CGSize(width: 996, height: 1032))
+            size: CGSize(width: 834, height: 1032))
         defer { window.isHidden = true }
 
         var labels = Set<String>()
@@ -54,7 +54,7 @@ struct FileDiffLayoutViewTests {
             labels = ChangesViewTests.labels(in: controller)
             return labels.contains(Self.removedLabel) && labels.contains(Self.addedLabel)
         })
-        try #require(abs(controller.view.bounds.width - 996) < 1)
+        try #require(abs(controller.view.bounds.width - 834) < 1)
         #expect(!labels.contains(Self.pairedLabel))
         #expect(labels.contains(Self.contextLabel))
         let control = Self.layoutControl(in: controller.view)
@@ -63,12 +63,12 @@ struct FileDiffLayoutViewTests {
         #expect(settings.layout == .sideBySide)
     }
 
-    @Test func xxxLargeFallsBackToUnifiedAtTheWideWidth() async throws {
+    @Test func accessibilityTextFallsBackToUnifiedAtTheWideWidth() async throws {
         let (settings, _, cleanup) = try makeSettings(offersSideBySide: true)
         defer { cleanup() }
         let (controller, window) = try await host(
             patch: Self.pairedPatch(), settings: settings,
-            size: CGSize(width: 1376, height: 1032), dynamicType: .xxxLarge)
+            size: CGSize(width: 1376, height: 1032), dynamicType: .accessibility1)
         defer { window.isHidden = true }
 
         var labels = Set<String>()
@@ -182,7 +182,7 @@ struct FileDiffLayoutViewTests {
         try await Self.expectTop(expected, in: controller)
         settings.select(.sideBySide)
         try await Self.expectTop(expected, in: controller)
-        Self.resize(window, to: CGSize(width: 996, height: 1032))
+        Self.resize(window, to: CGSize(width: 834, height: 1032))
         try #require(await ChangesViewTests.eventually {
             controller.view.layoutIfNeeded()
             guard let scroll = Self.diffScrollView(in: controller.view) else { return false }
@@ -278,17 +278,24 @@ struct FileDiffLayoutViewTests {
                 let edge = Self.revealedEdge(of: scroll)
             else { return false }
             let travel = max(0, scroll.contentSize.height - scroll.bounds.height)
-            guard travel > 200 else { return false }
-            if Self.topLineID(in: controller.view, viewport: scroll) == 0 {
+            guard travel > 200,
+                let frame = Self.lineFrame("file-diff-line-0", in: controller.view),
+                frame.height > 1
+            else { return false }
+            // Bring the paired row to the top where the headers above it
+            // leave room; at the top of the document, settle for the line
+            // there. Landing the row 2 pt above the 4 pt probe keeps the
+            // probe inside it at fractional offsets.
+            let next = min(max(0, scroll.contentOffset.y + (frame.minY - (edge + 2))), travel)
+            if abs(next - scroll.contentOffset.y) < 1 {
+                guard Self.topLineID(in: controller.view, viewport: scroll) != nil else {
+                    stable = 0
+                    return false
+                }
                 stable += 1
                 return stable >= 2
             }
             stable = 0
-            guard let frame = Self.lineFrame("file-diff-line-0", in: controller.view),
-                frame.height > 1
-            else { return false }
-            let next = min(max(0, scroll.contentOffset.y + (frame.minY - (edge + 4))), travel)
-            guard abs(next - scroll.contentOffset.y) >= 1 else { return false }
             scroll.setContentOffset(CGPoint(x: 0, y: next), animated: false)
             return false
         })

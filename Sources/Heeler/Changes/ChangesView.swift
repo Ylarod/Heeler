@@ -46,6 +46,11 @@ struct ChangesView: View {
                     }
                 }
             }
+            if let diff = store.fileDiff.current {
+                ToolbarItem(placement: .principal) {
+                    FileDiffTitle(path: diff.file.displayPath)
+                }
+            }
             if store.fileDiff.current == nil, store.isRefreshing, !isPulling {
                 ToolbarItem(placement: .topBarTrailing) {
                     ProgressView()
@@ -209,5 +214,32 @@ struct ChangesFileRow: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(file.rowAccessibilityLabel)
+    }
+}
+
+/// An open diff's title: the file's name, with its directory beneath.
+private struct FileDiffTitle: View {
+    let path: String
+
+    var body: some View {
+        let slash = path.lastIndex(of: "/")
+        let name = slash.map { String(path[path.index(after: $0)...]) } ?? path
+        let directory = slash.map { String(path[..<$0]) } ?? ""
+        VStack(spacing: 1) {
+            Text(verbatim: name)
+                .font(.headline)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            if !directory.isEmpty {
+                Text(verbatim: directory)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(path)
+        .accessibilityAddTraits(.isHeader)
     }
 }

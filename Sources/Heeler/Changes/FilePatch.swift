@@ -58,6 +58,41 @@ struct DiffFile: Sendable, Equatable, Identifiable {
     let summary: String?
     let isBinary: Bool
     let hunks: [DiffHunk]
+
+    /// Unchanged lines between the previous hunk, or the file's start, and
+    /// the hunk at `index`, from the hunk headers; nil when there are none.
+    /// A zero-count side names the line before the change, not its first.
+    func unchangedLinesBefore(hunkAt index: Int) -> Int? {
+        guard hunks.indices.contains(index) else { return nil }
+        let hunk = hunks[index]
+        let lastUnchanged = hunk.oldCount == 0 ? hunk.oldStart : hunk.oldStart - 1
+        let previousEnd: Int
+        if index == 0 {
+            previousEnd = 0
+        } else {
+            let previous = hunks[index - 1]
+            previousEnd = previous.oldCount == 0
+                ? previous.oldStart : previous.oldStart + previous.oldCount - 1
+        }
+        let count = lastUnchanged - previousEnd
+        return count > 0 ? count : nil
+    }
+
+    /// Counted from the lines this read holds.
+    var lineCounts: LineCounts {
+        var added = 0
+        var removed = 0
+        for hunk in hunks {
+            for line in hunk.lines {
+                switch line.kind {
+                case .added: added += 1
+                case .removed: removed += 1
+                case .context: break
+                }
+            }
+        }
+        return .lines(added: added, removed: removed)
+    }
 }
 
 struct DiffHunk: Sendable, Equatable, Identifiable {
@@ -69,10 +104,9 @@ struct DiffHunk: Sendable, Equatable, Identifiable {
     let section: String
     var lines: [DiffLine]
 
-    var title: String {
-        let range = "@@ -\(oldStart),\(oldCount) +\(newStart),\(newCount) @@"
-        return section.isEmpty ? range : range + " " + section
-    }
+    var range: String { "@@ -\(oldStart),\(oldCount) +\(newStart),\(newCount) @@" }
+
+    var title: String { section.isEmpty ? range : range + " " + section }
 }
 
 struct DiffLine: Sendable, Equatable, Identifiable {
