@@ -18,12 +18,20 @@ enum GitProbe {
     static let shellInvocation = "/bin/sh -s"
 
     /// Host-side output caps, one byte over each so truncation is detectable.
+    ///
+    /// A Changes read prints its status and its counts in one exec, so their
+    /// sum must cross a cellular link inside the git deadline. Over the weak
+    /// network fixture's cellular-like profile (about 265 KiB/s) a 2 MiB
+    /// status with 0.7 MB of counts took 10.4-10.5 s, past the 10 s deadline
+    /// (#395). A 1 MiB status still holds several thousand records, far past
+    /// the 2,000 rows the list shows, and the counts for about as many files
+    /// fit in 512 KiB.
     enum Cap {
         static let version = 4_096
         static let home = 4_096
         static let discover = 65_536
-        static let status = 2_097_152
-        static let numstat = 1_048_576
+        static let status = 1_048_576
+        static let numstat = 524_288
         static let head = 65_536
     }
 

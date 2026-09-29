@@ -2161,6 +2161,23 @@ struct HeelerSSHTransportBehaviorEnvironment: Sendable {
             socket: socket)
     }
 
+    /// The Jump Host route with its first hop through the impairment proxy.
+    /// The weak link is the phone's own, to the Jump Host; the hop from there
+    /// to the target stays on the Host side, as it does behind a real VPS.
+    func weakNetworkJumpSettings(port: UInt16) -> SSHTransportSettings {
+        let credentials = self.credentials
+        return settings(
+            host: targetHost,
+            port: targetPort,
+            credentials: credentials,
+            jump: SSHJumpSettings(
+                host: host,
+                port: Int(port),
+                username: username,
+                credentials: credentials),
+            socket: nil)
+    }
+
     /// A catalog Host for the direct fixture, exactly as onboarding would save
     /// it: a blank session name resolves the default socket over the Host's own
     /// home directory.

@@ -1976,7 +1976,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
     HeelerSSHDirectStreamLocalE2ETests
-run_suite SharedFixtureE2ETests 114 7 0 \
+run_suite SharedFixtureE2ETests 115 7 0 \
     HeelerSSHPTYE2ETests \
     HeelerSSHJumpHostGateE2ETests \
     HeelerSSHTransportBehaviorE2ETests \
@@ -2148,6 +2148,11 @@ assert_behavior "disconnect is reported" WeakNetworkE2ETests \
 # transport generation and its attached terminal (#395).
 assert_behavior "git overrun keeps the Host connection" WeakNetworkE2ETests \
     '"a git overrun shows timed out without redialing the Host or rebuilding its terminal"'
+# The Host-side caps are sized so the largest Changes read and the Load More
+# patch cross the cellular-like profile inside the git deadline (#395).
+assert_behavior "Changes caps fit the git deadline on a cellular link" \
+    WeakNetworkE2ETests \
+    '"a status past 2 MiB and a 1 MiB patch read inside the git deadline over the cellular-like profile"'
 
 fi
 

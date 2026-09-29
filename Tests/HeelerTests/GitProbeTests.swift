@@ -106,9 +106,9 @@ struct GitProbeScriptTests {
         #expect(script.contains(
             #"sec 65536 discover g -C "$dir" rev-parse --show-toplevel --show-prefix --absolute-git-dir --git-common-dir"#))
         #expect(script.contains(
-            #"sec 2097152 status g -C "$top" status --porcelain=v2 -z --branch --untracked-files=normal"#))
+            #"sec 1048576 status g -C "$top" status --porcelain=v2 -z --branch --untracked-files=normal"#))
         #expect(script.contains(
-            #"sec 1048576 numstat g -C "$top" diff "$b" --numstat -z --no-ext-diff --no-textconv --find-renames --submodule=short --"#))
+            #"sec 524288 numstat g -C "$top" diff "$b" --numstat -z --no-ext-diff --no-textconv --find-renames --submodule=short --"#))
         #expect(script.contains(#"sec 65536 head latest "$top""#))
     }
 

@@ -82,7 +82,7 @@ struct GitProbeUntrackedDirectoryTests {
                 topLevel: Data("/home/dev/src/app".utf8),
                 directory: Data("newdir/".utf8),
                 nonce: "F00D"))
-        #expect(GitProbe.Cap.status == 2_097_152)
+        #expect(GitProbe.Cap.status == 1_048_576)
         #expect(GitProbe.SectionName.untracked == "untracked")
         #expect(
             script.contains(
