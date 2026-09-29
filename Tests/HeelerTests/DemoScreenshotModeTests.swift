@@ -1,7 +1,9 @@
 #if DEBUG && targetEnvironment(simulator)
     import Foundation
     import Observation
+    import SwiftUI
     import Testing
+    import UIKit
 
     @testable import Heeler
 
@@ -385,6 +387,110 @@
             }
             #expect(shown.count == 5)
             #expect(shown["reviewer"] == "+12 \u{2212}7")
+        }
+
+        /// The Console keys its detail column by Agent, so switching Agents
+        /// through the router builds the next Agent's own detail and Changes
+        /// store: its switcher badge stays hidden until that Agent's read
+        /// lands and never shows the previous Agent's totals.
+        @Test func switchingAgentsInTheConsoleNeverShowsThePreviousAgentsBadge() async throws {
+            let composition = DemoScreenshotComposition.make()
+            composition.console.setHosts(composition.hosts.hosts)
+            await composition.console.resume()
+            defer { composition.console.setHosts([]) }
+            await waitUntilDemoAgentsLoad(composition)
+
+            var values: [ConsoleAgent.ID: String] = [:]
+            for agent in composition.console.agents {
+                let store = productionChangesStore(for: agent, console: composition.console)
+                defer { store.cancel() }
+                await store.refresh()
+                values[agent.id] = ChangesBadge(
+                    phase: store.phase, timedOutKeepingContent: store.timedOutKeepingContent
+                )?.accessibilityValue
+            }
+            let first = try #require(composition.console.agents.first { $0.agent.name == "reviewer" })
+            let previous = try #require(values[first.id])
+            let next = try #require(
+                composition.console.agents.first {
+                    $0.id != first.id && values[$0.id] != nil && values[$0.id] != previous
+                })
+            let expected = try #require(values[next.id])
+
+            // The Console reopens its last tab; the Agents are on Agents.
+            let lastTab = UserDefaults.standard.object(forKey: "console.last-list-tab")
+            UserDefaults.standard.removeObject(forKey: "console.last-list-tab")
+            defer { UserDefaults.standard.set(lastTab, forKey: "console.last-list-tab") }
+            let view = ConsoleView(
+                hosts: composition.hosts, console: composition.console,
+                terminal: TerminalSettings(
+                    themes: composition.terminalThemes, zoom: composition.terminalZoom,
+                    fonts: composition.terminalFonts, snippets: composition.snippets),
+                inputMode: composition.inputMode, appearance: composition.appearance,
+                pushRegistration: composition.pushRegistration,
+                notificationPreferences: composition.notificationPreferences,
+                relaySettings: composition.relaySettings,
+                notificationRouter: composition.notificationRouter,
+                bannerStore: composition.bannerStore, liveActivities: composition.liveActivities,
+                activity: composition.activity)
+            let controller = UIHostingController(rootView: view)
+            let window = try await makeTestWindow(
+                frame: CGRect(x: 0, y: 0, width: 900, height: 900), rootViewController: controller)
+            defer {
+                composition.notificationRouter.path = []
+                controller.view.layoutIfNeeded()
+                window.isHidden = true
+            }
+
+            composition.notificationRouter.path = [first.id]
+            let shownFirst = try await ChangesViewTests.eventually {
+                Self.selectedAgents(in: controller.view) == [first.id]
+                    && Self.badgeValues(in: controller.view) == [previous]
+            }
+            try #require(
+                shownFirst,
+                "the first Agent's badge never showed: \(Self.badgeValues(in: controller.view))")
+
+            composition.notificationRouter.path = [next.id]
+            var sawPrevious = false
+            var shownNext = false
+            let deadline = ContinuousClock.now + .seconds(5)
+            while ContinuousClock.now < deadline {
+                let strips = Self.selectedAgents(in: controller.view)
+                let badges = Self.badgeValues(in: controller.view)
+                if strips == [next.id], badges.contains(previous) { sawPrevious = true }
+                if strips == [next.id], badges == [expected] {
+                    shownNext = true
+                    break
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            #expect(!sawPrevious, "the next Agent's detail showed the previous Agent's totals")
+            #expect(shownNext, "the next Agent's own totals never showed")
+        }
+
+        /// The Agent each mounted switcher strip marks as open.
+        private static func selectedAgents(in root: UIView) -> Set<ConsoleAgent.ID> {
+            root.layoutIfNeeded()
+            var selected = Set<ConsoleAgent.ID>()
+            func visit(_ view: UIView) {
+                if let bar = view as? TerminalAgentSwitcherBar, bar.window != nil, !bar.isHidden,
+                    let chip = bar.chips.first(where: { $0.isSelected })
+                {
+                    selected.insert(chip.id)
+                }
+                view.subviews.forEach(visit)
+            }
+            visit(root)
+            return selected
+        }
+
+        /// VoiceOver's value for every Changes badge on screen.
+        private static func badgeValues(in root: UIView) -> [String] {
+            AccessibilityProbe.elements(labeled: "Changes", in: root).compactMap {
+                guard let value = $0.accessibilityValue, !value.isEmpty else { return nil }
+                return value
+            }
         }
 
         /// Agent detail's own store, from the production factory: the

@@ -928,8 +928,10 @@ struct AgentDetailChangesTests {
         await attach.leave().value
     }
 
-    /// Switching Agents builds a new detail and store: the badge stays
-    /// hidden until the new Agent's own read lands.
+    /// A new detail for the next Agent brings its own store: the badge stays
+    /// hidden until that Agent's read lands, and the departing detail stops
+    /// following. The Console's own keying of its detail column is checked
+    /// through `ConsoleView` in `DemoScreenshotModeTests`.
     @Test func switchingAgentsNeverShowsThePreviousAgentsNumbers() async throws {
         let first = ScriptedTransport()
         let second = ScriptedTransport()
@@ -1136,8 +1138,8 @@ private final class DetailSelection {
     var index = 0
 }
 
-/// Keys each detail by the selection, as the Console keys its detail column
-/// by Agent, so a switch builds a new detail rather than reusing one.
+/// Keys each detail by the selection, so a switch builds a new detail rather
+/// than reusing one, which is what the Console's detail column does.
 private struct SwitchingDetails: View {
     let selection: DetailSelection
     let details: [AgentDetailView]
