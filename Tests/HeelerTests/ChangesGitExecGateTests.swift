@@ -165,6 +165,78 @@ struct ChangesGitExecGateTests {
         #expect(await transport.filePatchRequests.isEmpty)
     }
 
+    @Test func aDirectoryListingSharesTheHostGateAndLeavingCancelsIt() async throws {
+        let transport = ScriptedTransport()
+        let read = try ChangesStoreTests.read(GitProbeRecordings.hostile)
+        await transport.scriptChangesReads([.success(read), .success(read)])
+        let gate = GitExecGate()
+        let first = Self.store(transport, gate: gate)
+        let second = Self.store(transport, gate: gate)
+        await first.appear()
+        let localExec = ScriptedTransportCallGate()
+        await transport.gateNextChangesRead(using: localExec)
+        let reading = Task { await second.appear() }
+        await localExec.waitForEntry()
+        let directory = ChangedFile(
+            path: Data("newdir/".utf8), originalPath: nil, kind: .untracked, staging: nil)
+        let expanding = Task { await first.toggleDirectory(directory) }
+        await Self.drain()
+        #expect(first.untrackedDirectories.expansion(for: directory.path) == .loading)
+        #expect(await transport.untrackedDirectoryRequests.isEmpty)
+        first.cancel()
+        await expanding.value
+        await localExec.open()
+        await reading.value
+        #expect(first.untrackedDirectories.expansion(for: directory.path) == nil)
+        #expect(await transport.untrackedDirectoryRequests.isEmpty)
+    }
+
+    @Test func aDirectoryListingRunsAfterAnotherStoresReadCompletes() async throws {
+        let transport = ScriptedTransport()
+        let read = try ChangesStoreTests.read(GitProbeRecordings.hostile)
+        await transport.scriptChangesReads([.success(read), .success(read)])
+        let directory = ChangedFile(
+            path: Data("newdir/".utf8), originalPath: nil, kind: .untracked, staging: nil)
+        let listing = try GitProbe.parseUntrackedDirectory(
+            stdout: GitProbeRecordings.untrackedListing.stdout,
+            stderr: GitProbeRecordings.untrackedListing.stderr,
+            nonce: GitProbeRecordings.nonce, directory: directory.path)
+        await transport.scriptUntrackedDirectoryListings([.success(listing)])
+        let gate = GitExecGate()
+        let first = Self.store(transport, gate: gate)
+        let second = Self.store(transport, gate: gate)
+        await first.appear()
+        let localExec = ScriptedTransportCallGate()
+        await transport.gateNextChangesRead(using: localExec)
+        let reading = Task { await second.appear() }
+        await localExec.waitForEntry()
+        let expanding = Task { await first.toggleDirectory(directory) }
+        await Self.drain()
+        #expect(await transport.untrackedDirectoryRequests.isEmpty)
+        await localExec.open()
+        await reading.value
+        await expanding.value
+        #expect(first.untrackedDirectories.expansion(for: directory.path) == .loaded(listing))
+        #expect(await transport.untrackedDirectoryRequests.count == 1)
+    }
+
+    @Test func separateHostsDoNotBlockOneAnother() async throws {
+        let transport = ScriptedTransport()
+        let read = try ChangesStoreTests.read(GitProbeRecordings.clean)
+        await transport.scriptChangesReads([.success(read), .success(read)])
+        let firstExec = ScriptedTransportCallGate()
+        await transport.gateNextChangesRead(using: firstExec)
+        let first = Self.store(transport, gate: GitExecGate())
+        let second = Self.store(transport, gate: GitExecGate())
+        let a = Task { await first.appear() }
+        await firstExec.waitForEntry()
+        await second.appear()
+        #expect(second.phase == .loaded(read.changes))
+        #expect(first.phase == .loading)
+        await firstExec.open()
+        await a.value
+    }
+
     private static func drain() async {
         for _ in 0..<100 { await Task.yield() }
     }
