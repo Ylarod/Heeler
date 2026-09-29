@@ -130,11 +130,15 @@ private struct FileDiffDocumentView<Footer: View>: View {
                             .padding()
                     }
                     ForEach(decision.layout == .sideBySide ? pairedRows : rows) { row in
-                        rowView(row)
-                            .anchorPreference(key: DiffLineFramesKey.self, value: .bounds) { frame in
-                                lineFrameAnchor(for: row, frame)
-                            }
-                            .id(row.id)
+                        // Keep one concrete lazy child even when reference
+                        // menus change the row's conditional view structure.
+                        VStack(alignment: .leading, spacing: 0) {
+                            rowView(row)
+                        }
+                        .anchorPreference(key: DiffLineFramesKey.self, value: .bounds) { frame in
+                            lineFrameAnchor(for: row, frame)
+                        }
+                        .id(row.id)
                     }
                     footer
                 }
