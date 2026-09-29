@@ -144,21 +144,37 @@ struct FileDiffLayoutViewTests {
             return scroll.contentSize.height > scroll.bounds.height + 400
         })
         var captured: Int?
+        var stable = 0
+        var didScroll = false
         try #require(await ChangesViewTests.eventually(timeout: .seconds(8)) {
             controller.view.layoutIfNeeded()
             guard let scroll = Self.diffScrollView(in: controller.view) else { return false }
-            let top = Self.topLineID(in: controller.view, viewport: scroll)
-            if let top, top >= 40 {
-                captured = top
-                return true
-            }
             let travel = max(0, scroll.contentSize.height - scroll.bounds.height)
             let y = min(CGFloat(3200), travel * 0.35)
-            if abs(scroll.contentOffset.y - y) > 1 {
-                scroll.setContentOffset(CGPoint(x: 0, y: y), animated: false)
-                scroll.delegate?.scrollViewDidScroll?(scroll)
+            if !didScroll {
+                guard travel > 400 else { return false }
+                didScroll = true
+                // An animated offset settles through the scroll view's own
+                // delegate, which is what updates `scrollPosition`. A direct
+                // write plus a manual delegate call does not.
+                scroll.setContentOffset(CGPoint(x: 0, y: y), animated: true)
+                return false
             }
-            return false
+            guard !scroll.isDragging, !scroll.isDecelerating, abs(scroll.contentOffset.y - y) < 2 else {
+                return false
+            }
+            guard let top = Self.topLineID(in: controller.view, viewport: scroll), top >= 40 else {
+                stable = 0
+                captured = nil
+                return false
+            }
+            if captured == top {
+                stable += 1
+            } else {
+                captured = top
+                stable = 1
+            }
+            return stable >= 3
         })
         let expected = try #require(captured)
 
@@ -215,11 +231,20 @@ struct FileDiffLayoutViewTests {
     }
 
     private static func expectTop(_ expected: Int, in controller: UIViewController) async throws {
-        try #require(await ChangesViewTests.eventually {
+        var observed: Int?
+        var offsetY: CGFloat = 0
+        var insetTop: CGFloat = 0
+        let matched = try await ChangesViewTests.eventually {
             controller.view.layoutIfNeeded()
             guard let scroll = diffScrollView(in: controller.view) else { return false }
-            return topLineID(in: controller.view, viewport: scroll) == expected
-        })
+            offsetY = scroll.contentOffset.y
+            insetTop = scroll.adjustedContentInset.top
+            observed = topLineID(in: controller.view, viewport: scroll)
+            return observed == expected
+        }
+        try #require(
+            matched,
+            "top line \(String(describing: observed)) expected \(expected) offset \(offsetY) inset \(insetTop)")
     }
 
     private static func resize(_ window: UIWindow, to size: CGSize) {
@@ -319,10 +344,20 @@ struct FileDiffLayoutViewTests {
         return chosen
     }
 
-    private static func topLineID(in root: UIView, viewport scroll: UIScrollView) -> Int? {
+    /// Screen y of the first point below the navigation chrome. The scroll
+    /// view's bounds run under that bar; `adjustedContentInset` (or the safe
+    /// area, when the inset is not applied yet) is the readable edge.
+    private static func revealedEdge(of scroll: UIScrollView) -> CGFloat? {
         let viewport = UIAccessibility.convertToScreenCoordinates(scroll.bounds, in: scroll)
         guard !viewport.isNull, !viewport.isEmpty else { return nil }
-        let probe = CGPoint(x: viewport.midX, y: viewport.minY + 4)
+        let chrome = max(scroll.adjustedContentInset.top, scroll.safeAreaInsets.top)
+        return viewport.minY + chrome
+    }
+
+    private static func topLineID(in root: UIView, viewport scroll: UIScrollView) -> Int? {
+        let viewport = UIAccessibility.convertToScreenCoordinates(scroll.bounds, in: scroll)
+        guard let edge = revealedEdge(of: scroll) else { return nil }
+        let probe = CGPoint(x: viewport.midX, y: edge + 4)
         var best: (id: Int, minY: CGFloat)?
         visit(root.window ?? root) { node in
             guard let identifier = accessibilityIdentifier(of: node),
