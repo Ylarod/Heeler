@@ -492,6 +492,8 @@ struct AgentDetailChangesTests {
         inputMode: AgentInputModeSettings,
         defaults: UserDefaults,
         changes: AgentChangesPresentation,
+        agent: ConsoleAgent = AgentSurfaceReplacementTests.makeAgent(pane: "w1:p1"),
+        isVisible: @escaping () -> Bool = { true },
         onShowsChanges: @escaping (Bool) -> Void
     ) -> AgentDetailView {
         let console = ConsoleStore(snapshotRetryDelay: .seconds(30)) { _, subscriptions in
@@ -507,7 +509,7 @@ struct AgentDetailChangesTests {
             fonts: TerminalFontSettings(defaults: defaults),
             snippets: SnippetStore(defaults: defaults))
         return AgentDetailView(
-            agent: AgentSurfaceReplacementTests.makeAgent(pane: "w1:p1"),
+            agent: agent,
             console: console,
             terminal: terminal,
             inputMode: inputMode,
@@ -515,7 +517,7 @@ struct AgentDetailChangesTests {
             activity: AppActivityCoordinator(),
             keyboardHandoff: TerminalKeyboardHandoff(),
             keyboardInset: TerminalKeyboardInset(),
-            stage: AgentDetailStage(isVisible: { true }, terminalAccess: { .holds }),
+            stage: AgentDetailStage(isVisible: isVisible, terminalAccess: { .holds }),
             onSwitch: { _ in },
             onClosed: {},
             onShowsChanges: onShowsChanges,
@@ -649,6 +651,238 @@ struct AgentDetailChangesTests {
 
     nonisolated private static func keystrokes(_ input: TerminalAttachInput) -> Data? {
         if case .keystrokes(let data) = input { data } else { nil }
+    }
+
+    nonisolated private static func isResize(_ input: TerminalAttachInput) -> Bool {
+        if case .resize = input { true } else { false }
+    }
+
+    private static func badgeValue(in controller: UIViewController) -> String? {
+        AccessibilityProbe.elements(labeled: "Changes", in: controller.view).first?
+            .accessibilityValue
+    }
+
+    /// The badge shows the Checkout's line totals beside the Composer
+    /// control without resizing the terminal, opens Changes, and after Back
+    /// still follows the Agent: its next Working exit updates the badge.
+    @Test(arguments: [AgentInputMode.composer, .direct])
+    func theBadgeShowsTheReadInTheSwitcherAndOpensChanges(mode: AgentInputMode) async throws {
+        let transport = ScriptedTransport()
+        let dirty = try ChangesBadgeTests.read(added: 12, removed: 7)
+        let updated = try ChangesBadgeTests.read(added: 1, removed: 1)
+        await transport.scriptChangesReads([.success(dirty), .success(dirty), .success(updated)])
+        let hold = ScriptedTransportCallGate()
+        await transport.gateNextChangesRead(using: hold)
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let attach = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let suiteName = "changes-badge-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let inputMode = AgentInputModeSettings(defaults: defaults)
+        inputMode.select(mode)
+        let feed = AgentChangesFollowTests.StatusFeed(.working)
+        defer { feed.finish() }
+        let changes = AgentChangesPresentation {
+            ChangesStore(
+                directory: { "/home/dev/src/tracking" },
+                read: { try await transport.readChanges($0) },
+                agentStatus: { feed.stream() })
+        }
+        let detail = Self.makeDetail(
+            attach: attach, composer: composer, inputMode: inputMode, defaults: defaults,
+            changes: changes, onShowsChanges: { _ in })
+        let controller = UIHostingController(rootView: NavigationStack { detail })
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
+        defer { window.isHidden = true }
+        try #require(
+            await ChangesViewTests.eventually {
+                controller.view.layoutIfNeeded()
+                return !AgentSurfaceReplacementTests.terminals(in: controller.view).isEmpty
+            })
+
+        await hold.waitForEntry()
+        controller.view.layoutIfNeeded()
+        let terminal = try #require(AgentSurfaceReplacementTests.terminals(in: controller.view).first)
+        let height = terminal.bounds.height
+        let resizes = await transport.attachInputs.filter(Self.isResize).count
+        #expect(Self.badgeValue(in: controller) == nil)
+        await hold.open()
+        let shown = try await ChangesViewTests.eventually {
+            Self.badgeValue(in: controller) == "12 lines added, 7 lines removed"
+        }
+        try #require(shown, "the badge never showed the read")
+        let root: UIView = controller.view
+        #expect(AccessibilityProbe.elements(labeled: "Changes", in: root).count == 1)
+        let modeLabel = mode == .composer
+            ? AgentDirectInputPresentation.hideComposerAccessibilityLabel
+            : AgentDirectInputPresentation.showComposerAccessibilityLabel
+        let badgeFrame = try #require(AccessibilityProbe.frame(labeled: "Changes", in: root))
+        let modeFrame = try #require(AccessibilityProbe.frame(labeled: modeLabel, in: root))
+        #expect(badgeFrame.maxX <= modeFrame.minX + 0.5, "\(badgeFrame) overlaps \(modeFrame)")
+        for _ in 0..<10 {
+            try await Task.sleep(for: .milliseconds(30))
+            controller.view.layoutIfNeeded()
+            #expect(terminal.bounds.height == height)
+        }
+        #expect(await transport.attachInputs.filter(Self.isResize).count == resizes)
+
+        try #require(await ChangesViewTests.eventually { ChangesViewTests.activate("Changes", in: root) })
+        let opened = try await ChangesViewTests.eventually {
+            ChangesViewTests.labels(in: controller).contains { $0.hasPrefix("Checkout ~/src/tracking") }
+                && AgentSurfaceReplacementTests.terminals(in: controller.view).isEmpty
+        }
+        try #require(opened, "the badge never opened Changes")
+        #expect(changes.store === changes.agentStore)
+        try #require(await ChangesViewTests.eventually { await transport.changesReadRequests.count == 2 })
+
+        try #require(await ChangesViewTests.eventually { ChangesViewTests.activate("Back", in: root) })
+        try #require(
+            await ChangesViewTests.eventually {
+                controller.view.layoutIfNeeded()
+                return changes.store == nil
+                    && !AgentSurfaceReplacementTests.terminals(in: controller.view).isEmpty
+            })
+        #expect(changes.isFollowingAgent)
+        feed.send(.done)
+        let refreshed = try await ChangesViewTests.eventually {
+            Self.badgeValue(in: controller) == "1 line added, 1 line removed"
+        }
+        #expect(refreshed, "leaving Working after Back never refreshed the badge")
+        #expect(await transport.changesReadRequests.count == 3)
+        await attach.leave().value
+    }
+
+    /// Switching Agents builds a new detail and store: the badge stays
+    /// hidden until the new Agent's own read lands.
+    @Test func switchingAgentsNeverShowsThePreviousAgentsNumbers() async throws {
+        let first = ScriptedTransport()
+        let second = ScriptedTransport()
+        await first.scriptChangesReads([.success(try ChangesBadgeTests.read(added: 12, removed: 7))])
+        await second.scriptChangesReads([.success(try ChangesBadgeTests.read(added: 1, removed: 1))])
+        let hold = ScriptedTransportCallGate()
+        await second.gateNextChangesRead(using: hold)
+        let suiteName = "changes-badge-switch-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let inputMode = AgentInputModeSettings(defaults: defaults)
+        let selection = DetailSelection()
+        var details: [AgentDetailView] = []
+        var presentations: [AgentChangesPresentation] = []
+        var attaches: [AgentAttachStore] = []
+        for (index, transport) in [first, second].enumerated() {
+            let pane = "w1:p\(index + 1)"
+            let composer = AgentComposerStore(target: pane) { _ in Agent(.fixture(paneID: pane)) }
+            let attach = try await Self.makeLiveAttach(transport: transport, composer: composer)
+            let changes = AgentChangesPresentation {
+                ChangesStore(directory: { "/home/dev/src/tracking" }) {
+                    try await transport.readChanges($0)
+                }
+            }
+            details.append(
+                Self.makeDetail(
+                    attach: attach, composer: composer, inputMode: inputMode, defaults: defaults,
+                    changes: changes, agent: AgentSurfaceReplacementTests.makeAgent(pane: pane),
+                    isVisible: { selection.index == index }, onShowsChanges: { _ in }))
+            presentations.append(changes)
+            attaches.append(attach)
+        }
+        let controller = UIHostingController(
+            rootView: SwitchingDetails(selection: selection, details: details))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
+        defer { window.isHidden = true }
+        try #require(
+            await ChangesViewTests.eventually {
+                Self.badgeValue(in: controller) == "12 lines added, 7 lines removed"
+            })
+
+        selection.index = 1
+        var sawBadge = false
+        let deadline = ContinuousClock.now + .seconds(5)
+        while await hold.entryCount == 0, ContinuousClock.now < deadline {
+            if Self.badgeValue(in: controller) != nil { sawBadge = true }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await hold.entryCount == 1)
+        #expect(Self.badgeValue(in: controller) == nil)
+        #expect(!sawBadge, "a badge showed before the new Agent's read landed")
+        #expect(!presentations[0].isFollowingAgent)
+        #expect(presentations[1].isFollowingAgent)
+
+        await hold.open()
+        let shown = try await ChangesViewTests.eventually {
+            Self.badgeValue(in: controller) == "1 line added, 1 line removed"
+        }
+        #expect(shown)
+        #expect(await first.changesReadRequests.count == 1)
+        for attach in attaches { await attach.leave().value }
+    }
+
+    @Test func anAgentWithoutADirectoryHasNoBadge() async throws {
+        let transport = ScriptedTransport()
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let attach = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let suiteName = "changes-badge-none-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let changes = AgentChangesPresentation {
+            ChangesStore(directory: { nil }) { try await transport.readChanges($0) }
+        }
+        let agent = ConsoleAgent(
+            hostID: UUID(),
+            hostName: "devbox",
+            agent: Agent(
+                terminalID: "term_w1:p1", kind: "claude", title: "",
+                status: .idle, workspaceID: "w", tabID: "w:t", paneID: "w1:p1",
+                cwd: "", revision: 1, name: nil),
+            workspaceLabel: nil,
+            repositoryCheckout: nil,
+            lastOutputSnippet: nil)
+        #expect(agent.directory == nil)
+        let detail = Self.makeDetail(
+            attach: attach, composer: composer,
+            inputMode: AgentInputModeSettings(defaults: defaults), defaults: defaults,
+            changes: changes, agent: agent, onShowsChanges: { _ in })
+        let controller = UIHostingController(rootView: NavigationStack { detail })
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
+        defer { window.isHidden = true }
+        try #require(
+            await ChangesViewTests.eventually {
+                controller.view.layoutIfNeeded()
+                return !AgentSurfaceReplacementTests.terminals(in: controller.view).isEmpty
+            })
+        try await Task.sleep(for: .milliseconds(600))
+        #expect(Self.badgeValue(in: controller) == nil)
+        #expect(await transport.changesReadRequests.isEmpty)
+        #expect(changes.agentStore == nil)
+        #expect(!changes.isFollowingAgent)
+        await attach.leave().value
+    }
+}
+
+/// The Agent a hosted switch shows, as the Console's selection.
+@MainActor
+@Observable
+private final class DetailSelection {
+    var index = 0
+}
+
+/// Keys each detail by the selection, as the Console keys its detail column
+/// by Agent, so a switch builds a new detail rather than reusing one.
+private struct SwitchingDetails: View {
+    let selection: DetailSelection
+    let details: [AgentDetailView]
+
+    var body: some View {
+        NavigationStack {
+            details[selection.index].id(selection.index)
+        }
     }
 }
 

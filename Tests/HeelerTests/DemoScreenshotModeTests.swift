@@ -357,6 +357,36 @@
             #expect(store.insertionText(for: firstFile) == "Fixtures/receipts/ ")
         }
 
+        /// Each demo Agent's detail shows its sample Checkout's totals in the
+        /// Agent switcher, read through the production factory.
+        @Test func demoAgentsShowTheirSampleChangesInTheSwitcherBadge() async throws {
+            let composition = DemoScreenshotComposition.make()
+            composition.console.setHosts(composition.hosts.hosts)
+            await composition.console.resume()
+            defer { composition.console.setHosts([]) }
+            await waitUntilDemoAgentsLoad(composition)
+
+            var shown: [String: String] = [:]
+            for agent in composition.console.agents {
+                let name = agent.agent.name ?? agent.agent.kind
+                let store = productionChangesStore(for: agent, console: composition.console)
+                defer { store.cancel() }
+                await store.refresh()
+                guard case .loaded(let changes) = store.phase else {
+                    Issue.record("\(name) Changes should be loaded, got \(store.phase)")
+                    continue
+                }
+                let badge = try #require(
+                    ChangesBadge(phase: store.phase, timedOutKeepingContent: store.timedOutKeepingContent),
+                    "\(name) shows no badge")
+                #expect(badge.addedText() == "+\(changes.totals.added.formatted())")
+                #expect(badge.removedText() == "\u{2212}\(changes.totals.removed.formatted())")
+                shown[name] = "\(badge.addedText()) \(badge.removedText())"
+            }
+            #expect(shown.count == 5)
+            #expect(shown["reviewer"] == "+12 \u{2212}7")
+        }
+
         /// Agent detail's own store, from the production factory: the
         /// console's Changes reads, the Host gate, and that Agent's status.
         private func productionChangesStore(

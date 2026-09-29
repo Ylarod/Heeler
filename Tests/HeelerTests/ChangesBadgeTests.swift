@@ -659,3 +659,47 @@ struct AgentChangesFollowTests {
         #expect(await condition())
     }
 }
+
+/// Hosted accessibility lookups for the badge's row and detail tests: every
+/// visible element with a label, and where it sits.
+@MainActor
+enum AccessibilityProbe {
+    static func elements(labeled label: String, in root: UIView) -> [NSObject] {
+        root.layoutIfNeeded()
+        var visited = Set<ObjectIdentifier>()
+        var found: [NSObject] = []
+        func visit(_ node: NSObject) {
+            guard visited.insert(ObjectIdentifier(node)).inserted,
+                !node.accessibilityElementsHidden
+            else { return }
+            if node.accessibilityLabel == label, frame(of: node, in: root).width > 0 {
+                found.append(node)
+            }
+            for object in node.accessibilityElements ?? [] {
+                if let object = object as? NSObject { visit(object) }
+            }
+            let count = node.accessibilityElementCount()
+            if count > 0, count != NSNotFound {
+                for index in 0..<count {
+                    if let object = node.accessibilityElement(at: index) as? NSObject {
+                        visit(object)
+                    }
+                }
+            }
+            if let view = node as? UIView { view.subviews.forEach(visit) }
+        }
+        visit(root)
+        return found
+    }
+
+    static func frame(of node: NSObject, in root: UIView) -> CGRect {
+        if let view = node as? UIView {
+            return view.convert(view.bounds, to: root)
+        }
+        return root.convert(node.accessibilityFrame, from: nil)
+    }
+
+    static func frame(labeled label: String, in root: UIView) -> CGRect? {
+        elements(labeled: label, in: root).first.map { frame(of: $0, in: root) }
+    }
+}

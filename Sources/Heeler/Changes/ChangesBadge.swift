@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import UIKit
 
 /// The Agent switcher's glance at the Checkout's Changes: the line totals of
@@ -98,4 +99,63 @@ struct ChangesBadge: Equatable {
 enum ChangesBadgePalette {
     static let addedInk = DiffPalette.adaptive(light: 0x116329, dark: 0x3FB950)
     static let removedInk = DiffPalette.adaptive(light: 0xB42318, dark: 0xFF7B72)
+}
+
+/// What the Agent switcher needs for the badge: the store to read and where
+/// a tap goes. Only the store travels, so a read landing redraws the badge
+/// alone rather than the Agent surface that owns the switcher.
+struct ChangesBadgeSource {
+    let store: ChangesStore
+    /// The Agent menu's own Changes action.
+    let open: () -> Void
+}
+
+/// The badge at the switcher row's trailing end, before the pinned buttons:
+/// "+12 −7", green and red. It never resizes the row. Exact totals come
+/// first; a row without room takes the shortened form, and then no badge,
+/// before the strip or a pinned button gives way.
+struct ChangesBadgeButton: View {
+    let source: ChangesBadgeSource
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        if let badge = ChangesBadge(
+            phase: source.store.phase,
+            timedOutKeepingContent: source.store.timedOutKeepingContent)
+        {
+            ViewThatFits(in: .horizontal) {
+                button(badge, style: .exact)
+                button(badge, style: .compact)
+                // The More menu still opens Changes.
+                Color.clear.frame(width: 0, height: 0)
+            }
+        }
+    }
+
+    private func button(_ badge: ChangesBadge, style: ChangesBadge.Style) -> some View {
+        Button(action: source.open) {
+            HStack(spacing: 4) {
+                Text(badge.addedText(style, locale: locale))
+                    .foregroundStyle(Color(uiColor: ChangesBadgePalette.addedInk))
+                Text(badge.removedText(style, locale: locale))
+                    .foregroundStyle(Color(uiColor: ChangesBadgePalette.removedInk))
+            }
+            .font(.footnote.weight(.medium))
+            .monospacedDigit()
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.leading, 10)
+            .padding(.trailing, 4)
+            .frame(minWidth: 44, minHeight: TerminalAgentSwitcherBar.preferredHeight)
+        }
+        .buttonStyle(.plain)
+        .frame(height: 44)
+        .contentShape(Rectangle())
+        .padding(.vertical, (TerminalAgentSwitcherBar.preferredHeight - 44) / 2)
+        // The row cannot grow; the large content viewer shows the rest.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        .accessibilityShowsLargeContentViewer()
+        .accessibilityLabel("Changes")
+        .accessibilityValue(badge.accessibilityValue)
+    }
 }

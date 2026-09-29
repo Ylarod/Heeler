@@ -194,6 +194,9 @@ struct AgentTerminalView: View {
     private let showChanges: (() -> Void)?
     /// Opens Changes for a Worktree directory after its sheet has dismissed.
     private let showWorktreeChanges: ((String) -> Void)?
+    /// Agent detail's own Changes store, which the switcher's badge reads;
+    /// nil without a directory to read.
+    private let changesStore: ChangesStore?
     private let composer: AgentComposerStore
     private let interactionProbe: WeakAgentTerminalInteractionProbe?
     private let retainedSurface: TerminalSurfaceRetention?
@@ -303,6 +306,7 @@ struct AgentTerminalView: View {
         openTerminal: @escaping () -> Void = {},
         showChanges: (() -> Void)? = nil,
         showWorktreeChanges: ((String) -> Void)? = nil,
+        changesStore: ChangesStore? = nil,
         composer: AgentComposerStore,
         attachStore: AgentAttachStore? = nil,
         retainedSurface: TerminalSurfaceRetention? = nil,
@@ -331,6 +335,7 @@ struct AgentTerminalView: View {
         self.openTerminal = openTerminal
         self.showChanges = showChanges
         self.showWorktreeChanges = showWorktreeChanges
+        self.changesStore = changesStore
         self.composer = composer
         self.interactionProbe = interactionProbe.map(WeakAgentTerminalInteractionProbe.init)
         self.retainedSurface = retainedSurface
@@ -855,6 +860,10 @@ struct AgentTerminalView: View {
             onSelect: switchToAgent,
             onTogglePin: { id in
                 console.togglePin(hostID: id.hostID, paneID: id.paneID)
+            },
+            // The badge opens Changes exactly as the Agent menu does.
+            changesBadge: changesStore.flatMap { store in
+                showChanges.map { ChangesBadgeSource(store: store, open: $0) }
             })
     }
 

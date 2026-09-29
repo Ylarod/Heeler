@@ -118,6 +118,101 @@ struct TerminalAgentSwitcherTests {
             "the strip claimed \(stripFrame.maxX) of \(width), leaving no room for both toggles")
     }
 
+    /// The Changes badge sits between the strip and the pinned buttons at
+    /// its own width, never costing the row height or the keyboard button.
+    @MainActor
+    @Test(.timeLimit(.minutes(1)), arguments: [CGFloat(402), 320])
+    func theChangesBadgeSitsBetweenTheStripAndThePinnedButtons(width: CGFloat) async throws {
+        let badge = try await Self.layOutBadgeRow(
+            width: width, counts: 9_999, locale: Locale(identifier: "en_US"),
+            dynamicTypeSize: .large)
+        let shown = try #require(badge, "the badge stepped aside at \(width) points")
+        #expect(shown.value == "9,999 lines added, 9,999 lines removed")
+        #expect(shown.opened)
+    }
+
+    /// Where even the shortened totals would squeeze the strip, the badge
+    /// steps aside rather than pushing the keyboard button off the row.
+    @MainActor
+    @Test(.timeLimit(.minutes(1)))
+    func aNarrowRowAtTheLargestTextKeepsItsButtonsOnScreen() async throws {
+        _ = try await Self.layOutBadgeRow(
+            width: 320, counts: 999_999, locale: Locale(identifier: "de_DE"),
+            dynamicTypeSize: .accessibility3)
+    }
+
+    /// Lays out a keyboard-up row with every pinned button and checks the
+    /// order strip, badge, mode, tools, keyboard. Returns the badge's value
+    /// and whether activating it opened Changes, or nil when it stepped aside.
+    @MainActor
+    private static func layOutBadgeRow(
+        width: CGFloat, counts: Int, locale: Locale, dynamicTypeSize: DynamicTypeSize
+    ) async throws -> (value: String?, opened: Bool)? {
+        let host = UUID()
+        let agents = (0..<10).map {
+            Self.makeAgent(
+                pane: "p\($0)", workspace: "a-project-with-a-long-name-\($0)", host: host)
+        }
+        let read = try ChangesBadgeTests.read(added: counts, removed: counts)
+        let store = ChangesStore(directory: { "/home/dev/src/tracking" }) { _ in read }
+        await store.refresh()
+        var opened = 0
+        let row = TerminalAgentSwitcherRow(
+            switcher: TerminalAgentSwitcher(
+                items: agents.map { Self.makeItem($0) },
+                selectedID: agents[9].id,
+                onSelect: { _ in },
+                onTogglePin: { _ in },
+                changesBadge: ChangesBadgeSource(store: store) { opened += 1 }),
+            isKeyboardUp: true,
+            toggleKeyboard: {},
+            switchKeyboard: {},
+            modeControl: .button(
+                systemImage: "rectangle.bottomhalf.inset.filled",
+                accessibilityLabel: "Hide Composer",
+                accessibilityHint: "",
+                action: {}))
+        let controller = UIHostingController(
+            rootView: AnyView(
+                row.environment(\.locale, locale).environment(\.dynamicTypeSize, dynamicTypeSize)))
+        // Measure the row alone, not the scene window's safe-area insets.
+        controller.safeAreaRegions = []
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: width, height: 700), rootViewController: controller)
+        defer { window.isHidden = true }
+        controller.view.layoutIfNeeded()
+
+        let measured = controller.sizeThatFits(in: CGSize(width: width, height: 40))
+        #expect(
+            measured.height == TerminalAgentSwitcherBar.preferredHeight,
+            "the row measured \(measured.height) tall")
+        #expect(measured.width <= width)
+
+        let strip = try #require(Self.firstStrip(in: controller.view))
+        let stripFrame = strip.convert(strip.bounds, to: controller.view)
+        let root: UIView = controller.view
+        let mode = try #require(AccessibilityProbe.frame(labeled: "Hide Composer", in: root))
+        let tools = try #require(AccessibilityProbe.frame(labeled: "Show tools keyboard", in: root))
+        let keyboard = try #require(AccessibilityProbe.frame(labeled: "Dismiss keyboard", in: root))
+        #expect(stripFrame.width >= 64 - 0.5, "the strip kept \(stripFrame.width)")
+        #expect(mode.maxX <= tools.minX + 0.5)
+        #expect(tools.maxX <= keyboard.minX + 0.5)
+        #expect(keyboard.maxX <= width + 0.5, "the keyboard button ends at \(keyboard.maxX)")
+
+        let badges = AccessibilityProbe.elements(labeled: "Changes", in: root)
+        #expect(badges.count <= 1)
+        guard let badge = badges.first else {
+            #expect(stripFrame.maxX <= mode.minX + 0.5)
+            return nil
+        }
+        let badgeFrame = AccessibilityProbe.frame(of: badge, in: root)
+        #expect(stripFrame.maxX <= badgeFrame.minX + 0.5, "\(stripFrame) overlaps \(badgeFrame)")
+        #expect(badgeFrame.maxX <= mode.minX + 0.5, "\(badgeFrame) overlaps \(mode)")
+        let value = badge.accessibilityValue
+        _ = ChangesViewTests.activate("Changes", in: root)
+        return (value, opened == 1)
+    }
+
     @MainActor
     private func makeWindow(
         width: CGFloat, rootViewController: UIViewController

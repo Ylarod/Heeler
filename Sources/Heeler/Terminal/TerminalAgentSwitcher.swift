@@ -24,12 +24,14 @@ extension TerminalAgentSwitcherItem {
 }
 
 /// What an Agent surface hands its switcher: the Agents to offer, the one
-/// currently on screen, where a tap goes, and where a Pin / Unpin goes.
+/// currently on screen, where a tap goes, where a Pin / Unpin goes, and the
+/// on-screen Agent's Changes badge, if it has a directory to read.
 struct TerminalAgentSwitcher {
     var items: [TerminalAgentSwitcherItem]
     var selectedID: ConsoleAgent.ID?
     var onSelect: @MainActor (ConsoleAgent.ID) -> Void
     var onTogglePin: @MainActor (ConsoleAgent.ID) -> Void
+    var changesBadge: ChangesBadgeSource? = nil
 }
 
 /// Carries the user's "I am still typing" intent across the Agent surface
@@ -567,6 +569,9 @@ struct TerminalAgentSwitcherRow: View {
     private static let composerGlyphPointSize: CGFloat = 14
     private static let glyphSlotSize: CGFloat = 18
     private static let groupedGlyphOffset: CGFloat = 2
+    /// Beside a Changes badge the strip keeps room for part of a chip: the
+    /// badge shortens or steps aside before the strip disappears.
+    static let stripMinimumWidthBesideBadge: CGFloat = 64
     @Environment(\.displayScale) private var displayScale
 
     private var hairline: CGFloat { 1 / max(displayScale, 1) }
@@ -574,11 +579,20 @@ struct TerminalAgentSwitcherRow: View {
     var body: some View {
         HStack(spacing: 0) {
             StripRepresentable(switcher: switcher)
+                .frame(
+                    minWidth: switcher.changesBadge == nil
+                        ? nil : Self.stripMinimumWidthBesideBadge)
             // Fences the pinned button off from the strip, so the chips read
             // as a list that ends rather than as one the button belongs to.
             Rectangle()
                 .fill(Color(uiColor: .separator))
                 .frame(width: hairline, height: 20)
+            if let changesBadge = switcher.changesBadge {
+                // Offered its width before the strip, after the strip's
+                // minimum and the pinned buttons are set aside.
+                ChangesBadgeButton(source: changesBadge)
+                    .layoutPriority(1)
+            }
             if let modeControl {
                 modeControlView(modeControl)
             }

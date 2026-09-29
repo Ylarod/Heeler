@@ -271,6 +271,7 @@ struct AgentDetailView: View {
                     showWorktreeChanges: { directory in
                         changes.open(directory: directory)
                     },
+                    changesStore: agent.directory == nil ? nil : changes.agentStore,
                     composer: composer,
                     attachStore: attach,
                     retainedSurface: retainedAgent?.surfaceRetention,
