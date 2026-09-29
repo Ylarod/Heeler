@@ -613,6 +613,104 @@ struct AgentChangesFollowTests {
         #expect(await transport.changesReadRequests.count == 3)
     }
 
+    /// Worktree Changes of the Agent's own Checkout follow the same Agent, so
+    /// an exit from Working reads that Checkout once, in the shown store, and
+    /// Back hands that read to the badge without reading again.
+    @Test func worktreeChangesOfTheAgentsCheckoutReadOncePerWorkingExit() async throws {
+        let transport = ScriptedTransport()
+        let agentRead = try ChangesBadgeTests.read(added: 12, removed: 7)
+        let opened = try ChangesBadgeTests.read(added: 15, removed: 9)
+        let exited = try ChangesBadgeTests.read(added: 2, removed: 0)
+        let spare = try ChangesBadgeTests.read(added: 3, removed: 3)
+        await transport.scriptChangesReads([
+            .success(agentRead), .success(opened), .success(exited), .success(spare),
+        ])
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.working)
+        defer { feed.finish() }
+        var now = Date(timeIntervalSince1970: 1_000)
+        let changes = Self.presentation(
+            transport: transport, clock: clock, feed: feed, now: { now })
+        changes.startFollowingAgent()
+        defer { changes.stopFollowingAgent() }
+        await Self.drain()
+        await clock.fireAll()
+        let store = try #require(changes.agentStore)
+        await Self.waitUntilSettled(store, .loaded(agentRead.changes))
+
+        now = Date(timeIntervalSince1970: 2_000)
+        changes.open(directory: "/home/dev/src/tracking")
+        let worktree = try #require(changes.store)
+        await worktree.appear()
+        #expect(worktree.phase == .loaded(opened.changes))
+        await Self.drain()
+
+        now = Date(timeIntervalSince1970: 3_000)
+        feed.send(.done)
+        await Self.drain()
+        await clock.fireAll()
+        await Self.waitUntilSettled(worktree, .loaded(exited.changes))
+        await Self.drain()
+        await clock.fireAll()
+        await Self.drain()
+        #expect(await transport.changesReadRequests.count == 3)
+        #expect(Self.texts(store) == "+12 \u{2212}7")
+
+        changes.close()
+        worktree.cancel()
+        #expect(Self.texts(store) == "+2 \u{2212}0")
+        await Self.drain()
+        await clock.fireAll()
+        await Self.drain()
+        #expect(await transport.changesReadRequests.count == 3)
+        #expect(store.activeRead == nil)
+    }
+
+    /// Back before Worktree Changes answered an exit from Working leaves the
+    /// badge's Checkout unread since that exit, so its own refresh runs.
+    @Test func backBeforeWorktreeChangesAnswerAnExitRefreshesTheBadge() async throws {
+        let transport = ScriptedTransport()
+        let agentRead = try ChangesBadgeTests.read(added: 12, removed: 7)
+        let opened = try ChangesBadgeTests.read(added: 15, removed: 9)
+        let unanswered = try ChangesBadgeTests.read(added: 1, removed: 1)
+        let refreshed = try ChangesBadgeTests.read(added: 2, removed: 0)
+        await transport.scriptChangesReads([
+            .success(agentRead), .success(opened), .success(unanswered), .success(refreshed),
+        ])
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.working)
+        defer { feed.finish() }
+        let changes = Self.presentation(transport: transport, clock: clock, feed: feed)
+        changes.startFollowingAgent()
+        defer { changes.stopFollowingAgent() }
+        await Self.drain()
+        await clock.fireAll()
+        let store = try #require(changes.agentStore)
+        await Self.waitUntilSettled(store, .loaded(agentRead.changes))
+
+        changes.open(directory: "/home/dev/src/tracking")
+        let worktree = try #require(changes.store)
+        await worktree.appear()
+        await Self.drain()
+
+        let hold = ScriptedTransportCallGate()
+        await transport.gateNextChangesRead(using: hold)
+        feed.send(.done)
+        await Self.drain()
+        await clock.fireAll()
+        await hold.waitForEntry()
+        await Self.drain()
+        #expect(await transport.changesReadRequests.count == 3)
+
+        // Back, and the view's teardown cancels the Worktree's read.
+        changes.close()
+        worktree.cancel()
+        await hold.open()
+        await Self.waitUntilSettled(store, .loaded(refreshed.changes))
+        #expect(await transport.changesReadRequests.count == 4)
+        #expect(Self.texts(store) == "+2 \u{2212}0")
+    }
+
     @Test func thePresentationStopsFollowingWhenItGoesAway() async throws {
         let transport = ScriptedTransport()
         await transport.scriptChangesReads([.success(try ChangesBadgeTests.read(added: 12, removed: 7))])

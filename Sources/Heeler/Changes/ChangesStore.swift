@@ -80,6 +80,11 @@ final class ChangesStore {
     /// store for the badge with Changes closed, since nothing on screen
     /// changed for VoiceOver to hear about.
     @ObservationIgnored var announcesAutomaticUpdates = true
+    /// True while another shown store reads this Checkout for each exit from
+    /// Working, as Worktree Changes of the Agent's own Checkout do: this
+    /// store's automatic refresh then waits for Back instead of reading the
+    /// same Checkout again.
+    @ObservationIgnored var automaticRefreshIsCoveredElsewhere: (@MainActor () -> Bool)?
 
     var freshness: ChangesFreshness? {
         guard case .loaded = phase, let readAt,

@@ -113,7 +113,9 @@ extension ChangesStore {
     }
 
     func runPendingAutomaticRefresh() {
-        guard autoRefresh.pending, autoRefresh.debounce == nil, activeRead == nil else { return }
+        guard autoRefresh.pending, autoRefresh.debounce == nil, activeRead == nil,
+            automaticRefreshIsCoveredElsewhere?() != true
+        else { return }
         autoRefresh.pending = false
         // No strong store capture until the bounded read starts.
         autoRefresh.debounce = Task { [weak self] in
@@ -121,6 +123,27 @@ extension ChangesStore {
             self.autoRefresh.debounce = nil
             await self.refresh(automatic: true)
         }
+    }
+
+    /// Back from Worktree Changes of this Checkout, which read in this
+    /// store's place. When their last read answered every exit from Working
+    /// and Back adopted it, the waiting refresh is done; otherwise it runs.
+    /// Both stores follow the same Agent's status, so the shown one had
+    /// every exit this one waited on.
+    func resumeAutomaticRefresh(after other: ChangesStore) {
+        guard autoRefresh.pending else { return }
+        if other.hasAnsweredEveryWorkingExit, readAt != nil, readAt == other.readAt {
+            autoRefresh.pending = false
+        } else {
+            runPendingAutomaticRefresh()
+        }
+    }
+
+    /// Nothing waits or runs, and the last read succeeded in full.
+    private var hasAnsweredEveryWorkingExit: Bool {
+        guard case .loaded = phase else { return false }
+        return !autoRefresh.pending && autoRefresh.debounce == nil && activeRead == nil
+            && !timedOutKeepingContent
     }
 
     func dropPendingAutomaticRefresh() {
