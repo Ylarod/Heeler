@@ -405,9 +405,15 @@
                 frame: CGRect(x: 0, y: 0, width: 402, height: 1_400), rootViewController: controller)
             defer { window.isHidden = true }
 
+            // Two Agents share a value, so one row showing it does not mean
+            // the other's read has finished; wait for every store as well.
             let shown = try await ChangesViewTests.eventually {
                 let labels = AccessibilityProbe.labels(in: controller.view)
                 return expected.values.allSatisfy { value in labels.contains { $0.contains(value) } }
+                    && composition.console.agents.allSatisfy { agent in
+                        composition.console.rowChanges.store(for: agent)
+                            .map { $0.phase != .loading } ?? false
+                    }
             }
             #expect(
                 shown,
