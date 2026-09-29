@@ -89,12 +89,16 @@ struct ChangesBadgeTests {
         #expect(badge.accessibilityValue == "At least 12 lines added, 7 lines removed")
     }
 
+    /// Below 10,000 the short form keeps two digits: a third would make it
+    /// no shorter than the exact count, and the row would drop the badge
+    /// where the short form fits.
     @Test(arguments: [
-        (0, "0"), (9_999, "9,999"), (10_000, "10K"), (12_345, "12.3K"), (99_999, "99.9K"),
-        (123_456, "123K"), (999_999, "999K"), (1_000_000, "1M"), (1_050_000, "1.05M"),
-        (1_234_567, "1.23M"), (999_999_999, "999M"), (Int.max, "999T+"),
+        (0, "0"), (999, "999"), (1_000, "1K"), (1_050, "1K"), (1_234, "1.2K"), (9_999, "9.9K"),
+        (10_000, "10K"), (12_345, "12.3K"), (99_999, "99.9K"), (123_456, "123K"),
+        (999_999, "999K"), (1_000_000, "1M"), (1_050_000, "1.05M"), (1_234_567, "1.23M"),
+        (999_999_999, "999M"), (Int.max, "999T+"),
     ])
-    func compactCountsShortenFromTenThousandWithoutOverstating(value: Int, expected: String) {
+    func compactCountsShortenFromOneThousandWithoutOverstating(value: Int, expected: String) {
         #expect(ChangesBadge.count(value, style: .compact, locale: Self.english) == expected)
         #expect(
             ChangesBadge.count(value, style: .exact, locale: Self.english)
@@ -104,7 +108,8 @@ struct ChangesBadgeTests {
     @Test func compactCountsUseTheLocalesDecimalSeparator() {
         let german = Locale(identifier: "de_DE")
         #expect(ChangesBadge.count(12_345, style: .compact, locale: german) == "12,3K")
-        #expect(ChangesBadge.count(9_999, style: .compact, locale: german) == "9.999")
+        #expect(ChangesBadge.count(1_234, style: .compact, locale: german) == "1,2K")
+        #expect(ChangesBadge.count(999, style: .compact, locale: german) == "999")
     }
 
     /// The badge prefers the header's exact numbers; the short form is only

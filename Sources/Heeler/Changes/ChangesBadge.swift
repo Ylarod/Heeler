@@ -13,7 +13,7 @@ import UIKit
 /// and the badge has no room for one.
 struct ChangesBadge: Equatable {
     /// How a count is written: exactly as the header writes it, or shortened
-    /// from 10,000 when the switcher row has no room for the exact form.
+    /// from 1,000 when the switcher row has no room for the exact form.
     enum Style: CaseIterable {
         case exact
         case compact
@@ -58,16 +58,17 @@ struct ChangesBadge: Equatable {
     }
 
     /// Exact counts are grouped as the header groups them. Compact counts
-    /// from 10,000 keep at most three significant digits, rounded toward
-    /// zero so they never overstate: 12.3K, 999K, 1.23M.
+    /// from 1,000 are rounded toward zero so they never overstate, and keep
+    /// at most three significant digits, or two below 10,000, where a third
+    /// would be no shorter than the exact count: 1.2K, 12.3K, 999K, 1.23M.
     static func count(_ value: Int, style: Style, locale: Locale) -> String {
-        guard style == .compact, value >= 10_000,
+        guard style == .compact, value >= 1_000,
             let unit = compactUnits.first(where: { value >= $0.scale })
         else { return value.formatted(.number.locale(locale)) }
         let whole = value / unit.scale
         // Past the largest unit; only an overflowed total gets here.
         guard whole < 1_000 else { return "999\(unit.suffix)+" }
-        var digits = whole >= 100 ? 0 : whole >= 10 ? 1 : 2
+        var digits = whole >= 100 ? 0 : whole >= 10 || value < 10_000 ? 1 : 2
         var fraction = (value % unit.scale) / (unit.scale / powerOfTen(digits))
         while digits > 0, fraction % 10 == 0 {
             fraction /= 10
@@ -157,5 +158,7 @@ struct ChangesBadgeButton: View {
         .accessibilityShowsLargeContentViewer()
         .accessibilityLabel("Changes")
         .accessibilityValue(badge.accessibilityValue)
+        // VoiceOver hears exact counts either way; this says which one shows.
+        .accessibilityIdentifier(style == .exact ? "changes-badge.exact" : "changes-badge.compact")
     }
 }

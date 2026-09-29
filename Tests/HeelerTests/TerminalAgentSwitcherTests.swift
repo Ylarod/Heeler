@@ -123,11 +123,41 @@ struct TerminalAgentSwitcherTests {
     @MainActor
     @Test(.timeLimit(.minutes(1)), arguments: [CGFloat(402), 320])
     func theChangesBadgeSitsBetweenTheStripAndThePinnedButtons(width: CGFloat) async throws {
-        let badge = try await Self.layOutBadgeRow(
-            width: width, counts: 9_999, locale: Locale(identifier: "en_US"),
-            dynamicTypeSize: .large)
+        let badge = try await Self.layOutBadgeRow(width: width, added: 9_999, removed: 9_999)
         let shown = try #require(badge, "the badge stepped aside at \(width) points")
         #expect(shown.value == "9,999 lines added, 9,999 lines removed")
+        #expect(shown.opened)
+    }
+
+    struct NarrowRow: Sendable {
+        let width: CGFloat
+        let added: Int
+        let removed: Int
+        let dynamicTypeSize: DynamicTypeSize
+        let shortened: String
+    }
+
+    /// Four-digit counts shorten rather than stepping aside. The narrowest
+    /// row, in the Composer card at 320 points (296 inside its padding),
+    /// fits "+9.8K −543" where "+9,876 −543" does not; "+1.2K −1.2K" is still
+    /// too wide there. A 320-point row at the next text size fits "+1.2K
+    /// −1.2K" where "+1,234 −1,234" does not.
+    @MainActor
+    @Test(.timeLimit(.minutes(1)), arguments: [
+        NarrowRow(width: 296, added: 9_876, removed: 543, dynamicTypeSize: .large, shortened: "+9.8K"),
+        NarrowRow(
+            width: 320, added: 1_234, removed: 1_234, dynamicTypeSize: .xLarge, shortened: "+1.2K"),
+    ])
+    func fourDigitCountsShortenInANarrowRow(row: NarrowRow) async throws {
+        let badge = try await Self.layOutBadgeRow(
+            width: row.width, added: row.added, removed: row.removed,
+            dynamicTypeSize: row.dynamicTypeSize)
+        let shown = try #require(badge, "the badge stepped aside at \(row.width) points")
+        #expect(shown.form == "changes-badge.compact")
+        let read = try ChangesBadgeTests.read(added: row.added, removed: row.removed)
+        let totals = try #require(
+            ChangesBadge(phase: .loaded(read.changes), timedOutKeepingContent: false))
+        #expect(totals.addedText(.compact, locale: Locale(identifier: "en_US")) == row.shortened)
         #expect(shown.opened)
     }
 
@@ -137,23 +167,34 @@ struct TerminalAgentSwitcherTests {
     @Test(.timeLimit(.minutes(1)))
     func aNarrowRowAtTheLargestTextKeepsItsButtonsOnScreen() async throws {
         _ = try await Self.layOutBadgeRow(
-            width: 320, counts: 999_999, locale: Locale(identifier: "de_DE"),
+            width: 320, added: 999_999, removed: 999_999, locale: Locale(identifier: "de_DE"),
             dynamicTypeSize: .accessibility3)
     }
 
+    /// What a laid-out row showed for its Changes badge.
+    struct ShownBadge {
+        /// VoiceOver's value, which is always the exact totals.
+        let value: String?
+        /// `changes-badge.exact` or `changes-badge.compact`: the totals shown.
+        let form: String?
+        /// Activating the badge opened Changes.
+        let opened: Bool
+    }
+
     /// Lays out a keyboard-up row with every pinned button and checks the
-    /// order strip, badge, mode, tools, keyboard. Returns the badge's value
-    /// and whether activating it opened Changes, or nil when it stepped aside.
+    /// order strip, badge, mode, tools, keyboard. Returns what the badge
+    /// showed, or nil when it stepped aside.
     @MainActor
     private static func layOutBadgeRow(
-        width: CGFloat, counts: Int, locale: Locale, dynamicTypeSize: DynamicTypeSize
-    ) async throws -> (value: String?, opened: Bool)? {
+        width: CGFloat, added: Int, removed: Int, locale: Locale = Locale(identifier: "en_US"),
+        dynamicTypeSize: DynamicTypeSize = .large
+    ) async throws -> ShownBadge? {
         let host = UUID()
         let agents = (0..<10).map {
             Self.makeAgent(
                 pane: "p\($0)", workspace: "a-project-with-a-long-name-\($0)", host: host)
         }
-        let read = try ChangesBadgeTests.read(added: counts, removed: counts)
+        let read = try ChangesBadgeTests.read(added: added, removed: removed)
         let store = ChangesStore(directory: { "/home/dev/src/tracking" }) { _ in read }
         await store.refresh()
         var opened = 0
@@ -209,8 +250,16 @@ struct TerminalAgentSwitcherTests {
         #expect(stripFrame.maxX <= badgeFrame.minX + 0.5, "\(stripFrame) overlaps \(badgeFrame)")
         #expect(badgeFrame.maxX <= mode.minX + 0.5, "\(badgeFrame) overlaps \(mode)")
         let value = badge.accessibilityValue
+        let form = Self.accessibilityIdentifier(of: badge)
         _ = ChangesViewTests.activate("Changes", in: root)
-        return (value, opened == 1)
+        return ShownBadge(value: value, form: form, opened: opened == 1)
+    }
+
+    @MainActor
+    private static func accessibilityIdentifier(of node: NSObject) -> String? {
+        let getter = #selector(getter: UIAccessibilityIdentification.accessibilityIdentifier)
+        guard node.responds(to: getter) else { return nil }
+        return node.value(forKey: "accessibilityIdentifier") as? String
     }
 
     @MainActor

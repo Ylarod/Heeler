@@ -23,10 +23,10 @@ Entries reference the issue that motivated them.
   the Changes header; tap them to open Changes. They are read when Agent
   detail opens and when the Agent stops working, stay hidden while the
   Checkout is clean, unreadable, or not yet read, and, when the switcher is
-  short of room, shorten from 10,000 lines, as in 12.3K, or step aside.
-  Heeler reads the Checkout with git on the Host over SSH, without running
-  its hooks or file-system monitor and without rewriting its index, and
-  keeps nothing once Agent detail closes. (#382)
+  short of room, shorten from 1,000 lines, as in 1.2K or 12.3K, or step
+  aside. Heeler reads the Checkout with git on the Host over SSH, without
+  running its hooks or file-system monitor and without rewriting its index,
+  and keeps nothing once Agent detail closes. (#382)
 
 ## [0.1.11] - 2026-09-28
 
