@@ -47,10 +47,9 @@ struct ChangesReferenceScrollMeasurementTests {
                 .environment(\.changesReferenceActions, ChangesReferenceActions(store: changes))
                 .id(ObjectIdentifier(store))
                 .environment(\.diffLayoutSettings, layout == nil ? nil : settings)
-                .environment(\.dynamicTypeSize, .large)
-                .frame(width: layout == nil ? nil : 1376, height: layout == nil ? nil : 1032))
+                .environment(\.dynamicTypeSize, .large))
         let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: 402, height: 874),
+            frame: CGRect(x: 0, y: 0, width: layout == nil ? 402 : 1376, height: layout == nil ? 874 : 1032),
             rootViewController: controller)
         defer { window.isHidden = true }
 
