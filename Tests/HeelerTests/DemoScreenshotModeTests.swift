@@ -127,7 +127,7 @@
             #expect(renamed.displayOriginalPath == "Sources/Checkout/LegacyPaymentSheet.swift")
             #expect(renamed.staging == .staged)
             #expect(changes.files.contains { $0.kind == .untracked && !$0.isUntrackedDirectory })
-            #expect(changes.files.contains(where: \.isUntrackedDirectory))
+            #expect(changes.files.contains { $0.isUntrackedDirectory })
         }
 
         /// The reviewer's modified file is the shape side-by-side screenshots
@@ -157,7 +157,7 @@
             })
             #expect(hunks.flatMap(\.lines).contains { $0.kind == .context })
             #expect(hunks.flatMap(\.lines).contains { $0.text.count > 120 })
-            #expect(hunks.flatMap(\.lines).contains(where: \.missingNewline))
+            #expect(hunks.flatMap(\.lines).contains { $0.missingNewline })
         }
 
         @Test func everyDemoDirectoryServesCountsThatMatchItsDiff() throws {
@@ -283,7 +283,7 @@
             #expect(patch == directPatch)
             #expect(patch.files.first?.hunks.isEmpty == false)
 
-            let receipts = try #require(live.changes.files.first(where: \.isUntrackedDirectory))
+            let receipts = try #require(live.changes.files.first { $0.isUntrackedDirectory })
             let listingRequest = UntrackedDirectoryRequest(
                 topLevel: live.changes.checkout.topLevel, directory: receipts.path)
             let listing = try await composition.console.listUntrackedDirectory(
@@ -362,7 +362,7 @@
             #expect(!patch.isTruncated)
             #expect(!patch.files.isEmpty)
             if file.lineCounts == .binary {
-                #expect(patch.files.contains(where: \.isBinary))
+                #expect(patch.files.contains { $0.isBinary })
                 return
             }
             #expect(patch.files.contains { !$0.hunks.isEmpty })
