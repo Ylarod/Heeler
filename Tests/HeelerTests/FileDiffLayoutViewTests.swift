@@ -269,13 +269,13 @@ struct FileDiffLayoutViewTests {
             rootViewController: controller)
         defer { window.isHidden = true }
 
-        var offset: CGFloat = 0
         var stable = 0
         try #require(await ChangesViewTests.eventually(timeout: .seconds(8)) {
             controller.view.layoutIfNeeded()
             guard abs(controller.view.bounds.width - 1376) < 1,
                 ChangesViewTests.labels(in: controller).contains(Self.pairedLabel),
-                let scroll = Self.diffScrollView(in: controller.view)
+                let scroll = Self.diffScrollView(in: controller.view),
+                let edge = Self.revealedEdge(of: scroll)
             else { return false }
             let travel = max(0, scroll.contentSize.height - scroll.bounds.height)
             guard travel > 200 else { return false }
@@ -284,14 +284,16 @@ struct FileDiffLayoutViewTests {
                 return stable >= 2
             }
             stable = 0
-            offset = min(travel, offset + 8)
-            scroll.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
+            guard let frame = Self.lineFrame("file-diff-line-0", in: controller.view),
+                frame.height > 1
+            else { return false }
+            let next = min(max(0, scroll.contentOffset.y + (frame.minY - (edge + 4))), travel)
+            guard abs(next - scroll.contentOffset.y) >= 1 else { return false }
+            scroll.setContentOffset(CGPoint(x: 0, y: next), animated: false)
             return false
         })
-        let beforeLine = try #require(
-            Self.topLineID(
-                in: controller.view,
-                viewport: try #require(Self.diffScrollView(in: controller.view))))
+        let scroll = try #require(Self.diffScrollView(in: controller.view))
+        let beforeLine = try #require(Self.topLineID(in: controller.view, viewport: scroll))
 
         var changed = FileDiffViewTests.file
         changed.lineCounts = .lines(added: 4, removed: 1)
@@ -483,6 +485,17 @@ struct FileDiffLayoutViewTests {
         guard !viewport.isNull, !viewport.isEmpty else { return nil }
         let chrome = max(scroll.adjustedContentInset.top, scroll.safeAreaInsets.top)
         return viewport.minY + chrome
+    }
+
+    private static func lineFrame(_ identifier: String, in root: UIView) -> CGRect? {
+        var frame: CGRect?
+        visit(root.window ?? root) { node in
+            guard frame == nil, accessibilityIdentifier(of: node) == identifier else { return }
+            let candidate = node.accessibilityFrame
+            guard !candidate.isNull, !candidate.isEmpty, candidate.height > 1 else { return }
+            frame = candidate
+        }
+        return frame
     }
 
     private static func topLineID(in root: UIView, viewport scroll: UIScrollView) -> Int? {
