@@ -21,6 +21,8 @@ struct ChangesReferenceTests {
         #expect(store.insertionText(for: inside) == "renamed.txt ")
         #expect(store.insertionText(for: outside) == "/home/dev/src/app/added.txt ")
         #expect(store.insertionText(for: Self.file("pkg-other/file")) == "/home/dev/src/app/pkg-other/file ")
+        #expect(store.pathReference(for: Self.file("pkg/")) == ".")
+        #expect(store.insertionText(for: Self.file("pkg/")) == ". ")
         store.insert(file: inside)
         store.insert(file: outside)
         #expect(inserted == ["renamed.txt ", "/home/dev/src/app/added.txt "])

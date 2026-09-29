@@ -5,7 +5,8 @@ enum ChangesReference {
     static func path(file: Data, topLevel: Data, directoryPrefix: Data?) -> String? {
         let bytes: Data
         if let directoryPrefix, file.starts(with: directoryPrefix) {
-            bytes = Data(file.dropFirst(directoryPrefix.count))
+            let relative = Data(file.dropFirst(directoryPrefix.count))
+            bytes = relative.isEmpty && !directoryPrefix.isEmpty ? Data(".".utf8) : relative
         } else {
             bytes = topLevel + (topLevel.last == UInt8(ascii: "/") ? Data() : Data([0x2F])) + file
         }
