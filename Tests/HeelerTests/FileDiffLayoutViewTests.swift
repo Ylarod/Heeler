@@ -249,6 +249,65 @@ struct FileDiffLayoutViewTests {
         #expect(inserted == ["untracked.txt:8 "])
     }
 
+    @Test func listChangeNoticeShowsInSideBySide() async throws {
+        let (settings, _, cleanup) = try makeSettings(offersSideBySide: true)
+        defer { cleanup() }
+        let patch = Self.scrollablePairedPatch()
+        let listed = FileDiffViewTests.changesRead()
+        let store = FileDiffStore(
+            file: FileDiffViewTests.file, checkout: listed.changes.checkout, read: { _ in patch })
+        await store.appear()
+        defer { store.cancel() }
+        let controller = UIHostingController(
+            rootView: AnyView(
+                NavigationStack {
+                    FileDiffView(store: store)
+                }
+                .environment(\.diffLayoutSettings, settings)))
+        let window = try await makeTestWindow(
+            frame: CGRect(origin: .zero, size: CGSize(width: 1376, height: 1032)),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+
+        var offset: CGFloat = 0
+        var stable = 0
+        try #require(await ChangesViewTests.eventually(timeout: .seconds(8)) {
+            controller.view.layoutIfNeeded()
+            guard abs(controller.view.bounds.width - 1376) < 1,
+                ChangesViewTests.labels(in: controller).contains(Self.pairedLabel),
+                let scroll = Self.diffScrollView(in: controller.view)
+            else { return false }
+            let travel = max(0, scroll.contentSize.height - scroll.bounds.height)
+            guard travel > 200 else { return false }
+            if Self.topLineID(in: controller.view, viewport: scroll) == 0 {
+                stable += 1
+                return stable >= 2
+            }
+            stable = 0
+            offset = min(travel, offset + 8)
+            scroll.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
+            return false
+        })
+        let beforeLine = try #require(
+            Self.topLineID(
+                in: controller.view,
+                viewport: try #require(Self.diffScrollView(in: controller.view))))
+
+        var changed = FileDiffViewTests.file
+        changed.lineCounts = .lines(added: 4, removed: 1)
+        store.noteListRefresh(FileDiffViewTests.changesRead(files: [changed]).changes)
+
+        try #require(await ChangesViewTests.eventually {
+            controller.view.layoutIfNeeded()
+            let labels = ChangesViewTests.labels(in: controller)
+            guard let scroll = Self.diffScrollView(in: controller.view) else { return false }
+            return labels.contains(Self.pairedLabel)
+                && labels.contains { $0.contains("This file changed since this diff was read.") }
+                && labels.contains("Reload")
+                && Self.topLineID(in: controller.view, viewport: scroll) == beforeLine
+        })
+    }
+
     private func makeSettings(
         offersSideBySide: Bool
     ) throws -> (DiffLayoutSettings, UserDefaults, () -> Void) {
@@ -301,6 +360,28 @@ struct FileDiffLayoutViewTests {
         window.frame = CGRect(origin: window.frame.origin, size: size)
         window.rootViewController?.view.frame = window.bounds
         window.layoutIfNeeded()
+    }
+
+    /// The paired change stays near the top. Trailing context makes the
+    /// document tall enough to put that pair on the readable edge.
+    private static func scrollablePairedPatch() -> FilePatch {
+        let base = pairedPatch()
+        let text = String(repeating: "context ", count: 8)
+        let extra = (0..<120).map { index in
+            DiffLine(
+                id: 100 + index, kind: .context, oldNumber: 20 + index, newNumber: 20 + index,
+                text: text)
+        }
+        let trailing = DiffHunk(
+            id: 1, oldStart: 20, oldCount: extra.count, newStart: 20, newCount: extra.count,
+            section: "trailing", lines: extra)
+        let file = base.files[0]
+        return FilePatch(
+            files: [
+                DiffFile(
+                    id: file.id, oldPath: file.oldPath, newPath: file.newPath, summary: file.summary,
+                    isBinary: false, hunks: file.hunks + [trailing])
+            ], isTruncated: false)
     }
 
     private static func pairedPatch() -> FilePatch {
