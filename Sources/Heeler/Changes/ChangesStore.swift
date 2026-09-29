@@ -178,8 +178,10 @@ final class ChangesStore {
 
     /// A read the user asked for on Agent detail's store: owned by the store,
     /// as `startRefresh()`'s is, so leaving Changes neither cancels it nor
-    /// loses an automatic refresh queued behind it. Cancelling the caller
-    /// ends only its wait. A read already running is awaited instead.
+    /// loses an automatic refresh queued behind it. A read already running
+    /// is awaited instead. Cancelling the caller does not end the wait
+    /// either: it lasts until the read finishes, which the git read's
+    /// deadline bounds.
     func refreshOwnedByStore() async {
         guard let task = startRead() ?? activeRead else { return }
         await task.value

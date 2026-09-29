@@ -15,8 +15,9 @@ struct ChangesView: View {
     /// One read per opening of a shared store: coming back from a view
     /// pushed over Changes reads nothing new, as `appear()` does.
     @State private var hasStartedOpeningRead = false
-    /// Try Again's wait for its read, which ends when Changes leave the
-    /// screen; see `refreshOnRequest()` for which reads end with it.
+    /// Try Again's read, cancelled when Changes leave the screen. That
+    /// cancels a Worktree's read; Agent detail's store keeps its read, and
+    /// this task waits until it finishes. See `refreshOnRequest()`.
     @State private var retry: Task<Void, Never>?
 
     var body: some View {
