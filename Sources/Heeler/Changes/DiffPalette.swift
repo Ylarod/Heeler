@@ -26,7 +26,7 @@ enum DiffPalette {
         }
     }
 
-    private static func adaptive(light: UInt32, dark: UInt32) -> UIColor {
+    static func adaptive(light: UInt32, dark: UInt32) -> UIColor {
         UIColor { traits in
             let rgb = traits.userInterfaceStyle == .dark ? dark : light
             return UIColor(
