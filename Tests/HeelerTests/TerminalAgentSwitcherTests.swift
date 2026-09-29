@@ -126,6 +126,29 @@ struct TerminalAgentSwitcherTests {
         let badge = try await Self.layOutBadgeRow(width: width, added: 9_999, removed: 9_999)
         let shown = try #require(badge, "the badge stepped aside at \(width) points")
         #expect(shown.value == "9,999 lines added, 9,999 lines removed")
+        #expect(shown.form == "changes-badge.exact")
+        #expect(shown.opened)
+    }
+
+    /// Totals too wide for the row show shortened, "+12.3K −12.3K", where
+    /// "+12,345 −12,345" does not fit; a wider row keeps them exact.
+    /// VoiceOver hears them exactly either way.
+    @MainActor
+    @Test(.timeLimit(.minutes(1)), arguments: [
+        (CGFloat(402), "changes-badge.exact"), (CGFloat(320), "changes-badge.compact"),
+    ])
+    func largeTotalsShortenOnlyWhereTheExactOnesDoNotFit(width: CGFloat, form: String) async throws {
+        let badge = try await Self.layOutBadgeRow(width: width, added: 12_345, removed: 12_345)
+        let shown = try #require(badge, "the badge stepped aside at \(width) points")
+        #expect(shown.form == form)
+        #expect(shown.value == "12,345 lines added, 12,345 lines removed")
+        let read = try ChangesBadgeTests.read(added: 12_345, removed: 12_345)
+        let totals = try #require(
+            ChangesBadge(phase: .loaded(read.changes), timedOutKeepingContent: false))
+        let english = Locale(identifier: "en_US")
+        #expect(totals.addedText(.compact, locale: english) == "+12.3K")
+        #expect(totals.removedText(.compact, locale: english) == "\u{2212}12.3K")
+        #expect(totals.addedText(.exact, locale: english) == "+12,345")
         #expect(shown.opened)
     }
 
@@ -162,13 +185,16 @@ struct TerminalAgentSwitcherTests {
     }
 
     /// Where even the shortened totals would squeeze the strip, the badge
-    /// steps aside rather than pushing the keyboard button off the row.
+    /// steps aside rather than pushing the keyboard button off the row: at
+    /// the largest text the badge caps at, "+999K −999K" is wider than the
+    /// room a 320-point row leaves it. The More menu still opens Changes.
     @MainActor
     @Test(.timeLimit(.minutes(1)))
     func aNarrowRowAtTheLargestTextKeepsItsButtonsOnScreen() async throws {
-        _ = try await Self.layOutBadgeRow(
+        let badge = try await Self.layOutBadgeRow(
             width: 320, added: 999_999, removed: 999_999, locale: Locale(identifier: "de_DE"),
             dynamicTypeSize: .accessibility3)
+        #expect(badge == nil, "the badge showed \(badge?.form ?? "") at the largest text")
     }
 
     /// What a laid-out row showed for its Changes badge.
