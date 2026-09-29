@@ -26,8 +26,10 @@ extension GitProbe {
 
     /// Parses one listing. Omitting `displayLimit` uses the list's ceiling;
     /// tests pass a small one. Throws `ChangesReadError`: `.incomplete` when
-    /// the framed status or the final marker is missing, and `.gitFailed`
-    /// with git's first error line otherwise. A status cut short is kept.
+    /// the framed status or the final marker is missing. A failed status is
+    /// classified like a Changes read, so a missing top level is
+    /// `.directoryMissing`, and `.gitFailed` carries git's first line only
+    /// for an unclassified failure. A status cut short is kept.
     static func parseUntrackedDirectory(
         stdout: Data,
         stderr: Data,

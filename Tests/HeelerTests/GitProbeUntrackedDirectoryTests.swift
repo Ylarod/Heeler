@@ -338,11 +338,16 @@ struct GitProbeUntrackedDirectoryTests {
         #expect(Self.failure(GitProbeRecordings.untrackedListing, nonce: "BEEF") == .incomplete)
     }
 
-    @Test func aMissingTopLevelCarriesGitsFirstLine() {
+    @Test func aMissingTopLevelIsDirectoryMissing() {
         #expect(
-            Self.failure(GitProbeRecordings.untrackedListingMissingTopLevel)
-                == .gitFailed(
-                    "fatal: cannot change to '/home/dev/app/no-such-top': No such file or directory"
-                ))
+            Self.failure(GitProbeRecordings.untrackedListingMissingTopLevel) == .directoryMissing)
+    }
+
+    @Test func anUnclassifiedListingFailureCarriesGitsFirstLine() {
+        let message = "fatal: cannot change to '/home/dev/app': Permission denied"
+        let recording = GitProbeRecordings.failureReplacingSection(
+            "untracked", in: GitProbeRecordings.untrackedListing, status: 128,
+            messages: "\n\(message)\nhint: more detail\n")
+        #expect(Self.failure(recording) == .gitFailed(message))
     }
 }
