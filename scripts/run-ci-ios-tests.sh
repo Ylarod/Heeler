@@ -1976,10 +1976,11 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
     HeelerSSHDirectStreamLocalE2ETests
-run_suite SharedFixtureE2ETests 112 6 0 \
+run_suite SharedFixtureE2ETests 113 7 0 \
     HeelerSSHPTYE2ETests \
     HeelerSSHJumpHostGateE2ETests \
     HeelerSSHTransportBehaviorE2ETests \
+    ChangesFieldHostE2ETests \
     ImageStagingE2ETests \
     WeakNetworkE2ETests \
     PairingCeremonyE2ETests
@@ -1990,6 +1991,7 @@ for suite in \
     HeelerSSHPTYE2ETests \
     HeelerSSHJumpHostGateE2ETests \
     HeelerSSHTransportBehaviorE2ETests \
+    ChangesFieldHostE2ETests \
     ImageStagingE2ETests \
     WeakNetworkE2ETests \
     PairingCeremonyE2ETests; do
@@ -2038,6 +2040,11 @@ assert_behavior "Changes failure states: outside a repository and a missing dire
 assert_behavior "Changes untracked directory: lists its files" \
     HeelerSSHTransportBehaviorE2ETests \
     '"an untracked directory lists its files over one exec"'
+# The same reads, patches and listing over hostile names, on the direct and
+# the Jump Host route. scripts/verify-changes-linux-host.sh runs this test
+# against a Linux Host with fish and POSIX sh login shells (#395).
+assert_behavior "Changes field reads: direct and Jump Host" ChangesFieldHostE2ETests \
+    '"Changes, file patches and an untracked directory read correctly on every configured field Host"'
 assert_behavior "PTY" HeelerSSHPTYE2ETests \
     '"PTY exec preserves raw IO, merged output, geometry, and exit status"'
 assert_behavior "resize" HeelerSSHTransportBehaviorE2ETests \

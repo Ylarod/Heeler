@@ -1,0 +1,16 @@
+# Public-key only, for the two fixture accounts. The single authorized key is
+# the throwaway Device Key the verification script generates per run.
+Port 22
+HostKey /etc/ssh/ssh_host_ed25519_key
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+PubkeyAcceptedAlgorithms ssh-ed25519
+AuthorizedKeysFile /etc/ssh/heeler_authorized_keys
+UsePAM no
+PermitRootLogin no
+AllowUsers heelerfish heelersh
+PrintMotd no
+PrintLastLog no
+LogLevel VERBOSE
+Subsystem sftp /usr/lib/openssh/sftp-server

@@ -50,6 +50,13 @@ A few suites exercise a real SSH server; they skip cleanly on machines
 without a local sshd and seeded key, and CI provisions disposable sshd
 instances to run them for you.
 
+CI reads Changes only from macOS git under POSIX sh. With Docker running,
+`SIMULATOR_UDID=<UDID> scripts/verify-changes-linux-host.sh` builds a local
+Linux Host from `scripts/fixtures/linux-host/` and runs the Changes field
+suite against it twice, once as an account whose login shell is fish and once
+as one whose login shell is POSIX sh. It removes its container, image and
+throwaway key when it exits.
+
 Two artifact families are generated or shared — never hand-edit them:
 
 - `Sources/Heeler/Transport/Generated/` comes from
