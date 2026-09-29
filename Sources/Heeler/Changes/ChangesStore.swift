@@ -1,10 +1,11 @@
 import Foundation
 import Observation
+import UIKit
 
 /// One Changes view's document: the Checkout containing an Agent's current
 /// directory, read over the Transport seam. Owned by the view that shows it
 /// and discarded with it, so nothing outlives the Agent detail it belongs
-/// to. Reads are single-flight; automatic refresh arrives in #388.
+/// to. Status edges refresh the list; lazy file reads stay independent.
 @MainActor
 @Observable
 final class ChangesStore {
@@ -58,6 +59,20 @@ final class ChangesStore {
     private(set) var directoryPrefix = Data()
     /// A timed-out refresh keeps the last document, identity and scroll position.
     private(set) var timedOutKeepingContent = false
+    private(set) var readAt: Date?
+    @ObservationIgnored let autoRefresh: ChangesAutoRefresh
+    @ObservationIgnored private let gate: GitExecGate?
+    @ObservationIgnored private let now: @MainActor () -> Date
+    @ObservationIgnored private let announce: @MainActor (String) -> Void
+    @ObservationIgnored var activeRead: Task<Void, Never>?
+    @ObservationIgnored var readID = UUID()
+
+    var freshness: ChangesFreshness? {
+        guard case .loaded = phase, let readAt,
+            autoRefresh.status == .working || autoRefresh.readWasWhileWorking
+        else { return nil }
+        return ChangesFreshness(readAt: readAt)
+    }
 
     /// The Checkout the document describes. Views key their content on it,
     /// so a read resolving another Checkout replaces the document wholesale.
@@ -73,7 +88,6 @@ final class ChangesStore {
     @ObservationIgnored private let read:
         @Sendable (ChangesReadRequest) async throws -> CheckoutChangesRead
     @ObservationIgnored private var lastDirectory: String?
-    @ObservationIgnored private var isReading = false
     @ObservationIgnored private var hasRead = false
 
     let fileDiff: FileDiffPresenter
@@ -88,10 +102,20 @@ final class ChangesStore {
         },
         listUntrackedDirectory: @escaping @Sendable (UntrackedDirectoryRequest) async throws
             -> UntrackedDirectoryListing = { _ in throw ChangesReadError.unavailable },
-        gate: GitExecGate? = nil
+        gate: GitExecGate? = nil,
+        agentStatus: (@MainActor () -> AsyncStream<ConsoleStore.AgentStatusUpdate>)? = nil,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+        now: @escaping @MainActor () -> Date = { Date() },
+        announce: @escaping @MainActor (String) -> Void = {
+            UIAccessibility.post(notification: .announcement, argument: $0)
+        }
     ) {
         self.directory = directory
-        self.read = GitExecGate.wrapping(gate, operation: read)
+        self.read = read
+        self.gate = gate
+        self.now = now
+        self.announce = announce
+        self.autoRefresh = ChangesAutoRefresh(agentStatus: agentStatus, sleep: sleep)
         self.fileDiff = FileDiffPresenter(read: GitExecGate.wrapping(gate, operation: readPatch))
         self.untrackedDirectories = UntrackedDirectoryExpansions(
             list: GitExecGate.wrapping(gate, operation: listUntrackedDirectory))
@@ -100,37 +124,80 @@ final class ChangesStore {
     /// Reads once per presentation; returning to the view reads nothing
     /// new until a read has completed.
     func appear() async {
+        startFollowingAgentStatus()
         guard !hasRead else { return }
         await refresh()
     }
 
-    /// Reads the Checkout again, keeping what is shown until the read
-    /// lands. A request while one is running starts nothing.
+    /// Reads the Checkout again, keeping the current document on screen.
     func refresh() async {
-        guard !isReading else { return }
+        await refresh(automatic: false)
+    }
+
+    func refresh(automatic: Bool) async {
+        guard activeRead == nil, !Task.isCancelled else { return }
         guard let directory = directory() ?? lastDirectory else {
             phase = .failed("This Agent has no working directory.")
             return
         }
         lastDirectory = directory
-        isReading = true
+        let id = UUID()
+        readID = id
         isRefreshing = phase != .loading
-        defer {
-            isReading = false
-            isRefreshing = false
+        let task = Task { [weak self, gate] in
+            guard let self else { return }
+            do {
+                if let gate {
+                    // Publish the list and invalidate obsolete lazy requests
+                    // before handing the Host slot to the next queued read.
+                    try await gate.run {
+                        await self.readAndApply(directory: directory, id: id, automatic: automatic)
+                    }
+                } else {
+                    await self.readAndApply(directory: directory, id: id, automatic: automatic)
+                }
+            } catch {
+                // Cancellation while waiting never enters the Transport.
+            }
+            guard self.readID == id else { return }
+            self.activeRead = nil
+            self.isRefreshing = false
+            if !Task.isCancelled { self.runPendingAutomaticRefresh() }
         }
+        activeRead = task
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    /// Called inside the Host gate, which is released on local completion.
+    private func readAndApply(directory: String, id: UUID, automatic: Bool) async {
+        guard !Task.isCancelled, readID == id else { return }
+        let readStartedWhileWorking = autoRefresh.status == .working
         do {
             let result = try await read(ChangesReadRequest(directory: directory))
+            try Task.checkCancellation()
+            guard readID == id else { return }
+            let previous = phase
             untrackedDirectories.collapseAll()
             phase = .loaded(result.changes)
             directoryPrefix = result.directoryPrefix
             timedOutKeepingContent = false
             hasRead = true
+            readAt = now()
+            autoRefresh.readWasWhileWorking = readStartedWhileWorking || autoRefresh.status == .working
             fileDiff.closeIfCheckoutChanged(to: result.changes.checkout)
+            if automatic, case .loaded(let old) = previous, old.files != result.changes.files {
+                announce("Checkout Changes updated.")
+            }
         } catch is CancellationError, TransportError.cancelled {
             // Left mid-read: nothing from it is shown, and the next
             // appearance reads again.
         } catch let error as ChangesReadError {
+            guard readID == id, !Task.isCancelled else { return }
+            dropPendingAutomaticRefresh()
             hasRead = true
             directoryPrefix = Data()
             timedOutKeepingContent = false
@@ -150,6 +217,8 @@ final class ChangesStore {
                 phase = .failed(error.message)
             }
         } catch let error as TransportError {
+            guard readID == id, !Task.isCancelled else { return }
+            dropPendingAutomaticRefresh()
             hasRead = true
             if error == .gitTimedOut, case .loaded = phase {
                 timedOutKeepingContent = true
@@ -159,10 +228,19 @@ final class ChangesStore {
                 phase = error == .gitTimedOut ? .timedOut : .failed(error.presentation.explanation)
             }
         } catch {
+            guard readID == id, !Task.isCancelled else { return }
+            dropPendingAutomaticRefresh()
             hasRead = true
             timedOutKeepingContent = false
             directoryPrefix = Data()
             phase = .failed(error.localizedDescription)
         }
+    }
+
+    func cancelRead() {
+        readID = UUID()
+        activeRead?.cancel()
+        activeRead = nil
+        isRefreshing = false
     }
 }
