@@ -118,7 +118,8 @@ struct AgentDetailView: View {
                         },
                         listUntrackedDirectory: { request in
                             try await console.listUntrackedDirectory(request, on: hostID)
-                        })
+                        },
+                        gate: console.gitExecGate(for: hostID))
                 })
         _openTerminal = State(
             initialValue: openTerminalStore

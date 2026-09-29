@@ -47,6 +47,7 @@ final class ConsoleStore {
     @ObservationIgnored private var agentStatusObservers: [
         ConsoleAgent.ID: [UUID: AsyncStream<AgentStatusUpdate>.Continuation]
     ] = [:]
+    @ObservationIgnored private var gitExecGates: [Host.ID: GitExecGate] = [:]
     /// Composer ownership sits above the detail branch so a transient
     /// missing-Agent placeholder during reconnect cannot destroy a draft.
     @ObservationIgnored private var composerStores: [
@@ -383,6 +384,15 @@ final class ConsoleStore {
         try await projection(for: hostID).session.withTransport { transport in
             try await transport.readSkillFile(atPath: path)
         }
+    }
+
+    /// Shared across Changes presentations for the same Host, including ones
+    /// opened from different Agents or windows.
+    func gitExecGate(for hostID: Host.ID) -> GitExecGate {
+        if let gate = gitExecGates[hostID] { return gate }
+        let gate = GitExecGate()
+        gitExecGates[hostID] = gate
+        return gate
     }
 
     /// The Changes view's listing for one untracked directory. Uncached, like

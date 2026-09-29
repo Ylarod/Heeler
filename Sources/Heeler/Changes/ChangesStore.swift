@@ -87,12 +87,14 @@ final class ChangesStore {
             throw ChangesReadError.unavailable
         },
         listUntrackedDirectory: @escaping @Sendable (UntrackedDirectoryRequest) async throws
-            -> UntrackedDirectoryListing = { _ in throw ChangesReadError.unavailable }
+            -> UntrackedDirectoryListing = { _ in throw ChangesReadError.unavailable },
+        gate: GitExecGate? = nil
     ) {
         self.directory = directory
-        self.read = read
-        self.fileDiff = FileDiffPresenter(read: readPatch)
-        self.untrackedDirectories = UntrackedDirectoryExpansions(list: listUntrackedDirectory)
+        self.read = GitExecGate.wrapping(gate, operation: read)
+        self.fileDiff = FileDiffPresenter(read: GitExecGate.wrapping(gate, operation: readPatch))
+        self.untrackedDirectories = UntrackedDirectoryExpansions(
+            list: GitExecGate.wrapping(gate, operation: listUntrackedDirectory))
     }
 
     /// Reads once per presentation; returning to the view reads nothing
