@@ -116,7 +116,8 @@ final class ChangesStore {
         self.now = now
         self.announce = announce
         self.autoRefresh = ChangesAutoRefresh(agentStatus: agentStatus, sleep: sleep)
-        self.fileDiff = FileDiffPresenter(read: GitExecGate.wrapping(gate, operation: readPatch))
+        self.fileDiff = FileDiffPresenter(
+            read: GitExecGate.wrapping(gate, operation: readPatch), now: now)
         self.untrackedDirectories = UntrackedDirectoryExpansions(
             list: GitExecGate.wrapping(gate, operation: listUntrackedDirectory))
     }
@@ -188,7 +189,7 @@ final class ChangesStore {
             hasRead = true
             readAt = now()
             autoRefresh.readWasWhileWorking = readStartedWhileWorking || autoRefresh.status == .working
-            fileDiff.closeIfCheckoutChanged(to: result.changes.checkout)
+            fileDiff.listDidRefresh(result.changes)
             if automatic, case .loaded(let old) = previous, old.files != result.changes.files {
                 announce("Checkout Changes updated.")
             }

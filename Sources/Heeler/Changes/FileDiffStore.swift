@@ -17,13 +17,24 @@ final class FileDiffStore {
         case tooLarge
     }
 
-    let file: ChangedFile
+    enum ListChange: Equatable {
+        case changed
+        case removed
+    }
+
+    private(set) var file: ChangedFile
     let checkout: CheckoutLocation
     private(set) var phase: Phase = .loading
     private(set) var isRefreshing = false
     private(set) var readAt: Date?
     /// A refresh failure accompanies the earlier patch instead of replacing it.
     private(set) var refreshError: String?
+    private(set) var listChange: ListChange?
+    /// Nil means a complete list no longer contains this path. Keeping both
+    /// observations prevents repeated notices after reloading a removed file.
+    @ObservationIgnored private var latestListFile: ChangedFile?
+    @ObservationIgnored private var loadedListFile: ChangedFile?
+    @ObservationIgnored private let now: @MainActor () -> Date
     private var loadedLimit: FilePatchRequest.Limit = .initial
 
     var truncation: Truncation {
@@ -45,11 +56,15 @@ final class FileDiffStore {
 
     init(
         file: ChangedFile, checkout: CheckoutLocation,
-        read: @escaping @Sendable (FilePatchRequest) async throws -> FilePatch
+        read: @escaping @Sendable (FilePatchRequest) async throws -> FilePatch,
+        now: @escaping @MainActor () -> Date = { Date() }
     ) {
         self.file = file
         self.checkout = checkout
         self.read = read
+        self.now = now
+        self.latestListFile = file
+        self.loadedListFile = file
     }
 
     deinit {
@@ -67,6 +82,40 @@ final class FileDiffStore {
         await performRead(limit: .initial)
     }
 
+    func reload() async {
+        await refresh()
+    }
+
+    /// A list read never replaces the open patch or changes its reading
+    /// position. Raw path identity also covers files beyond the display cap.
+    func noteListRefresh(_ changes: CheckoutChanges) {
+        guard changes.checkout.topLevel == checkout.topLevel else { return }
+        if let latest = changes.files.first(where: { $0.id == file.id }) {
+            latestListFile = latest
+        } else {
+            // Neither a capped status nor a collapsed untracked directory
+            // proves that an individual file disappeared.
+            guard !changes.isStatusTruncated,
+                !changes.files.contains(where: {
+                    $0.isUntrackedDirectory && file.path.starts(with: $0.path)
+                })
+            else { return }
+            latestListFile = nil
+        }
+        updateListChange()
+    }
+
+    private func updateListChange() {
+        switch (loadedListFile, latestListFile) {
+        case (nil, nil): listChange = nil
+        case (_, nil): listChange = .removed
+        case (nil, _): listChange = .changed
+        case (.some(let loaded), .some(let latest)):
+            listChange = loaded.lineCounts != latest.lineCounts || loaded.kind != latest.kind
+                || loaded.originalPath != latest.originalPath ? .changed : nil
+        }
+    }
+
     func loadMore() async {
         guard truncation == .canLoadMore else { return }
         await performRead(limit: .extended)
@@ -82,8 +131,10 @@ final class FileDiffStore {
     }
 
     private func performRead(limit: FilePatchRequest.Limit) async {
+        let listedFile = latestListFile
+        let requestedFile = listedFile ?? file
         guard activeRead == nil, !Task.isCancelled,
-            let request = FilePatchRequest(file: file, checkout: checkout, limit: limit)
+            let request = FilePatchRequest(file: requestedFile, checkout: checkout, limit: limit)
         else { return }
         let id = UUID()
         readID = id
@@ -107,7 +158,10 @@ final class FileDiffStore {
             guard readID == id else { return }
             phase = .loaded(patch)
             loadedLimit = limit
-            readAt = Date()
+            readAt = now()
+            file = requestedFile
+            loadedListFile = listedFile
+            updateListChange()
             hasRead = true
         } catch is CancellationError, TransportError.cancelled {
             // A cancelled first read remains eligible for the next appearance.
