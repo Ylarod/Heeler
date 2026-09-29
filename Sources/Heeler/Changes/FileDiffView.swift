@@ -135,8 +135,11 @@ private struct FileDiffDocumentView<Footer: View>: View {
                         VStack(alignment: .leading, spacing: 0) {
                             rowView(row)
                         }
-                        .anchorPreference(key: DiffLineFramesKey.self, value: .bounds) { frame in
-                            lineFrameAnchor(for: row, frame)
+                        .background {
+                            Color.clear
+                                .anchorPreference(key: DiffLineFramesKey.self, value: .bounds) { frame in
+                                    lineFrameAnchor(for: row, frame)
+                                }
                         }
                         .id(row.id)
                     }
