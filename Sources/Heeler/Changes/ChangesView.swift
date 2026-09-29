@@ -27,6 +27,7 @@ struct ChangesView: View {
             }
         }
         .task { await store.appear() }
+        .task { await store.followAgentStatus() }
         .onDisappear {
             retry?.cancel()
             store.fileDiff.current?.cancel()
@@ -63,7 +64,7 @@ struct ChangesView: View {
                     }
                 }
                 Section {
-                    ChangesHeader(changes: changes)
+                    ChangesHeader(changes: changes, freshness: store.freshness)
                 }
                 Section {
                     if changes.isClean {
@@ -126,6 +127,7 @@ struct ChangesView: View {
 /// VoiceOver element whose summary names the Checkout and never an Agent.
 private struct ChangesHeader: View {
     let changes: CheckoutChanges
+    let freshness: ChangesFreshness?
     @Environment(\.locale) private var locale
 
     var body: some View {
@@ -165,10 +167,19 @@ private struct ChangesHeader: View {
                 }
                 ChangesHeadDetails(head: changes.head)
                 ChangesTotalsLine(summary: changes.totalsSummary)
+                if let freshness {
+                    Text(freshness.text(relativeTo: context.date, locale: locale))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(
-                changes.accessibilitySummary(relativeTo: context.date, locale: locale))
+                changes.accessibilitySummary(relativeTo: context.date, locale: locale)
+                    + (freshness.map {
+                        " " + $0.accessibilitySummary(relativeTo: context.date, locale: locale)
+                    } ?? ""))
         }
     }
 }

@@ -1,0 +1,128 @@
+import Foundation
+import Observation
+
+/// The status fan-out follows only the opening Agent. Other Agents in the
+/// same Checkout do not drive freshness in v1.
+@MainActor
+@Observable
+final class ChangesAutoRefresh {
+    var status: AgentStatus?
+    var readWasWhileWorking = false
+    @ObservationIgnored var readSawWorking = false
+    @ObservationIgnored var hasBaseline = false
+    @ObservationIgnored var pending = false
+    @ObservationIgnored var statusTask: Task<Void, Never>?
+    @ObservationIgnored var statusID = UUID()
+    @ObservationIgnored var debounce: Task<Void, Never>?
+    @ObservationIgnored var debounceID = UUID()
+    @ObservationIgnored let agentStatus: (@MainActor () -> AsyncStream<ConsoleStore.AgentStatusUpdate>)?
+    @ObservationIgnored let sleep: @Sendable (Duration) async throws -> Void
+
+    init(
+        agentStatus: (@MainActor () -> AsyncStream<ConsoleStore.AgentStatusUpdate>)?,
+        sleep: @escaping @Sendable (Duration) async throws -> Void
+    ) {
+        self.agentStatus = agentStatus
+        self.sleep = sleep
+    }
+
+    deinit {
+        statusTask?.cancel()
+        debounce?.cancel()
+    }
+}
+
+extension ChangesStore {
+    /// SwiftUI owns this task across both the list and an open diff. A fresh
+    /// appearance gets a fresh stream; its first value is always a baseline.
+    func followAgentStatus() async {
+        guard !Task.isCancelled else { return }
+        startFollowingAgentStatus()
+        guard let task = autoRefresh.statusTask else { return }
+        let id = autoRefresh.statusID
+        defer {
+            if autoRefresh.statusID == id { cancel() }
+        }
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    /// Also start on appear so a store used without a hosted view consumes
+    /// the opening status. The loop never retains the store across an await.
+    func startFollowingAgentStatus() {
+        guard !Task.isCancelled else { return }
+        if let task = autoRefresh.statusTask, !task.isCancelled { return }
+        autoRefresh.statusID = UUID()
+        autoRefresh.hasBaseline = false
+        let stream = autoRefresh.agentStatus?() ?? AsyncStream { _ in }
+        autoRefresh.statusTask = Task { [weak self] in
+            for await update in stream {
+                guard !Task.isCancelled else { return }
+                self?.receiveAgentStatus(update.status)
+            }
+        }
+    }
+
+    private func receiveAgentStatus(_ status: AgentStatus?) {
+        let previous = autoRefresh.status
+        autoRefresh.status = status
+        if status == .working {
+            // Once editing starts, the displayed snapshot stays suspect until
+            // a read that never overlaps Working succeeds.
+            autoRefresh.readWasWhileWorking = true
+            if activeRead != nil { autoRefresh.readSawWorking = true }
+        }
+        guard autoRefresh.hasBaseline else {
+            autoRefresh.hasBaseline = true
+            return
+        }
+        guard previous == .working, let status, status != .working else { return }
+        autoRefresh.pending = true
+        autoRefresh.debounce?.cancel()
+        let id = UUID()
+        autoRefresh.debounceID = id
+        let sleep = autoRefresh.sleep
+        autoRefresh.debounce = Task { [weak self] in
+            do {
+                try await sleep(.milliseconds(300))
+                try Task.checkCancellation()
+            } catch { return }
+            guard let self, self.autoRefresh.debounceID == id else { return }
+            self.autoRefresh.debounce = nil
+            self.runPendingAutomaticRefresh()
+        }
+    }
+
+    func runPendingAutomaticRefresh() {
+        guard autoRefresh.pending, autoRefresh.debounce == nil, activeRead == nil else { return }
+        autoRefresh.pending = false
+        // No strong store capture until the bounded read starts.
+        autoRefresh.debounce = Task { [weak self] in
+            guard !Task.isCancelled, let self else { return }
+            self.autoRefresh.debounce = nil
+            await self.refresh(automatic: true)
+        }
+    }
+
+    func dropPendingAutomaticRefresh() {
+        autoRefresh.pending = false
+        autoRefresh.debounceID = UUID()
+        autoRefresh.debounce?.cancel()
+        autoRefresh.debounce = nil
+    }
+
+    /// Back invalidates replies immediately, even if a test transport ignores
+    /// cancellation. The gate itself waits for that local call to end.
+    func cancel() {
+        autoRefresh.statusID = UUID()
+        autoRefresh.statusTask?.cancel()
+        autoRefresh.statusTask = nil
+        dropPendingAutomaticRefresh()
+        cancelRead()
+        fileDiff.close()
+        untrackedDirectories.collapseAll()
+    }
+}

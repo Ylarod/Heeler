@@ -33,6 +33,15 @@ struct FileDiffView: View {
             }
         }
         .background(Color(uiColor: .systemBackground))
+        .safeAreaInset(edge: .bottom) {
+            if case .loaded = store.phase, let readAt = store.readAt {
+                FileDiffListChangeNotice(
+                    change: store.listChange, readAt: readAt, isRefreshing: store.isRefreshing
+                ) {
+                    action = Task { await store.reload() }
+                }
+            }
+        }
         .task { await store.appear() }
         .onDisappear {
             action?.cancel()
