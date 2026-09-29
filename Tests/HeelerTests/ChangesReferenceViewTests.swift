@@ -118,6 +118,57 @@ struct ChangesReferenceViewTests {
         #expect(copied == ["line\nbreak.swift"])
     }
 
+    @Test(arguments: [false, true])
+    func diffLinesKeepCopyActionsWhenInsertionIsUnavailable(unsafePath: Bool) async throws {
+        let (store, original) = try await Self.store()
+        let file = unsafePath
+            ? ChangedFile(
+                path: Data("pkg/line\nbreak.swift".utf8), originalPath: nil,
+                kind: .modified, staging: .unstaged)
+            : original
+        var copied: [String] = []
+        store.copyToPasteboard = { copied.append($0) }
+        if unsafePath {
+            store.insertReference = { _ in Issue.record("unsafe path was inserted") }
+        }
+        store.openDiff(file)
+        let controller = UIHostingController(rootView: NavigationStack { ChangesView(store: store) {} })
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
+        defer { window.isHidden = true }
+        try #require(await ChangesViewTests.eventually {
+            Self.element("Removed, line 2: old", in: controller.view) != nil
+        })
+        let row = try #require(Self.element("Removed, line 2: old", in: controller.view))
+        #expect(Set(row.accessibilityCustomActions?.map(\.name) ?? []) == ["Copy Line", "Copy Hunk", "Copy Path"])
+        try Self.perform("Copy Line", on: row)
+        try Self.perform("Copy Path", on: row)
+        #expect(copied == ["old", unsafePath ? "line\nbreak.swift" : "file.swift"])
+    }
+
+    @Test func anUnrepresentablePathStillOffersLineAndHunkCopies() async throws {
+        let (store, _) = try await Self.store()
+        let file = ChangedFile(
+            path: Data("pkg/".utf8) + Data([0xFF]), originalPath: nil,
+            kind: .modified, staging: .unstaged)
+        var copied: [String] = []
+        store.copyToPasteboard = { copied.append($0) }
+        store.insertReference = { _ in Issue.record("unrepresentable path was inserted") }
+        store.openDiff(file)
+        let controller = UIHostingController(rootView: NavigationStack { ChangesView(store: store) {} })
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
+        defer { window.isHidden = true }
+        try #require(await ChangesViewTests.eventually {
+            Self.element("Removed, line 2: old", in: controller.view) != nil
+        })
+        let row = try #require(Self.element("Removed, line 2: old", in: controller.view))
+        #expect(Set(row.accessibilityCustomActions?.map(\.name) ?? []) == ["Copy Line", "Copy Hunk"])
+        try Self.perform("Copy Line", on: row)
+        try Self.perform("Copy Hunk", on: row)
+        #expect(copied == ["old", "@@ -1,3 +1,3 @@\n first\n-old\n+new\n last\n"])
+    }
+
     private static func store() async throws -> (ChangesStore, ChangedFile) {
         let source = try ChangesStoreTests.read(GitProbeRecordings.subdir)
         let file = ChangedFile(

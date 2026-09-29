@@ -1,10 +1,51 @@
 import SwiftUI
 
-/// Shared by unified rows and side-by-side cells. The store resolves line IDs
-/// against its open patch and keeps path and hunk rules out of the views.
+/// One file's immutable action availability, shared by all its diff rows.
+/// Only construction observes the store. Line/hunk lookup waits until an
+/// action runs, so building a row never scans or observes the loaded patch.
 @MainActor
 struct ChangesReferenceActions {
-    let store: ChangesStore
+    enum PathAvailability: Equatable {
+        case unavailable
+        case copy
+        case copyAndInsert
+    }
+
+    let pathAvailability: PathAvailability
+    private let store: ChangesStore
+    private let file: ChangedFile?
+
+    init(store: ChangesStore) {
+        self.init(store: store, file: nil, path: store.diffPathReference)
+    }
+
+    fileprivate init(store: ChangesStore, file: ChangedFile) {
+        self.init(store: store, file: file, path: store.pathReference(for: file))
+    }
+
+    private init(store: ChangesStore, file: ChangedFile?, path: String?) {
+        self.store = store
+        self.file = file
+        if let path {
+            pathAvailability = store.insertReference != nil && ChangesReference.insertion(path) != nil
+                ? .copyAndInsert : .copy
+        } else {
+            pathAvailability = .unavailable
+        }
+    }
+
+    func copyPath() {
+        if let file { store.copyPath(file) } else { store.copyDiffPath() }
+    }
+
+    func insertPath() {
+        if let file { store.insert(file: file) } else { store.insertDiffPath() }
+    }
+
+    func copyLine(_ id: DiffLine.ID) { store.copyLine(id) }
+    func copyHunk(_ id: DiffHunk.ID) { store.copyHunk(id) }
+    func copyHunk(containingLine id: DiffLine.ID) { store.copyHunk(containingLine: id) }
+    func insertLine(_ id: DiffLine.ID) { store.insert(line: id) }
 }
 
 extension EnvironmentValues {
@@ -12,8 +53,9 @@ extension EnvironmentValues {
 }
 
 extension View {
+    @MainActor
     func changedFileReferenceMenu(_ file: ChangedFile, store: ChangesStore) -> some View {
-        modifier(ChangedFileReferenceMenu(file: file, store: store))
+        modifier(ChangedFileReferenceMenu(actions: ChangesReferenceActions(store: store, file: file)))
     }
 
     /// Every section of an edited rename references the opened status path.
@@ -22,34 +64,28 @@ extension View {
     }
 
     func diffHunkReferenceMenu(_ hunk: DiffHunk) -> some View {
-        modifier(DiffHunkReferenceMenu(hunk: hunk))
+        modifier(DiffHunkReferenceMenu(hunkID: hunk.id))
     }
 
     func diffLineContextMenu(_ line: DiffLine) -> some View {
-        modifier(DiffLineContextMenu(line: line))
+        modifier(DiffLineContextMenu(lineID: line.id))
     }
 
     func diffLineAccessibilityActions(_ line: DiffLine, qualifier: String? = nil) -> some View {
-        modifier(DiffLineAccessibilityActions(line: line, qualifier: qualifier))
+        modifier(DiffLineAccessibilityActions(lineID: line.id, qualifier: qualifier))
     }
 }
 
 private struct ChangedFileReferenceMenu: ViewModifier {
-    let file: ChangedFile
-    let store: ChangesStore
+    let actions: ChangesReferenceActions
 
-    func body(content: Content) -> some View {
-        content
-            .contextMenu { commands }
-            .accessibilityActions { commands }
-    }
-
-    @ViewBuilder private var commands: some View {
-        if store.pathReference(for: file) != nil {
-            Button("Copy Path", systemImage: "doc.on.doc") { store.copyPath(file) }
-        }
-        if store.insertReference != nil, store.insertionText(for: file) != nil {
-            Button("Insert Path", systemImage: "text.insert") { store.insert(file: file) }
+    @ViewBuilder func body(content: Content) -> some View {
+        if actions.pathAvailability != .unavailable {
+            content
+                .contextMenu { ReferencePathCommands(actions: actions) }
+                .accessibilityActions { ReferencePathCommands(actions: actions) }
+        } else {
+            content
         }
     }
 }
@@ -57,35 +93,41 @@ private struct ChangedFileReferenceMenu: ViewModifier {
 private struct DiffFileReferenceMenu: ViewModifier {
     @Environment(\.changesReferenceActions) private var actions
 
-    func body(content: Content) -> some View {
-        content
-            .contextMenu { commands }
-            .accessibilityActions { commands }
+    @ViewBuilder func body(content: Content) -> some View {
+        if let actions, actions.pathAvailability != .unavailable {
+            content
+                .contextMenu { ReferencePathCommands(actions: actions) }
+                .accessibilityActions { ReferencePathCommands(actions: actions) }
+        } else {
+            content
+        }
     }
+}
 
-    @ViewBuilder private var commands: some View {
-        if let store = actions?.store {
-            if store.diffPathReference != nil {
-                Button("Copy Path", systemImage: "doc.on.doc") { store.copyDiffPath() }
-            }
-            if store.insertReference != nil, store.diffPathInsertionText != nil {
-                Button("Insert Path", systemImage: "text.insert") { store.insertDiffPath() }
-            }
+private struct ReferencePathCommands: View {
+    let actions: ChangesReferenceActions
+
+    var body: some View {
+        if actions.pathAvailability != .unavailable {
+            Button("Copy Path", systemImage: "doc.on.doc") { actions.copyPath() }
+        }
+        if actions.pathAvailability == .copyAndInsert {
+            Button("Insert Path", systemImage: "text.insert") { actions.insertPath() }
         }
     }
 }
 
 private struct DiffHunkReferenceMenu: ViewModifier {
-    let hunk: DiffHunk
+    let hunkID: DiffHunk.ID
     @Environment(\.changesReferenceActions) private var actions
 
     @ViewBuilder func body(content: Content) -> some View {
-        if let store = actions?.store {
+        if let actions {
             content
                 .contextMenu {
-                    Button("Copy Hunk", systemImage: "doc.on.doc") { store.copyHunk(hunk.id) }
+                    Button("Copy Hunk", systemImage: "doc.on.doc") { actions.copyHunk(hunkID) }
                 }
-                .accessibilityAction(named: "Copy Hunk") { store.copyHunk(hunk.id) }
+                .accessibilityAction(named: "Copy Hunk") { actions.copyHunk(hunkID) }
         } else {
             content
         }
@@ -93,62 +135,65 @@ private struct DiffHunkReferenceMenu: ViewModifier {
 }
 
 private struct DiffLineContextMenu: ViewModifier {
-    let line: DiffLine
+    let lineID: DiffLine.ID
     @Environment(\.changesReferenceActions) private var actions
 
-    func body(content: Content) -> some View {
-        content.contextMenu {
-            if let store = actions?.store {
-                Button("Copy Line", systemImage: "doc.on.doc") { store.copyLine(line.id) }
-                Button("Copy Hunk", systemImage: "doc.on.doc") { store.copyHunk(containingLine: line.id) }
-                if store.diffPathReference != nil {
-                    Button("Copy Path", systemImage: "doc.on.doc") { store.copyDiffPath() }
+    @ViewBuilder func body(content: Content) -> some View {
+        if let actions {
+            content.contextMenu {
+                Button("Copy Line", systemImage: "doc.on.doc") { actions.copyLine(lineID) }
+                Button("Copy Hunk", systemImage: "doc.on.doc") { actions.copyHunk(containingLine: lineID) }
+                if actions.pathAvailability != .unavailable {
+                    Button("Copy Path", systemImage: "doc.on.doc") { actions.copyPath() }
                 }
-                if store.insertReference != nil, store.insertionText(forLine: line.id) != nil {
-                    Button("Insert Line Reference", systemImage: "text.insert") { store.insert(line: line.id) }
+                if actions.pathAvailability == .copyAndInsert {
+                    Button("Insert Line Reference", systemImage: "text.insert") { actions.insertLine(lineID) }
                 }
             }
+        } else {
+            // A standalone diff has no owner for actions. Even an empty
+            // contextMenu installs interaction machinery on every lazy row.
+            content
         }
     }
 }
 
 private struct DiffLineAccessibilityActions: ViewModifier {
-    let line: DiffLine
+    let lineID: DiffLine.ID
     let qualifier: String?
     @Environment(\.changesReferenceActions) private var actions
 
     @ViewBuilder func body(content: Content) -> some View {
-        if let store = actions?.store {
-            content
-                .accessibilityAction(named: Text(name("Copy", "Line"))) { store.copyLine(line.id) }
-                .accessibilityAction(named: Text(name("Copy", "Hunk"))) { store.copyHunk(containingLine: line.id) }
-                .modifier(ReferenceAccessibilityAction(
-                    name: name("Copy", "Path"), available: store.diffPathReference != nil,
-                    action: { store.copyDiffPath() }))
-                .modifier(ReferenceAccessibilityAction(
-                    name: name("Insert", "Line Reference"),
-                    available: store.insertReference != nil && store.insertionText(forLine: line.id) != nil,
-                    action: { store.insert(line: line.id) }))
+        if let actions {
+            // One file-level choice, with a flat chain of accessibility
+            // attachments in each branch, instead of a modifier per action.
+            switch actions.pathAvailability {
+            case .copyAndInsert:
+                content
+                    .accessibilityAction(named: name("Copy", "Line")) { actions.copyLine(lineID) }
+                    .accessibilityAction(named: name("Copy", "Hunk")) { actions.copyHunk(containingLine: lineID) }
+                    .accessibilityAction(named: name("Copy", "Path")) { actions.copyPath() }
+                    .accessibilityAction(named: name("Insert", "Line Reference")) { actions.insertLine(lineID) }
+            case .copy:
+                content
+                    .accessibilityAction(named: name("Copy", "Line")) { actions.copyLine(lineID) }
+                    .accessibilityAction(named: name("Copy", "Hunk")) { actions.copyHunk(containingLine: lineID) }
+                    .accessibilityAction(named: name("Copy", "Path")) { actions.copyPath() }
+            case .unavailable:
+                content
+                    .accessibilityAction(named: name("Copy", "Line")) { actions.copyLine(lineID) }
+                    .accessibilityAction(named: name("Copy", "Hunk")) { actions.copyHunk(containingLine: lineID) }
+            }
         } else {
             content
         }
     }
 
-    private func name(_ verb: String, _ noun: String) -> String {
-        [verb, qualifier, noun].compactMap { $0 }.joined(separator: " ")
-    }
-}
-
-private struct ReferenceAccessibilityAction: ViewModifier {
-    let name: String
-    let available: Bool
-    let action: @MainActor () -> Void
-
-    @ViewBuilder func body(content: Content) -> some View {
-        if available {
-            content.accessibilityAction(named: Text(name)) { action() }
+    private func name(_ verb: String, _ noun: String) -> Text {
+        if let qualifier {
+            Text("\(verb) \(qualifier) \(noun)")
         } else {
-            content
+            Text("\(verb) \(noun)")
         }
     }
 }
