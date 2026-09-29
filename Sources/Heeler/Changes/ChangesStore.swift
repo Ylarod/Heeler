@@ -126,6 +126,7 @@ final class ChangesStore {
     /// new until a read has completed.
     func appear() async {
         startFollowingAgentStatus()
+        await applyBufferedOpeningStatus()
         guard !hasRead else { return }
         await refresh()
     }

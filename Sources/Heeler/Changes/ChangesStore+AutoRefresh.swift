@@ -66,6 +66,17 @@ extension ChangesStore {
         }
     }
 
+    /// The factory yields the current status before the consumer runs, and
+    /// taking that buffered value suspends once. Give the baseline turns to
+    /// land before the first read. A stream with nothing buffered stays
+    /// unpublished; this does not wait for a later transition.
+    func applyBufferedOpeningStatus() async {
+        guard autoRefresh.agentStatus != nil, !autoRefresh.hasBaseline else { return }
+        for _ in 0..<64 where !autoRefresh.hasBaseline {
+            await Task.yield()
+        }
+    }
+
     private func receiveAgentStatus(_ status: AgentStatus?) {
         let previous = autoRefresh.status
         autoRefresh.status = status

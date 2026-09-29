@@ -293,6 +293,71 @@
             #expect(!listing.entries.isEmpty)
         }
 
+        /// A Working demo Agent's Changes carry the possibly-incomplete label
+        /// and the time they were read. A blocked demo Agent's do not.
+        @Test func workingDemoAgentsShowPossiblyIncompleteChanges() async throws {
+            let composition = DemoScreenshotComposition.make()
+            composition.console.setHosts(composition.hosts.hosts)
+            await composition.console.resume()
+            defer { composition.console.setHosts([]) }
+            await waitUntilDemoAgentsLoad(composition)
+
+            let apiTests = try #require(
+                composition.console.agents.first { $0.agent.name == "api-tests" })
+            #expect(apiTests.agent.status == .working)
+            let working = productionChangesStore(for: apiTests, console: composition.console)
+            defer { working.cancel() }
+            await working.appear()
+            guard case .loaded(let workingChanges) = working.phase else {
+                Issue.record("api-tests Changes should be loaded, got \(working.phase)")
+                return
+            }
+            #expect(workingChanges.checkout.displayPath == "/workspace/payments-api")
+            let freshness = try #require(working.freshness)
+            #expect(freshness.readAt == working.readAt)
+            #expect(
+                freshness.text(relativeTo: freshness.readAt)
+                    .hasPrefix("Possibly incomplete · Read at "))
+
+            let reviewer = try #require(
+                composition.console.agents.first { $0.agent.name == "reviewer" })
+            #expect(reviewer.agent.status == .blocked)
+            let blocked = productionChangesStore(for: reviewer, console: composition.console)
+            defer { blocked.cancel() }
+            await blocked.appear()
+            guard case .loaded(let reviewerChanges) = blocked.phase else {
+                Issue.record("reviewer Changes should be loaded, got \(blocked.phase)")
+                return
+            }
+            #expect(reviewerChanges.checkout.displayPath == "/workspace/storefront")
+            #expect(blocked.freshness == nil)
+        }
+
+        /// The Agent detail factory: one store over the console's Changes
+        /// reads, the Host gate, and that Agent's status stream.
+        private func productionChangesStore(
+            for agent: ConsoleAgent, console: ConsoleStore
+        ) -> ChangesStore {
+            let hostID = agent.hostID
+            let agentID = agent.id
+            let openingDirectory = agent.directory
+            return ChangesStore(
+                directory: { [console] in
+                    console.agents.first { $0.id == agentID }?.directory ?? openingDirectory
+                },
+                read: { [console] request in
+                    try await console.readChanges(request, on: hostID)
+                },
+                readPatch: { [console] request in
+                    try await console.readFilePatch(request, on: hostID)
+                },
+                listUntrackedDirectory: { [console] request in
+                    try await console.listUntrackedDirectory(request, on: hostID)
+                },
+                gate: console.gitExecGate(for: hostID),
+                agentStatus: { [console] in console.agentStatusUpdates(for: agentID) })
+        }
+
         private func waitUntilDemoAgentsLoad(_ composition: DemoScreenshotComposition) async {
             while composition.console.agents.count != 5
                 || composition.hosts.hosts.contains(where: {
