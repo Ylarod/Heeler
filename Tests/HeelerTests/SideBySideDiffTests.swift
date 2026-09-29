@@ -136,6 +136,30 @@ struct SideBySideDiffTests {
         #expect(!joined[0].accessibilityLabel.contains(".."))
     }
 
+    @Test func demoPatchPairsWithBlankCells() throws {
+        #if DEBUG && targetEnvironment(simulator)
+        let request = FilePatchRequest(
+            topLevel: Data("/workspace/storefront".utf8),
+            path: Data("Sources/Checkout/PaymentCoordinator.swift".utf8),
+            isUntracked: false)
+        let patch = try DemoChangesSample.patch(request)
+        var sawBlankSide = false
+        var sawLongSide = false
+        for file in patch.files {
+            for hunk in file.hunks {
+                for row in SideBySideDiff.rows(for: hunk) {
+                    if row.left == nil || row.right == nil { sawBlankSide = true }
+                    if (row.left?.text.count ?? 0) > 120 || (row.right?.text.count ?? 0) > 120 {
+                        sawLongSide = true
+                    }
+                }
+            }
+        }
+        #expect(sawBlankSide)
+        #expect(sawLongSide)
+        #endif
+    }
+
     private func line(
         _ id: Int, _ kind: DiffLine.Kind, old: Int?, new: Int?, _ text: String,
         missingNewline: Bool = false
