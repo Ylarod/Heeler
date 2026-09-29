@@ -426,8 +426,7 @@ struct AgentComposerView: View {
                 }
                 switcher.onSelect(id)
             },
-            onTogglePin: switcher.onTogglePin,
-            changesBadge: switcher.changesBadge)
+            onTogglePin: switcher.onTogglePin)
     }
 
     private var latestFailure: (id: AgentComposerStore.Message.ID, detail: String)? {

@@ -2,18 +2,18 @@ import Foundation
 import SwiftUI
 import UIKit
 
-/// The Agent switcher's glance at the Checkout's Changes: the line totals of
-/// the latest read, the same numbers the Changes header shows for it. Nil
-/// whenever that read cannot vouch for them: nothing read yet, a clean
-/// Checkout, a failed read, a refresh that timed out keeping older content,
-/// or line counts git could not produce.
+/// An Agents list row's glance at its Agent's Checkout Changes: the line
+/// totals of the latest read, the same numbers the Changes header shows for
+/// it. Nil whenever that read cannot vouch for them: nothing read yet, a
+/// clean Checkout, a failed read, a refresh that timed out keeping older
+/// content, or line counts git could not produce.
 ///
 /// A count that is only a lower bound keeps its visible text and says
 /// "At least" to VoiceOver alone: the header carries the visible qualifier,
-/// and the badge has no room for one.
+/// and the row has no room for one.
 struct ChangesBadge: Equatable {
     /// How a count is written: exactly as the header writes it, or shortened
-    /// from 1,000 when the switcher row has no room for the exact form.
+    /// from 1,000 when the row has no room for the exact form.
     enum Style: CaseIterable {
         case exact
         case compact
@@ -89,76 +89,52 @@ struct ChangesBadge: Equatable {
     }
 }
 
-/// Green additions and red removals, as a VS Code diff summary shows them,
-/// by the user's choice. That departs from the rest of Changes: diff lines
-/// keep their blue and mauve, independent of Agent Status (`DiffPalette`),
-/// while the status chips beside the badge use green for Done and red for
-/// Blocked. So these inks are not the status palette's hues, and the leading
-/// + and − carry the meaning on their own; colour is never the only channel.
-/// Each ink keeps at least 4.5:1 on the switcher row's
-/// `secondarySystemBackground` in light, dark, and dark elevated appearances.
+/// Green additions and red removals, as GitHub and VS Code show a diff
+/// summary: the diff's own inks in light, one step lighter in dark, where
+/// the diff's would fall under 4.5:1 on a selected row in an elevated
+/// sidebar. The status chip in the same row uses green for Done and red for
+/// Blocked, so the leading + and − carry the meaning on their own; colour is
+/// never the only channel. Each ink keeps at least 4.5:1 on the Agents
+/// list's grounds, selected or not, in light and dark appearances.
 enum ChangesBadgePalette {
-    static let addedInk = DiffPalette.adaptive(light: 0x116329, dark: 0x3FB950)
-    static let removedInk = DiffPalette.adaptive(light: 0xB42318, dark: 0xFF7B72)
+    static let addedInk = DiffPalette.adaptive(light: 0x116329, dark: 0x56D364)
+    static let removedInk = DiffPalette.adaptive(light: 0xB42318, dark: 0xFFA198)
 }
 
-/// What the Agent switcher needs for the badge: the store to read and where
-/// a tap goes. Only the store travels, so a read landing redraws the badge
-/// alone rather than the Agent surface that owns the switcher.
-struct ChangesBadgeSource {
+/// The totals at the trailing end of an Agents list row's first detail
+/// line: "+12 −7", green and red. Not a control; the row opens the Agent,
+/// and the Agent menu opens Changes. Exact totals come first; a row without
+/// room takes the shortened form.
+struct ChangesRowTotals: View {
     let store: ChangesStore
-    /// The Agent menu's own Changes action.
-    let open: () -> Void
-}
-
-/// The badge at the switcher row's trailing end, before the pinned buttons:
-/// "+12 −7", green and red. It never resizes the row. Exact totals come
-/// first; a row without room takes the shortened form, and then no badge,
-/// before the strip or a pinned button gives way.
-struct ChangesBadgeButton: View {
-    let source: ChangesBadgeSource
     @Environment(\.locale) private var locale
 
     var body: some View {
         if let badge = ChangesBadge(
-            phase: source.store.phase,
-            timedOutKeepingContent: source.store.timedOutKeepingContent)
+            phase: store.phase, timedOutKeepingContent: store.timedOutKeepingContent)
         {
             ViewThatFits(in: .horizontal) {
-                button(badge, style: .exact)
-                button(badge, style: .compact)
-                // The More menu still opens Changes.
-                Color.clear.frame(width: 0, height: 0)
+                totals(badge, style: .exact)
+                totals(badge, style: .compact)
             }
         }
     }
 
-    private func button(_ badge: ChangesBadge, style: ChangesBadge.Style) -> some View {
-        Button(action: source.open) {
-            HStack(spacing: 4) {
-                Text(badge.addedText(style, locale: locale))
-                    .foregroundStyle(Color(uiColor: ChangesBadgePalette.addedInk))
-                Text(badge.removedText(style, locale: locale))
-                    .foregroundStyle(Color(uiColor: ChangesBadgePalette.removedInk))
-            }
-            .font(.footnote.weight(.medium))
-            .monospacedDigit()
-            .lineLimit(1)
-            .fixedSize()
-            .padding(.leading, 10)
-            .padding(.trailing, 4)
-            .frame(minWidth: 44, minHeight: TerminalAgentSwitcherBar.preferredHeight)
+    private func totals(_ badge: ChangesBadge, style: ChangesBadge.Style) -> some View {
+        HStack(spacing: 4) {
+            Text(badge.addedText(style, locale: locale))
+                .foregroundStyle(Color(uiColor: ChangesBadgePalette.addedInk))
+            Text(badge.removedText(style, locale: locale))
+                .foregroundStyle(Color(uiColor: ChangesBadgePalette.removedInk))
         }
-        .buttonStyle(.plain)
-        .frame(height: 44)
-        .contentShape(Rectangle())
-        .padding(.vertical, (TerminalAgentSwitcherBar.preferredHeight - 44) / 2)
-        // The row cannot grow; the large content viewer shows the rest.
-        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-        .accessibilityShowsLargeContentViewer()
-        .accessibilityLabel("Changes")
-        .accessibilityValue(badge.accessibilityValue)
+        .font(.caption.weight(.semibold))
+        .monospacedDigit()
+        .lineLimit(1)
+        .fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Changes: " + badge.accessibilityValue)
         // VoiceOver hears exact counts either way; this says which one shows.
-        .accessibilityIdentifier(style == .exact ? "changes-badge.exact" : "changes-badge.compact")
+        .accessibilityIdentifier(
+            style == .exact ? "agent-row-changes.exact" : "agent-row-changes.compact")
     }
 }

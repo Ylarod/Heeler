@@ -3,11 +3,11 @@ import Observation
 import UIKit
 
 /// One Checkout's Changes document: the Checkout containing an Agent's
-/// current directory, read over the Transport seam. Agent detail keeps its
-/// Agent's store for its whole lifetime, shared by the switcher badge and
-/// Changes; a Worktree's store lives only while its Changes are shown. So
-/// nothing outlives the Agent detail it belongs to. Status edges refresh the
-/// list; lazy file reads stay independent.
+/// current directory, read over the Transport seam. The Agents list keeps a
+/// store per Agent for its row's totals while the Agent is in the catalog
+/// (`AgentRowChanges`); open Changes get a store of their own that closing
+/// discards. Status edges refresh the list; lazy file reads stay
+/// independent.
 @MainActor
 @Observable
 final class ChangesStore {
@@ -68,23 +68,19 @@ final class ChangesStore {
     @ObservationIgnored private let announce: @MainActor (String) -> Void
     @ObservationIgnored var activeRead: Task<Void, Never>?
     @ObservationIgnored var readID = UUID()
-    /// The read that has entered the Transport, which a departing Agent
-    /// detail lets finish rather than stacking another git process.
+    /// The read that has entered the Transport, which an Agent leaving the
+    /// catalog lets finish rather than stacking another git process.
     @ObservationIgnored var dispatchedReadID: UUID?
-    /// Counts reads begun, so Agent detail's settled read can tell that
-    /// Changes already read in the meantime.
-    @ObservationIgnored var readsStarted = 0
-    /// Agent detail's current following, so a stale one never stops it.
-    @ObservationIgnored var agentDetailFollowID: UUID?
-    /// Gates "Checkout Changes updated."; false while Agent detail reads its
-    /// store for the badge with Changes closed, since nothing on screen
-    /// changed for VoiceOver to hear about.
+    /// The list's current following, so a stale one never stops it.
+    @ObservationIgnored var rowFollowID: UUID?
+    /// Gates "Checkout Changes updated."; false for a list row's store,
+    /// whose totals VoiceOver reads with the row rather than hearing about.
     @ObservationIgnored var announcesAutomaticUpdates = true
-    /// True while another shown store reads this Checkout for each exit from
-    /// Working, as Worktree Changes of the Checkout the Agent is in now do:
-    /// this store's automatic refresh then waits for Back instead of reading
-    /// the same Checkout again.
-    @ObservationIgnored var automaticRefreshIsCoveredElsewhere: (@MainActor () -> Bool)?
+    /// True while this store's automatic reads should wait: for a list
+    /// row's store, while no row shows the Agent, or while open Changes of
+    /// the Checkout it would read are reading it in its place. A waiting
+    /// read runs once the row shows again or those Changes close.
+    @ObservationIgnored var defersAutomaticRefresh: (@MainActor () -> Bool)?
 
     var freshness: ChangesFreshness? {
         guard case .loaded = phase, let readAt,
@@ -146,8 +142,8 @@ final class ChangesStore {
     }
 
     /// Reads once per store; returning to the view reads nothing new once a
-    /// read has completed. Agent detail's store is read by its own following
-    /// and by `startRefresh()` instead.
+    /// read has completed. A document seeded from the list's read stays on
+    /// screen while this first read runs.
     func appear() async {
         startFollowingAgentStatus()
         await applyBufferedOpeningStatus()
@@ -169,24 +165,6 @@ final class ChangesStore {
         }
     }
 
-    /// Reads the Checkout again without tying the read to the caller: it
-    /// belongs to the store, so leaving the view that asked does not cancel
-    /// it. A read already running is adopted instead of starting another.
-    func startRefresh() {
-        startRead()
-    }
-
-    /// A read the user asked for on Agent detail's store: owned by the store,
-    /// as `startRefresh()`'s is, so leaving Changes neither cancels it nor
-    /// loses an automatic refresh queued behind it. A read already running
-    /// is awaited instead. Cancelling the caller does not end the wait
-    /// either: it lasts until the read finishes, which the git read's
-    /// deadline bounds.
-    func refreshOwnedByStore() async {
-        guard let task = startRead() ?? activeRead else { return }
-        await task.value
-    }
-
     /// Starts a read owned by the store; nil while one is running.
     @discardableResult
     func startRead(automatic: Bool = false) -> Task<Void, Never>? {
@@ -198,7 +176,6 @@ final class ChangesStore {
         lastDirectory = directory
         let id = UUID()
         readID = id
-        readsStarted += 1
         isRefreshing = phase != .loading
         let task = Task { [weak self, gate] in
             guard let self else { return }
@@ -305,29 +282,20 @@ final class ChangesStore {
         activeRead != nil && dispatchedReadID == readID
     }
 
-    /// Back from Changes on Agent detail's store: the document and any read
-    /// stay for the badge; the diff, expansions, and announcements go.
-    func leavePresentation() {
-        announcesAutomaticUpdates = false
-        fileDiff.close()
-        untrackedDirectories.collapseAll()
-    }
-
-    /// Whether this store's next read lands inside `checkout`: for the
-    /// Agent's own store, whether the Agent is in that Checkout now rather
+    /// Whether this store's next read lands inside `checkout`: for a store
+    /// following an Agent, whether the Agent is in that Checkout now rather
     /// than when this store last read.
     func readsInside(_ checkout: CheckoutLocation) -> Bool {
         guard let directory = directory() ?? lastDirectory else { return false }
         return checkout.contains(directory: directory)
     }
 
-    /// Worktree Changes can show the Agent's own Checkout. When that store
-    /// closes with a newer successful read of the same Checkout, and the
-    /// Agent is still in it, this store takes its document, keeping its own
-    /// directory prefix: the totals are the whole Checkout's either way.
+    /// Closing Changes hands their read to the list row's store. When it is
+    /// a newer successful read of the Checkout this store would read now,
+    /// this store takes the document, whatever it showed before, keeping its
+    /// own directory prefix: the totals are the whole Checkout's either way.
     func adoptNewerRead(of other: ChangesStore) {
         guard case .loaded(let changes) = other.phase, let otherReadAt = other.readAt,
-            case .loaded(let own) = phase, own.checkout.topLevel == changes.checkout.topLevel,
             otherReadAt > readAt ?? .distantPast, readsInside(changes.checkout)
         else { return }
         untrackedDirectories.collapseAll()
@@ -336,5 +304,19 @@ final class ChangesStore {
         timedOutKeepingContent = false
         autoRefresh.readWasWhileWorking = other.autoRefresh.readWasWhileWorking
         fileDiff.listDidRefresh(changes)
+    }
+
+    /// Opening Changes starts from the list row's latest read of the same
+    /// directory, so the list shows at once while `appear()` reads again. A
+    /// read that timed out keeping older content is not a starting point.
+    func seed(from other: ChangesStore) {
+        guard phase == .loading, activeRead == nil, !other.timedOutKeepingContent,
+            case .loaded(let changes) = other.phase, let otherReadAt = other.readAt,
+            let otherDirectory = other.lastDirectory, otherDirectory == directory()
+        else { return }
+        phase = .loaded(changes)
+        directoryPrefix = other.directoryPrefix
+        readAt = otherReadAt
+        autoRefresh.readWasWhileWorking = other.autoRefresh.readWasWhileWorking
     }
 }

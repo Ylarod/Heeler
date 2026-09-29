@@ -2,33 +2,34 @@ import Observation
 import UIKit
 
 /// Changes shown in place of Agent detail, as the Shell Terminal is. Held in
-/// Agent detail's own state, so it goes with Agent detail (another Agent or
-/// terminal selected, the Host leaving Connected, the Agent exiting).
+/// Agent detail's own state, so it closes with Agent detail (another Agent or
+/// terminal selected, the Host leaving Connected, the Agent exiting), and it
+/// holds the only reference to its store, so closing discards the content.
 ///
-/// The Agent's own Changes keep one store for that whole lifetime: the Agent
-/// switcher's badge reads it while Changes is closed, and Changes shows it,
-/// so neither reads twice and Back hands Changes' latest read to the badge.
-/// Worktree Changes get a store of their own, which closing discards.
+/// The Agents list reads each Agent's Checkout for its row totals
+/// (`AgentRowChanges`). The Agent's own Changes open on that read while
+/// reading again, and any open Changes read in the row's place while their
+/// detail is on screen; closing hands their read back to the row.
 @MainActor
 @Observable
 final class AgentChangesPresentation {
     /// The open Changes; nil while Agent detail shows its terminal.
     private(set) var store: ChangesStore?
-    /// The Agent's own Changes, following its current directory. Created on
-    /// first use and kept until Agent detail goes.
-    private(set) var agentStore: ChangesStore?
     @ObservationIgnored private var pendingInsertion: String?
-    /// Agent detail's reads for the badge. Owned here rather than by a
-    /// SwiftUI task, which restarts when Changes and the terminal swap.
-    @ObservationIgnored private var following: Task<Void, Never>?
-    /// The Agent lost its directory while its own Changes were open.
-    @ObservationIgnored private var stopsFollowingOnClose = false
+    /// Whether the row's store currently counts the open Changes as reading
+    /// in its place.
+    @ObservationIgnored private var isStandingInForRow = false
 
     /// Nil follows the Agent. A Worktree directory stays fixed for the
     /// life of that store, even if the Agent later moves.
     @ObservationIgnored private let makeStoreIn: @MainActor (String?) -> ChangesStore
+    @ObservationIgnored private let row: (changes: AgentRowChanges, agentID: ConsoleAgent.ID)?
 
-    init(makeStoreIn: @escaping @MainActor (_ directory: String?) -> ChangesStore) {
+    init(
+        row: (changes: AgentRowChanges, agentID: ConsoleAgent.ID)? = nil,
+        makeStoreIn: @escaping @MainActor (_ directory: String?) -> ChangesStore
+    ) {
+        self.row = row
         self.makeStoreIn = makeStoreIn
     }
 
@@ -37,81 +38,30 @@ final class AgentChangesPresentation {
         self.init(makeStoreIn: { _ in makeStore() })
     }
 
-    deinit {
-        following?.cancel()
-    }
-
-    var isFollowingAgent: Bool { following != nil }
-
-    /// The Agent's own store, created on first use.
-    func ensureAgentStore() -> ChangesStore {
-        if let agentStore { return agentStore }
-        let store = makeStoreIn(nil)
-        store.referencesFollowAgentDirectory = true
-        store.announcesAutomaticUpdates = false
-        // Worktree Changes of this same Checkout follow the same Agent and
-        // read for each exit from Working; Back hands their read over. An
-        // Agent that has since left that Checkout reads where it is now.
-        store.automaticRefreshIsCoveredElsewhere = { [weak self, weak store] in
-            guard let self, let store, let shown = self.store, shown !== store,
-                let own = store.checkout, let other = shown.checkout
-            else { return false }
-            return own.topLevel == other.topLevel && store.readsInside(other)
-        }
-        prepare(store)
-        agentStore = store
-        return store
-    }
-
-    /// Agent detail is on screen: read once it settles, then whenever the
-    /// Agent leaves Working. A second start while following keeps it.
-    func startFollowingAgent() {
-        stopsFollowingOnClose = false
-        guard following == nil else { return }
-        let store = ensureAgentStore()
-        following = Task { await store.followForAgentDetail() }
-    }
-
-    /// Agent detail left the screen: no more reads for it, and a read still
-    /// queued at the Host gate is dropped.
-    func stopFollowingAgent() {
-        stopsFollowingOnClose = false
-        guard let following else { return }
-        following.cancel()
-        self.following = nil
-        agentStore?.stopFollowingForAgentDetail()
-    }
-
-    /// The Agent no longer reports a directory. Following stops now, unless
-    /// the Agent's own Changes are open: they keep it, and the read they
-    /// started, until they close.
-    func agentLostDirectory() {
-        if let store, store === agentStore {
-            stopsFollowingOnClose = true
-        } else {
-            stopFollowingAgent()
-        }
-    }
-
-    /// Opens Changes. `directory` is a Worktree's checkout path; nil shows
-    /// the Agent's own store. A second open while one is shown keeps it.
+    /// Opens Changes. `directory` is a Worktree's checkout path; nil follows
+    /// the Agent. A second open while one is shown keeps it.
     func open(directory: String? = nil) {
         guard store == nil else { return }
         pendingInsertion = nil
-        let store: ChangesStore
-        if let directory {
-            store = makeStoreIn(directory)
-            store.referencesFollowAgentDirectory = false
-            prepare(store)
-        } else {
-            store = ensureAgentStore()
+        let store = makeStoreIn(directory)
+        store.referencesFollowAgentDirectory = directory == nil
+        if store.copyToPasteboard == nil {
+            store.copyToPasteboard = { UIPasteboard.general.string = $0 }
         }
-        store.announcesAutomaticUpdates = true
+        store.insertReference = { [weak self, weak store] text in
+            guard let self, let store, self.store === store else { return }
+            self.pendingInsertion = text
+            self.leaveShown()
+        }
         self.store = store
+        if let row {
+            row.changes.changesOpened(store, for: row.agentID, startsFromRow: directory == nil)
+            isStandingInForRow = true
+        }
     }
 
-    /// Back: returns to Agent detail. The Agent's store keeps its document
-    /// for the badge; a Worktree's store is dropped.
+    /// Back: returns to Agent detail and drops the document, after the row
+    /// has taken any newer read from it.
     func close() {
         pendingInsertion = nil
         leaveShown()
@@ -123,60 +73,84 @@ final class AgentChangesPresentation {
         return pendingInsertion
     }
 
-    private func prepare(_ store: ChangesStore) {
-        if store.copyToPasteboard == nil {
-            store.copyToPasteboard = { UIPasteboard.general.string = $0 }
-        }
-        // Only the shown store inserts, so a departing menu cannot hand
-        // another reference to the next view.
-        store.insertReference = { [weak self, weak store] text in
-            guard let self, let store, self.store === store else { return }
-            self.pendingInsertion = text
-            self.leaveShown()
-        }
+    /// Agent detail came back on screen with Changes still open: they read
+    /// in the row's place again.
+    func detailAppeared() {
+        guard let row, let store, !isStandingInForRow else { return }
+        row.changes.changesOpened(store, for: row.agentID, startsFromRow: false)
+        isStandingInForRow = true
+    }
+
+    /// Agent detail left the screen, most often for good: the row takes
+    /// the open Changes' read now and reads for itself again.
+    func detailDisappeared() {
+        guard let store else { return }
+        handBack(store)
     }
 
     private func leaveShown() {
         guard let shown = store else { return }
         store = nil
-        if shown === agentStore {
-            shown.leavePresentation()
-            if stopsFollowingOnClose { stopFollowingAgent() }
-        } else if let agentStore {
-            agentStore.adoptNewerRead(of: shown)
-            agentStore.resumeAutomaticRefresh(after: shown)
-        }
+        handBack(shown)
+    }
+
+    private func handBack(_ shown: ChangesStore) {
+        guard let row, isStandingInForRow else { return }
+        isStandingInForRow = false
+        row.changes.changesClosed(shown, for: row.agentID)
     }
 }
 
 extension AgentChangesPresentation {
     /// Agent detail's Changes: the Console's reads through the Host's git
-    /// exec gate, following the Agent's directory and status.
+    /// exec gate, following the Agent's directory and status, handing their
+    /// reads to the Agents list's row.
     static func forAgentDetail(
         agentID: ConsoleAgent.ID,
         hostID: Host.ID,
         openingDirectory: String?,
         console: ConsoleStore
     ) -> AgentChangesPresentation {
-        AgentChangesPresentation { [console] fixedDirectory in
-            ChangesStore(
-                // Where the Agent is now: a later read follows it into
-                // another Checkout.
-                directory: {
-                    fixedDirectory ?? console.agents.first { $0.id == agentID }?.directory
-                        ?? openingDirectory
-                },
-                read: { request in
-                    try await console.readChanges(request, on: hostID)
-                },
-                readPatch: { request in
-                    try await console.readFilePatch(request, on: hostID)
-                },
-                listUntrackedDirectory: { request in
-                    try await console.listUntrackedDirectory(request, on: hostID)
-                },
-                gate: console.gitExecGate(for: hostID),
-                agentStatus: { [console] in console.agentStatusUpdates(for: agentID) })
+        AgentChangesPresentation(row: (console.rowChanges, agentID)) { [console] fixedDirectory in
+            console.makeChangesStore(
+                agentID: agentID, hostID: hostID, fixedDirectory: fixedDirectory,
+                openingDirectory: openingDirectory)
         }
+    }
+}
+
+extension ConsoleStore {
+    /// A store reading, through the Host's git exec gate, `fixedDirectory`
+    /// or else the directory the Agent is in at the time of each read, and
+    /// following the Agent's status.
+    func makeChangesStore(
+        agentID: ConsoleAgent.ID,
+        hostID: Host.ID,
+        fixedDirectory: String? = nil,
+        openingDirectory: String?
+    ) -> ChangesStore {
+        ChangesStore(
+            // Where the Agent is now: a later read follows it into another
+            // Checkout.
+            directory: { [weak self] in
+                fixedDirectory ?? self?.agents.first { $0.id == agentID }?.directory
+                    ?? openingDirectory
+            },
+            read: { [weak self] request in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.readChanges(request, on: hostID)
+            },
+            readPatch: { [weak self] request in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.readFilePatch(request, on: hostID)
+            },
+            listUntrackedDirectory: { [weak self] request in
+                guard let self else { throw TransportError.cancelled }
+                return try await self.listUntrackedDirectory(request, on: hostID)
+            },
+            gate: gitExecGate(for: hostID),
+            agentStatus: { [weak self] in
+                self?.agentStatusUpdates(for: agentID) ?? AsyncStream { $0.finish() }
+            })
     }
 }

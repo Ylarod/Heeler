@@ -18,15 +18,17 @@ Entries reference the issue that motivated them.
   the latest commit's subject and age. Below it, each changed file is listed
   as modified, added, deleted, renamed, untracked, or conflicted, and as
   staged, unstaged, or both, with conflicts first. Pull down to read it
-  again. The Agent switcher shows the Checkout's line totals beside its
-  Composer and keyboard buttons, such as +12 −7 in green and red, matching
-  the Changes header; tap them to open Changes. They are read when Agent
-  detail opens and when the Agent stops working, stay hidden while the
-  Checkout is clean, unreadable, or not yet read, and, when the switcher is
-  short of room, shorten from 1,000 lines, as in 1.2K or 12.3K, or step
-  aside. Heeler reads the Checkout with git on the Host over SSH, without
-  running its hooks or file-system monitor and without rewriting its index,
-  and keeps nothing once Agent detail closes. (#382)
+  again. Each Agent's row in the Agents list ends its second line with the
+  Checkout's line totals, such as +12 −7 in green and red, matching the
+  Changes header. The list reads them itself: when a row first shows, and
+  again when that Agent stops working, waiting while no row shows it. They
+  stay hidden while the Checkout is clean, unreadable, or not yet read, and
+  shorten from 1,000 lines, as in 1.2K or 12.3K, when the row is short of
+  room. Changes opens on the row's latest read while it reads again, and
+  hands its read back to the row. Heeler reads the Checkout with git on the
+  Host over SSH, without running its hooks or file-system monitor and
+  without rewriting its index, and keeps nothing once the Agent leaves the
+  list. (#382)
 
 ## [0.1.11] - 2026-09-28
 

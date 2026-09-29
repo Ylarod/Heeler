@@ -1394,8 +1394,16 @@ struct ConsoleView: View {
                 agent: agent,
                 layout: console.rowLayout(for: agent.hostID),
                 isPinned: console.pins.isPinned(
-                    hostID: agent.hostID, paneID: agent.agent.paneID))
+                    hostID: agent.hostID, paneID: agent.agent.paneID),
+                changes: console.rowChanges.store(for: agent))
             .modifier(ConsoleRowSelectionContent())
+        }
+        // The list reads what it shows: a row on screen reads its Agent's
+        // Checkout, and an exit from Working while none does waits for one.
+        .onAppear { console.rowChanges.rowAppeared(agent) }
+        .onDisappear { console.rowChanges.rowDisappeared(agent.id) }
+        .onChange(of: agent.directory == nil) { _, lacksDirectory in
+            if !lacksDirectory { console.rowChanges.agentReportedDirectory(agent) }
         }
         .modifier(
             ConsoleRowSelectionBackground(

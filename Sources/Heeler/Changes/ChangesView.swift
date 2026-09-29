@@ -5,19 +5,11 @@ import SwiftUI
 /// nothing here knows git.
 struct ChangesView: View {
     let store: ChangesStore
-    /// Agent detail's own store, which that detail follows and keeps after
-    /// Back for its switcher badge; this view only asks for one read when it
-    /// opens. A Worktree's store is this view's alone.
-    var sharesAgentDetailStore = false
     let onBack: () -> Void
     /// A pull shows the system's own indicator; the bar's is for the rest.
     @State private var isPulling = false
-    /// One read per opening of a shared store: coming back from a view
-    /// pushed over Changes reads nothing new, as `appear()` does.
-    @State private var hasStartedOpeningRead = false
-    /// Try Again's read, cancelled when Changes leave the screen. That
-    /// cancels a Worktree's read; Agent detail's store keeps its read, and
-    /// this task waits until it finishes. See `refreshOnRequest()`.
+    /// Try Again's read. Like the first read's `.task`, it ends when Changes
+    /// leave the screen rather than running on for a store nobody shows.
     @State private var retry: Task<Void, Never>?
 
     var body: some View {
@@ -35,23 +27,8 @@ struct ChangesView: View {
                     .id(ObjectIdentifier(diff))
             }
         }
-        .task {
-            if sharesAgentDetailStore {
-                guard !hasStartedOpeningRead else { return }
-                hasStartedOpeningRead = true
-                // Owned by the store, so Back hands its result to the badge;
-                // a read the badge already started is adopted instead.
-                store.startRefresh()
-            } else {
-                await store.appear()
-            }
-        }
-        .task {
-            // Agent detail's following already drives a shared store, and
-            // this task's end would stop it.
-            guard !sharesAgentDetailStore else { return }
-            await store.followAgentStatus()
-        }
+        .task { await store.appear() }
+        .task { await store.followAgentStatus() }
         .onDisappear {
             retry?.cancel()
             store.fileDiff.current?.cancel()
@@ -122,22 +99,9 @@ struct ChangesView: View {
         .refreshable {
             isPulling = true
             defer { isPulling = false }
-            await refreshOnRequest()
-        }
-        .overlay { stateOverlay }
-    }
-
-    /// Pull to refresh and Try Again. A Worktree's read, like its first
-    /// read's `.task`, ends when Changes leave the screen rather than running
-    /// on for a store nobody shows. Agent detail's store keeps the read, as
-    /// it keeps the opening one: Back hands it, and an automatic refresh
-    /// queued behind it, to the switcher badge.
-    private func refreshOnRequest() async {
-        if sharesAgentDetailStore {
-            await store.refreshOwnedByStore()
-        } else {
             await store.refresh()
         }
+        .overlay { stateOverlay }
     }
 
     @ViewBuilder
@@ -155,7 +119,7 @@ struct ChangesView: View {
 
     private var tryAgain: some View {
         Button("Try Again") {
-            retry = Task { await refreshOnRequest() }
+            retry = Task { await store.refresh() }
         }
         .disabled(store.isRefreshing)
     }

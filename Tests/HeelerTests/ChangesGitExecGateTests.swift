@@ -259,10 +259,10 @@ struct ChangesGitExecGateTests {
         #expect(await transport.changesReadRequests.count == 2)
     }
 
-    /// Agent detail builds its stores with the production factory, which
-    /// hands them the Host's gate: the badge's settle read waits behind
+    /// The Agents list builds its row stores with the production factory,
+    /// which hands them the Host's gate: a row's settle read waits behind
     /// another git exec on that Host instead of running beside it.
-    @Test func agentDetailsStoresReadThroughTheHostsGate() async throws {
+    @Test func agentRowStoresReadThroughTheHostsGate() async throws {
         let host = Host.fixture()
         let transport = ScriptedTransport()
         let read = try ChangesStoreTests.read(GitProbeRecordings.hostile)
@@ -281,13 +281,17 @@ struct ChangesGitExecGateTests {
         let other = ScriptedTransportCallGate()
         let holder = Task { try await gate.run { await other.waitUntilOpen() } }
         await other.waitForEntry()
-        let changes = AgentChangesPresentation.forAgentDetail(
-            agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"), hostID: host.id,
-            openingDirectory: "/home/dev/src/app", console: console)
-        changes.startFollowingAgent()
-        defer { changes.stopFollowingAgent() }
-        let store = try #require(changes.agentStore)
-        try await Self.waitUntil("the settle read never started") { store.readsStarted == 1 }
+        let agent = ConsoleAgent(
+            hostID: host.id, hostName: host.name,
+            agent: Agent(
+                terminalID: "term_1", kind: "claude", title: "", status: .idle,
+                workspaceID: "w1", tabID: "w1:t1", paneID: "w1:p1", cwd: "/home/dev/src/app",
+                revision: 1, name: nil),
+            workspaceLabel: nil, repositoryCheckout: nil)
+        console.rowChanges.rowAppeared(agent)
+        defer { console.rowChanges.rowDisappeared(agent.id) }
+        let store = try #require(console.rowChanges.store(for: agent))
+        try await Self.waitUntil("the settle read never started") { store.activeRead != nil }
         await Self.drain()
         #expect(await transport.changesReadRequests.isEmpty)
         #expect(store.phase == .loading)

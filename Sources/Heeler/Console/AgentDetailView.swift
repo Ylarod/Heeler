@@ -238,10 +238,8 @@ struct AgentDetailView: View {
                 }
                 .id(openTerminal.destination)
             } else if let store = changes.store {
-                ChangesView(store: store, sharesAgentDetailStore: store === changes.agentStore) {
-                    changes.close()
-                }
-                .id(ObjectIdentifier(store))
+                ChangesView(store: store) { changes.close() }
+                    .id(ObjectIdentifier(store))
             } else {
                 AgentTerminalView(
                     agent: agent,
@@ -271,7 +269,6 @@ struct AgentDetailView: View {
                     showWorktreeChanges: { directory in
                         changes.open(directory: directory)
                     },
-                    changesStore: agent.directory == nil ? nil : changes.agentStore,
                     composer: composer,
                     attachStore: attach,
                     retainedSurface: retainedAgent?.surfaceRetention,
@@ -296,9 +293,7 @@ struct AgentDetailView: View {
             // Paired with the disappearance below: Changes still open when
             // Agent detail comes back claim the chrome again.
             if changes.store != nil { onShowsChanges?(true) }
-            // Idempotent, so the terminal and Changes trading places keeps
-            // one following rather than restarting it.
-            if agent.directory != nil, isVisible() { changes.startFollowingAgent() }
+            if isVisible() { changes.detailAppeared() }
         }
         .onChange(of: focusViewingState) {
             updateFocus()
@@ -309,14 +304,7 @@ struct AgentDetailView: View {
             if changes.store != nil { onShowsChanges?(false) }
             // The router's truth, not SwiftUI's: the terminal and Changes
             // trading places disappears one of them while the page stays.
-            if !isVisible() { changes.stopFollowingAgent() }
-        }
-        .onChange(of: agent.directory == nil) { _, lacksDirectory in
-            if lacksDirectory {
-                changes.agentLostDirectory()
-            } else if hasAppeared, isVisible() {
-                changes.startFollowingAgent()
-            }
+            if !isVisible() { changes.detailDisappeared() }
         }
         .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
             prepareRetainedAgent()

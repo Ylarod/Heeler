@@ -33,8 +33,8 @@ final class ChangesAutoRefresh {
 }
 
 extension ChangesStore {
-    /// Agent detail waits this long before its first read, so passing
-    /// through Agents quickly costs the Host no git exec.
+    /// An Agents list row waits this long before its first read, so
+    /// scrolling past Agents quickly costs the Host no git exec.
     static let appearanceSettle: Duration = .milliseconds(300)
 
     /// Worktree Changes' SwiftUI task owns this across both the list and an
@@ -114,7 +114,7 @@ extension ChangesStore {
 
     func runPendingAutomaticRefresh() {
         guard autoRefresh.pending, autoRefresh.debounce == nil, activeRead == nil,
-            automaticRefreshIsCoveredElsewhere?() != true
+            defersAutomaticRefresh?() != true
         else { return }
         autoRefresh.pending = false
         // No strong store capture until the bounded read starts.
@@ -125,12 +125,12 @@ extension ChangesStore {
         }
     }
 
-    /// Back from Worktree Changes of this Checkout, which read in this
-    /// store's place. When their last read answered every exit from Working,
-    /// the Agent is still in their Checkout, and Back adopted it, the
-    /// waiting refresh is done; otherwise it runs where the Agent is now.
-    /// Both stores follow the same Agent's status, so the shown one had
-    /// every exit this one waited on.
+    /// Back from Changes of this Checkout, which read in this store's
+    /// place. When their last read answered every exit from Working, the
+    /// Agent is still in their Checkout, and Back adopted it, the waiting
+    /// refresh is done; otherwise it runs where the Agent is now, or waits
+    /// for a row to show it. Both stores follow the same Agent's status, so
+    /// the shown one had every exit this one waited on.
     func resumeAutomaticRefresh(after other: ChangesStore) {
         guard autoRefresh.pending else { return }
         if other.hasAnsweredEveryWorkingExit, readAt != nil, readAt == other.readAt,
@@ -156,29 +156,32 @@ extension ChangesStore {
         autoRefresh.debounce = nil
     }
 
-    /// Agent detail's reads for the switcher badge: one once the page has
-    /// settled, unless Changes read in the meantime or a read is running,
-    /// then one for each exit from Working, until the caller is cancelled.
-    /// No timers: nothing else reads.
-    func followForAgentDetail() async {
+    /// The Agents list's reads for a row's totals: one once the row has
+    /// settled, then one for each exit from Working, until the caller is
+    /// cancelled. Each waits while `defersAutomaticRefresh` says so, as when
+    /// no row shows the Agent. No timers: nothing else reads.
+    func followForRowTotals() async {
         guard !Task.isCancelled else { return }
         let id = UUID()
-        agentDetailFollowID = id
+        rowFollowID = id
         defer {
-            // The presentation's deinit cancels without stopping first.
-            if agentDetailFollowID == id { stopFollowingForAgentDetail() }
+            // The list's deinit cancels without stopping first.
+            if rowFollowID == id { stopFollowingForRowTotals() }
         }
         startFollowingAgentStatus()
         // The baseline lands before the read, as it does for `appear()`.
         await applyBufferedOpeningStatus()
-        let readsBefore = readsStarted
         do {
             try await autoRefresh.sleep(Self.appearanceSettle)
         } catch {
             return
         }
-        guard !Task.isCancelled, agentDetailFollowID == id else { return }
-        if readsStarted == readsBefore { startRead() }
+        guard !Task.isCancelled, rowFollowID == id else { return }
+        // Closed Changes may have handed over a read in the meantime.
+        if readAt == nil {
+            autoRefresh.pending = true
+            runPendingAutomaticRefresh()
+        }
         guard let status = autoRefresh.statusTask else { return }
         await withTaskCancellationHandler {
             await status.value
@@ -187,13 +190,12 @@ extension ChangesStore {
         }
     }
 
-    /// Agent detail left the screen. A read still queued at the Host gate is
+    /// The Agent left the catalog. A read still queued at the Host gate is
     /// dropped, but one that git is already running keeps the gate until it
-    /// answers: the remote process cannot be stopped, so the next Agent's
-    /// read queues behind it instead of stacking git processes on the Host.
-    /// The document and an open diff stay for Agent detail's return.
-    func stopFollowingForAgentDetail() {
-        agentDetailFollowID = nil
+    /// answers: the remote process cannot be stopped, so the next read
+    /// queues behind it instead of stacking git processes on the Host.
+    func stopFollowingForRowTotals() {
+        rowFollowID = nil
         autoRefresh.statusID = UUID()
         autoRefresh.statusTask?.cancel()
         autoRefresh.statusTask = nil

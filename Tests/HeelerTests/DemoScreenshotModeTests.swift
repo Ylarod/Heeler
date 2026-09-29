@@ -359,63 +359,30 @@
             #expect(store.insertionText(for: firstFile) == "Fixtures/receipts/ ")
         }
 
-        /// Each demo Agent's detail shows its sample Checkout's totals in the
-        /// Agent switcher, read through the production factory.
-        @Test func demoAgentsShowTheirSampleChangesInTheSwitcherBadge() async throws {
+        /// The Agents list reads each demo Agent's sample Checkout for its
+        /// row through the production factory, and shows its totals there.
+        @Test func demoAgentsShowTheirSampleChangesInTheirListRows() async throws {
             let composition = DemoScreenshotComposition.make()
             composition.console.setHosts(composition.hosts.hosts)
             await composition.console.resume()
             defer { composition.console.setHosts([]) }
             await waitUntilDemoAgentsLoad(composition)
 
-            var shown: [String: String] = [:]
+            var expected: [ConsoleAgent.ID: String] = [:]
             for agent in composition.console.agents {
                 let name = agent.agent.name ?? agent.agent.kind
                 let store = productionChangesStore(for: agent, console: composition.console)
                 defer { store.cancel() }
                 await store.refresh()
-                guard case .loaded(let changes) = store.phase else {
-                    Issue.record("\(name) Changes should be loaded, got \(store.phase)")
-                    continue
-                }
                 let badge = try #require(
                     ChangesBadge(phase: store.phase, timedOutKeepingContent: store.timedOutKeepingContent),
-                    "\(name) shows no badge")
-                #expect(badge.addedText() == "+\(changes.totals.added.formatted())")
-                #expect(badge.removedText() == "\u{2212}\(changes.totals.removed.formatted())")
-                shown[name] = "\(badge.addedText()) \(badge.removedText())"
+                    "\(name) has no totals: \(store.phase)")
+                expected[agent.id] = "Changes: " + badge.accessibilityValue
+                if name == "reviewer" {
+                    #expect("\(badge.addedText()) \(badge.removedText())" == "+12 \u{2212}7")
+                }
             }
-            #expect(shown.count == 5)
-            #expect(shown["reviewer"] == "+12 \u{2212}7")
-        }
-
-        /// The Console keys its detail column by Agent, so switching Agents
-        /// through the router builds the next Agent's own detail and Changes
-        /// store: its switcher badge stays hidden until that Agent's read
-        /// lands and never shows the previous Agent's totals.
-        @Test func switchingAgentsInTheConsoleNeverShowsThePreviousAgentsBadge() async throws {
-            let composition = DemoScreenshotComposition.make()
-            composition.console.setHosts(composition.hosts.hosts)
-            await composition.console.resume()
-            defer { composition.console.setHosts([]) }
-            await waitUntilDemoAgentsLoad(composition)
-
-            var values: [ConsoleAgent.ID: String] = [:]
-            for agent in composition.console.agents {
-                let store = productionChangesStore(for: agent, console: composition.console)
-                defer { store.cancel() }
-                await store.refresh()
-                values[agent.id] = ChangesBadge(
-                    phase: store.phase, timedOutKeepingContent: store.timedOutKeepingContent
-                )?.accessibilityValue
-            }
-            let first = try #require(composition.console.agents.first { $0.agent.name == "reviewer" })
-            let previous = try #require(values[first.id])
-            let next = try #require(
-                composition.console.agents.first {
-                    $0.id != first.id && values[$0.id] != nil && values[$0.id] != previous
-                })
-            let expected = try #require(values[next.id])
+            #expect(expected.count == 5)
 
             // The Console reopens its last tab; the Agents are on Agents.
             let lastTab = UserDefaults.standard.object(forKey: "console.last-list-tab")
@@ -435,73 +402,30 @@
                 activity: composition.activity)
             let controller = UIHostingController(rootView: view)
             let window = try await makeTestWindow(
-                frame: CGRect(x: 0, y: 0, width: 900, height: 900), rootViewController: controller)
-            defer {
-                composition.notificationRouter.path = []
-                controller.view.layoutIfNeeded()
-                window.isHidden = true
-            }
+                frame: CGRect(x: 0, y: 0, width: 402, height: 1_400), rootViewController: controller)
+            defer { window.isHidden = true }
 
-            composition.notificationRouter.path = [first.id]
-            let shownFirst = try await ChangesViewTests.eventually {
-                Self.selectedAgents(in: controller.view) == [first.id]
-                    && Self.badgeValues(in: controller.view) == [previous]
+            let shown = try await ChangesViewTests.eventually {
+                let labels = AccessibilityProbe.labels(in: controller.view)
+                return expected.values.allSatisfy { value in labels.contains { $0.contains(value) } }
             }
-            try #require(
-                shownFirst,
-                "the first Agent's badge never showed: \(Self.badgeValues(in: controller.view))")
-
-            composition.notificationRouter.path = [next.id]
-            var sawPrevious = false
-            var shownNext = false
-            let deadline = ContinuousClock.now + .seconds(5)
-            while ContinuousClock.now < deadline {
-                let strips = Self.selectedAgents(in: controller.view)
-                let badges = Self.badgeValues(in: controller.view)
-                if strips == [next.id], badges.contains(previous) { sawPrevious = true }
-                if strips == [next.id], badges == [expected] {
-                    shownNext = true
-                    break
-                }
-                try await Task.sleep(for: .milliseconds(10))
-            }
-            #expect(!sawPrevious, "the next Agent's detail showed the previous Agent's totals")
-            #expect(shownNext, "the next Agent's own totals never showed")
-        }
-
-        /// The Agent each mounted switcher strip marks as open.
-        private static func selectedAgents(in root: UIView) -> Set<ConsoleAgent.ID> {
-            root.layoutIfNeeded()
-            var selected = Set<ConsoleAgent.ID>()
-            func visit(_ view: UIView) {
-                if let bar = view as? TerminalAgentSwitcherBar, bar.window != nil, !bar.isHidden,
-                    let chip = bar.chips.first(where: { $0.isSelected })
-                {
-                    selected.insert(chip.id)
-                }
-                view.subviews.forEach(visit)
-            }
-            visit(root)
-            return selected
-        }
-
-        /// VoiceOver's value for every Changes badge on screen.
-        private static func badgeValues(in root: UIView) -> [String] {
-            AccessibilityProbe.elements(labeled: "Changes", in: root).compactMap {
-                guard let value = $0.accessibilityValue, !value.isEmpty else { return nil }
-                return value
+            #expect(
+                shown,
+                "rows showed \(AccessibilityProbe.labels(in: controller.view).filter { $0.contains("Changes") })")
+            // One store per Agent, from the list itself.
+            for agent in composition.console.agents {
+                let store = try #require(composition.console.rowChanges.store(for: agent))
+                #expect(store.phase != .loading)
             }
         }
 
-        /// Agent detail's own store, from the production factory: the
-        /// console's Changes reads, the Host gate, and that Agent's status.
+        /// A store from the production factory: the console's Changes reads,
+        /// the Host gate, and that Agent's status.
         private func productionChangesStore(
             for agent: ConsoleAgent, console: ConsoleStore
         ) -> ChangesStore {
-            AgentChangesPresentation.forAgentDetail(
-                agentID: agent.id, hostID: agent.hostID, openingDirectory: agent.directory,
-                console: console
-            ).ensureAgentStore()
+            console.makeChangesStore(
+                agentID: agent.id, hostID: agent.hostID, openingDirectory: agent.directory)
         }
 
         private func waitUntilDemoAgentsLoad(_ composition: DemoScreenshotComposition) async {

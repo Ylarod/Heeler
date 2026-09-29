@@ -48,6 +48,12 @@ final class ConsoleStore {
         ConsoleAgent.ID: [UUID: AsyncStream<AgentStatusUpdate>.Continuation]
     ] = [:]
     @ObservationIgnored private var gitExecGates: [Host.ID: GitExecGate] = [:]
+    /// The Agents list's Changes totals, one store per Agent, shared by
+    /// every window's rows and by nothing else.
+    @ObservationIgnored private(set) lazy var rowChanges = AgentRowChanges { [unowned self] agent in
+        makeChangesStore(
+            agentID: agent.id, hostID: agent.hostID, openingDirectory: agent.directory)
+    }
     /// Composer ownership sits above the detail branch so a transient
     /// missing-Agent placeholder during reconnect cannot destroy a draft.
     @ObservationIgnored private var composerStores: [
@@ -386,8 +392,8 @@ final class ConsoleStore {
         }
     }
 
-    /// Shared across Changes presentations for the same Host, including ones
-    /// opened from different Agents or windows.
+    /// Shared across Changes presentations and the Agents list's row reads
+    /// for the same Host, including ones for different Agents or windows.
     func gitExecGate(for hostID: Host.ID) -> GitExecGate {
         if let gate = gitExecGates[hostID] { return gate }
         let gate = GitExecGate()
@@ -405,9 +411,9 @@ final class ConsoleStore {
         }
     }
 
-    /// The Changes view's data source: one git read over the Host's live
-    /// Console connection. Uncached: the document lives only in the view
-    /// that shows it.
+    /// The Changes view's and the Agents list's data source: one git read
+    /// over the Host's live Console connection. Uncached: each document
+    /// lives only in the store that asked for it.
     func readChanges(
         _ request: ChangesReadRequest, on hostID: Host.ID
     ) async throws -> CheckoutChangesRead {
@@ -801,6 +807,11 @@ final class ConsoleStore {
         if terminals != nextTerminals { terminals = nextTerminals }
         rebuildAgentOrder()
         publishAgentStatuses()
+        // A reconnecting Host's empty projection is not proof its Agents
+        // exited, so their row totals stay until its snapshot says so.
+        let liveAgents = Set(agents.map(\.id))
+        let awaiting = hostsAwaitingSnapshot
+        rowChanges.retain { liveAgents.contains($0) || awaiting.contains($0.hostID) }
     }
 
     private func reconcileTerminalConnections(_ current: [HostConsoleProjection]) {
