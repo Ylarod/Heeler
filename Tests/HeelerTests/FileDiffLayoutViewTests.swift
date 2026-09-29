@@ -199,6 +199,56 @@ struct FileDiffLayoutViewTests {
         })
     }
 
+    @Test func pairedRowOffersBothLinesReferenceActions() async throws {
+        let (settings, _, cleanup) = try makeSettings(offersSideBySide: true)
+        defer { cleanup() }
+        let patch = Self.pairedPatch()
+        let read = FileDiffViewTests.changesRead()
+        var copied: [String] = []
+        var inserted: [String] = []
+        let changes = ChangesStore(
+            directory: { "/home/dev/src/app" },
+            read: { _ in read },
+            readPatch: { _ in patch })
+        changes.copyToPasteboard = { copied.append($0) }
+        changes.insertReference = { inserted.append($0) }
+        await changes.appear()
+        changes.openDiff(FileDiffViewTests.file)
+        let store = try #require(changes.fileDiff.current)
+        await store.appear()
+        defer {
+            store.cancel()
+            changes.cancel()
+        }
+        let controller = UIHostingController(
+            rootView: AnyView(
+                NavigationStack {
+                    FileDiffView(store: store)
+                }
+                .environment(\.diffLayoutSettings, settings)
+                .environment(\.changesReferenceActions, ChangesReferenceActions(store: changes))))
+        let window = try await makeTestWindow(
+            frame: CGRect(origin: .zero, size: CGSize(width: 1376, height: 1032)),
+            rootViewController: controller)
+        defer { window.isHidden = true }
+
+        try #require(await ChangesViewTests.eventually {
+            controller.view.layoutIfNeeded()
+            guard abs(controller.view.bounds.width - 1376) < 1,
+                ChangesViewTests.labels(in: controller).contains(Self.pairedLabel),
+                let row = Self.lineElement("file-diff-line-0", in: controller.view)
+            else { return false }
+            let names = Set(row.accessibilityCustomActions?.map(\.name) ?? [])
+            return names.contains("Copy Removed Line") && names.contains("Copy Added Line")
+        })
+        let row = try #require(Self.lineElement("file-diff-line-0", in: controller.view))
+        #expect(row.accessibilityLabel == Self.pairedLabel)
+        try Self.perform("Copy Removed Line", on: row)
+        try Self.perform("Insert Added Line Reference", on: row)
+        #expect(copied == ["old value"])
+        #expect(inserted == ["untracked.txt:8 "])
+    }
+
     private func makeSettings(
         offersSideBySide: Bool
     ) throws -> (DiffLayoutSettings, UserDefaults, () -> Void) {
@@ -396,6 +446,39 @@ struct FileDiffLayoutViewTests {
         let getter = #selector(getter: UIAccessibilityIdentification.accessibilityIdentifier)
         guard node.responds(to: getter) else { return nil }
         return node.value(forKey: "accessibilityIdentifier") as? String
+    }
+
+    private static func lineElement(_ identifier: String, in root: UIView) -> NSObject? {
+        var found: NSObject?
+        visit(root.window ?? root) { node in
+            guard found == nil,
+                accessibilityIdentifier(of: node) == identifier,
+                node.accessibilityCustomActions?.isEmpty == false
+            else { return }
+            found = node
+        }
+        return found
+    }
+
+    private static func perform(_ name: String, on element: NSObject) throws {
+        let action = try #require(element.accessibilityCustomActions?.first { $0.name == name })
+        if let handler = action.actionHandler {
+            #expect(handler(action))
+        } else if let target = action.target as? NSObject {
+            let selector = action.selector
+            try #require(target.responds(to: selector))
+            if NSStringFromSelector(selector).contains(":") {
+                typealias Action = @convention(c) (NSObject, Selector, UIAccessibilityCustomAction) -> Bool
+                let invoke = unsafeBitCast(target.method(for: selector), to: Action.self)
+                #expect(invoke(target, selector, action))
+            } else {
+                typealias Action = @convention(c) (NSObject, Selector) -> Bool
+                let invoke = unsafeBitCast(target.method(for: selector), to: Action.self)
+                #expect(invoke(target, selector))
+            }
+        } else {
+            Issue.record("action has no handler: \(name)")
+        }
     }
 
     private static func visit(_ root: NSObject, _ body: (NSObject) -> Void) {
