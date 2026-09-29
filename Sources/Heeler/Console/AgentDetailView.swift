@@ -98,30 +98,11 @@ struct AgentDetailView: View {
         _attachReference = State(initialValue: reference)
         let hostID = agent.hostID
         let workspaceID = agent.agent.workspaceID
-        let agentID = agent.id
-        let openingDirectory = agent.directory
         _changes = State(
             initialValue: changesPresentation
-                ?? AgentChangesPresentation { [console] fixedDirectory in
-                    ChangesStore(
-                        // Where the Agent is now: a later read follows it
-                        // into another Checkout.
-                        directory: {
-                            fixedDirectory ?? console.agents.first { $0.id == agentID }?.directory
-                                ?? openingDirectory
-                        },
-                        read: { request in
-                            try await console.readChanges(request, on: hostID)
-                        },
-                        readPatch: { request in
-                            try await console.readFilePatch(request, on: hostID)
-                        },
-                        listUntrackedDirectory: { request in
-                            try await console.listUntrackedDirectory(request, on: hostID)
-                        },
-                        gate: console.gitExecGate(for: hostID),
-                        agentStatus: { [console] in console.agentStatusUpdates(for: agentID) })
-                })
+                ?? AgentChangesPresentation.forAgentDetail(
+                    agentID: agent.id, hostID: hostID, openingDirectory: agent.directory,
+                    console: console))
         _openTerminal = State(
             initialValue: openTerminalStore
                 ?? AgentOpenTerminalStore(
@@ -257,8 +238,10 @@ struct AgentDetailView: View {
                 }
                 .id(openTerminal.destination)
             } else if let store = changes.store {
-                ChangesView(store: store) { changes.close() }
-                    .id(ObjectIdentifier(store))
+                ChangesView(store: store, sharesAgentDetailStore: store === changes.agentStore) {
+                    changes.close()
+                }
+                .id(ObjectIdentifier(store))
             } else {
                 AgentTerminalView(
                     agent: agent,
@@ -312,6 +295,9 @@ struct AgentDetailView: View {
             // Paired with the disappearance below: Changes still open when
             // Agent detail comes back claim the chrome again.
             if changes.store != nil { onShowsChanges?(true) }
+            // Idempotent, so the terminal and Changes trading places keeps
+            // one following rather than restarting it.
+            if agent.directory != nil, isVisible() { changes.startFollowingAgent() }
         }
         .onChange(of: focusViewingState) {
             updateFocus()
@@ -320,6 +306,16 @@ struct AgentDetailView: View {
             hasAppeared = false
             focus.leave()
             if changes.store != nil { onShowsChanges?(false) }
+            // The router's truth, not SwiftUI's: the terminal and Changes
+            // trading places disappears one of them while the page stays.
+            if !isVisible() { changes.stopFollowingAgent() }
+        }
+        .onChange(of: agent.directory == nil) { _, lacksDirectory in
+            if lacksDirectory {
+                changes.stopFollowingAgent()
+            } else if hasAppeared, isVisible() {
+                changes.startFollowingAgent()
+            }
         }
         .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
             prepareRetainedAgent()

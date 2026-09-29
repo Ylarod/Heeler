@@ -20,7 +20,7 @@ Entries reference the issue that motivated them.
   staged, unstaged, or both, with conflicts first. Pull down to read it
   again. Heeler reads the Checkout with git on the Host over SSH, without
   running its hooks or file-system monitor and without rewriting its index,
-  and keeps nothing once Changes closes. (#382)
+  and keeps nothing once Agent detail closes. (#382)
 
 ## [0.1.11] - 2026-09-28
 

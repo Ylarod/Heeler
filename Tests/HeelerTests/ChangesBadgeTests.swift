@@ -124,10 +124,10 @@ struct ChangesBadgeTests {
             ("dark", UITraitCollection(userInterfaceStyle: .dark)),
             (
                 "dark elevated",
-                UITraitCollection(traitsFrom: [
-                    UITraitCollection(userInterfaceStyle: .dark),
-                    UITraitCollection(userInterfaceLevel: .elevated),
-                ])
+                UITraitCollection { traits in
+                    traits.userInterfaceStyle = .dark
+                    traits.userInterfaceLevel = .elevated
+                }
             ),
         ]
         for (name, traits) in appearances {
@@ -162,5 +162,500 @@ struct ChangesBadgeTests {
             channel <= 0.04045 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
         }
         return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+    }
+}
+
+/// Agent detail's own Changes store: one for the life of the detail, read
+/// once the page settles, when the Agent leaves Working, and by Changes
+/// itself, every read through the Host's git exec gate.
+@MainActor
+@Suite("Agent Changes following", .timeLimit(.minutes(1)))
+struct AgentChangesFollowTests {
+    /// An Agent's status stream per store, as the Console hands them out: a
+    /// fresh stream whose first value is the current status.
+    @MainActor
+    final class StatusFeed {
+        private var current: AgentStatus?
+        private var continuations: [AsyncStream<ConsoleStore.AgentStatusUpdate>.Continuation] = []
+
+        init(_ status: AgentStatus?) { current = status }
+
+        func stream() -> AsyncStream<ConsoleStore.AgentStatusUpdate> {
+            let (stream, continuation) = AsyncStream.makeStream(
+                of: ConsoleStore.AgentStatusUpdate.self)
+            continuation.yield(.init(status: current, liveUpdatesAvailable: true))
+            continuations.append(continuation)
+            return stream
+        }
+
+        func send(_ status: AgentStatus?) {
+            current = status
+            for continuation in continuations {
+                continuation.yield(.init(status: status, liveUpdatesAvailable: true))
+            }
+        }
+
+        func finish() {
+            for continuation in continuations { continuation.finish() }
+        }
+    }
+
+    static func presentation(
+        transport: ScriptedTransport,
+        gate: GitExecGate = GitExecGate(),
+        clock: ChangesManualSleeper,
+        feed: StatusFeed,
+        now: @escaping @MainActor () -> Date = { Date(timeIntervalSince1970: 1_000) },
+        announce: @escaping @MainActor (String) -> Void = { _ in }
+    ) -> AgentChangesPresentation {
+        AgentChangesPresentation(makeStoreIn: { fixed in
+            ChangesStore(
+                directory: { fixed ?? "/home/dev/src/tracking" },
+                read: { try await transport.readChanges($0) },
+                readPatch: { try await transport.readFilePatch($0) },
+                gate: gate,
+                agentStatus: { feed.stream() },
+                sleep: { try await clock.sleep($0) },
+                now: now,
+                announce: announce)
+        })
+    }
+
+    private static func badge(_ store: ChangesStore?) -> ChangesBadge? {
+        store.flatMap {
+            ChangesBadge(phase: $0.phase, timedOutKeepingContent: $0.timedOutKeepingContent)
+        }
+    }
+
+    private static func texts(_ store: ChangesStore?) -> String? {
+        badge(store).map { "\($0.addedText()) \($0.removedText())" }
+    }
+
+    @Test func followingReadsOnceAfterTheAppearanceSettles() async throws {
+        let transport = ScriptedTransport()
+        let read = try ChangesBadgeTests.read(added: 12, removed: 7)
+        await transport.scriptChangesReads([.success(read)])
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.idle)
+        defer { feed.finish() }
+        let changes = Self.presentation(transport: transport, clock: clock, feed: feed)
+        changes.startFollowingAgent()
+        defer { changes.stopFollowingAgent() }
+        await Self.drain()
+        #expect(await clock.durations == [.milliseconds(300)])
+        #expect(await transport.changesReadRequests.isEmpty)
+        #expect(changes.isFollowingAgent)
+        let store = try #require(changes.agentStore)
+        #expect(Self.badge(store) == nil)
+
+        await clock.fireAll()
+        await Self.waitUntilSettled(store, .loaded(read.changes))
+        #expect(await transport.changesReadRequests.count == 1)
+        #expect(Self.texts(store) == "+12 \u{2212}7")
+        #expect(changes.store == nil)
+    }
+
+    @Test func leavingBeforeTheSettleNeverReads() async throws {
+        let transport = ScriptedTransport()
+        await transport.scriptChangesReads([.success(try ChangesBadgeTests.read(added: 12, removed: 7))])
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.idle)
+        defer { feed.finish() }
+        let changes = Self.presentation(transport: transport, clock: clock, feed: feed)
+        changes.startFollowingAgent()
+        await Self.drain()
+        changes.stopFollowingAgent()
+        #expect(!changes.isFollowingAgent)
+        await clock.fireAll()
+        await Self.drain()
+        #expect(await transport.changesReadRequests.isEmpty)
+        #expect(changes.agentStore?.phase == .loading)
+    }
+
+    /// Opening Changes reads once more, as it always has, keeping the
+    /// badge's document on screen while it does.
+    @Test func openingChangesAfterTheBadgesReadShowsItAndReadsAgain() async throws {
+        let transport = ScriptedTransport()
+        let first = try ChangesBadgeTests.read(added: 12, removed: 7)
+        let second = try ChangesBadgeTests.read(added: 1, removed: 1)
+        await transport.scriptChangesReads([.success(first), .success(second)])
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.idle)
+        defer { feed.finish() }
+        let changes = Self.presentation(transport: transport, clock: clock, feed: feed)
+        changes.startFollowingAgent()
+        defer { changes.stopFollowingAgent() }
+        await Self.drain()
+        await clock.fireAll()
+        let agentStore = try #require(changes.agentStore)
+        await Self.waitUntilSettled(agentStore, .loaded(first.changes))
+
+        let hold = ScriptedTransportCallGate()
+        await transport.gateNextChangesRead(using: hold)
+        changes.open()
+        let shown = try #require(changes.store)
+        #expect(shown === agentStore)
+        shown.startRefresh()
+        await hold.waitForEntry()
+        #expect(shown.phase == .loaded(first.changes))
+        #expect(shown.isRefreshing)
+        await hold.open()
+        await Self.waitUntilSettled(shown, .loaded(second.changes))
+        #expect(await transport.changesReadRequests.count == 2)
+    }
+
+    @Test func openingChangesDuringTheBadgesReadWaitsForThatRead() async throws {
+        let transport = ScriptedTransport()
+        let read = try ChangesBadgeTests.read(added: 12, removed: 7)
+        await transport.scriptChangesReads([.success(read)])
+        let hold = ScriptedTransportCallGate()
+        await transport.gateNextChangesRead(using: hold)
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.idle)
+        defer { feed.finish() }
+        let changes = Self.presentation(transport: transport, clock: clock, feed: feed)
+        changes.startFollowingAgent()
+        defer { changes.stopFollowingAgent() }
+        await Self.drain()
+        await clock.fireAll()
+        await hold.waitForEntry()
+
+        changes.open()
+        let shown = try #require(changes.store)
+        shown.startRefresh()
+        await Self.drain()
+        #expect(await transport.changesReadRequests.count == 1)
+        #expect(shown.phase == .loading)
+        await hold.open()
+        await Self.waitUntilSettled(shown, .loaded(read.changes))
+        await Self.drain()
+        #expect(await transport.changesReadRequests.count == 1)
+    }
+
+    @Test func backFromChangesKeepsItsFresherReadForTheBadge() async throws {
+        let transport = ScriptedTransport()
+        let first = try ChangesBadgeTests.read(added: 12, removed: 7)
+        let second = try ChangesBadgeTests.read(added: 1, removed: 1)
+        await transport.scriptChangesReads([.success(first), .success(second)])
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.idle)
+        defer { feed.finish() }
+        let changes = Self.presentation(transport: transport, clock: clock, feed: feed)
+        changes.startFollowingAgent()
+        defer { changes.stopFollowingAgent() }
+        await Self.drain()
+        await clock.fireAll()
+        let store = try #require(changes.agentStore)
+        await Self.waitUntilSettled(store, .loaded(first.changes))
+
+        changes.open()
+        store.startRefresh()
+        await Self.waitUntilSettled(store, .loaded(second.changes))
+        let file = try #require(second.changes.files.first { $0.displayPath == "app.txt" })
+        store.openDiff(file)
+        #expect(store.fileDiff.current != nil)
+        changes.close()
+        #expect(changes.store == nil)
+        #expect(changes.agentStore === store)
+        #expect(store.fileDiff.current == nil)
+        #expect(Self.texts(store) == "+1 \u{2212}1")
+        await Self.drain()
+        #expect(await transport.changesReadRequests.count == 2)
+    }
+
+    @Test func aReadStartedByChangesOutlivesBack() async throws {
+        let transport = ScriptedTransport()
+        let first = try ChangesBadgeTests.read(added: 12, removed: 7)
+        let second = try ChangesBadgeTests.read(added: 1, removed: 1)
+        await transport.scriptChangesReads([.success(first), .success(second)])
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.idle)
+        defer { feed.finish() }
+        let changes = Self.presentation(transport: transport, clock: clock, feed: feed)
+        changes.startFollowingAgent()
+        defer { changes.stopFollowingAgent() }
+        await Self.drain()
+        await clock.fireAll()
+        let store = try #require(changes.agentStore)
+        await Self.waitUntilSettled(store, .loaded(first.changes))
+
+        let hold = ScriptedTransportCallGate()
+        await transport.gateNextChangesRead(using: hold)
+        changes.open()
+        store.startRefresh()
+        await hold.waitForEntry()
+        changes.close()
+        await hold.open()
+        await Self.waitUntilSettled(store, .loaded(second.changes))
+        #expect(Self.texts(store) == "+1 \u{2212}1")
+    }
+
+    @Test func leavingWorkingRefreshesTheBadgeThroughTheHostGate() async throws {
+        let transport = ScriptedTransport()
+        let first = try ChangesBadgeTests.read(added: 12, removed: 7)
+        let second = try ChangesBadgeTests.read(added: 1, removed: 1)
+        let third = try ChangesBadgeTests.read(added: 2, removed: 0)
+        await transport.scriptChangesReads([.success(first), .success(second), .success(third)])
+        let gate = GitExecGate()
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.working)
+        defer { feed.finish() }
+        let changes = Self.presentation(transport: transport, gate: gate, clock: clock, feed: feed)
+        changes.startFollowingAgent()
+        defer { changes.stopFollowingAgent() }
+        await Self.drain()
+        await clock.fireAll()
+        let store = try #require(changes.agentStore)
+        await Self.waitUntilSettled(store, .loaded(first.changes))
+
+        // Another git exec on this Host, such as Worktree Changes, holds the gate.
+        let other = ScriptedTransportCallGate()
+        let holder = Task { try await gate.run { await other.waitUntilOpen() } }
+        await other.waitForEntry()
+        feed.send(.done)
+        await Self.drain()
+        await clock.fireAll()
+        await Self.drain()
+        #expect(await transport.changesReadRequests.count == 1)
+        // A second exit while that read waits merges into one follow-up.
+        feed.send(.working)
+        feed.send(.done)
+        await Self.drain()
+        await clock.fireAll()
+        await Self.drain()
+        #expect(await transport.changesReadRequests.count == 1)
+        #expect(Self.texts(store) == "+12 \u{2212}7")
+
+        await other.open()
+        try await holder.value
+        await Self.eventually { await transport.changesReadRequests.count == 3 }
+        await Self.waitUntilSettled(store, .loaded(third.changes))
+        await Self.drain()
+        await clock.fireAll()
+        await Self.drain()
+        #expect(await transport.changesReadRequests.count == 3)
+        #expect(Self.texts(store) == "+2 \u{2212}0")
+    }
+
+    @Test func aTimedOutRefreshHidesTheBadgeAndTheNextSuccessRestoresIt() async throws {
+        let transport = ScriptedTransport()
+        let read = try ChangesBadgeTests.read(added: 12, removed: 7)
+        await transport.scriptChangesReads([
+            .success(read), .failure(TransportError.gitTimedOut), .success(read),
+        ])
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.idle)
+        defer { feed.finish() }
+        let changes = Self.presentation(transport: transport, clock: clock, feed: feed)
+        changes.startFollowingAgent()
+        defer { changes.stopFollowingAgent() }
+        await Self.drain()
+        await clock.fireAll()
+        let store = try #require(changes.agentStore)
+        await Self.waitUntilSettled(store, .loaded(read.changes))
+        #expect(Self.badge(store) != nil)
+
+        await store.refresh()
+        #expect(store.timedOutKeepingContent)
+        #expect(Self.badge(store) == nil)
+        await store.refresh()
+        #expect(Self.texts(store) == "+12 \u{2212}7")
+    }
+
+    @Test func followingNeverReadsWithoutATrigger() async throws {
+        let transport = ScriptedTransport()
+        let read = try ChangesBadgeTests.read(added: 12, removed: 7)
+        await transport.scriptChangesReads([.success(read), .success(read)])
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.idle)
+        defer { feed.finish() }
+        let changes = Self.presentation(transport: transport, clock: clock, feed: feed)
+        changes.startFollowingAgent()
+        defer { changes.stopFollowingAgent() }
+        await Self.drain()
+        await clock.fireAll()
+        let store = try #require(changes.agentStore)
+        await Self.waitUntilSettled(store, .loaded(read.changes))
+        for _ in 0..<5 {
+            await Self.drain()
+            await clock.fireAll()
+        }
+        #expect(await transport.changesReadRequests.count == 1)
+        #expect(await clock.durations == [.milliseconds(300)])
+    }
+
+    /// Leaving drops a read still queued at the Host gate, but a read git is
+    /// already running keeps the gate until it answers, so quickly passing
+    /// through Agents never stacks git processes on one Host.
+    @Test func leavingKeepsARunningReadAndDropsAQueuedOne() async throws {
+        let transport = ScriptedTransport()
+        let first = try ChangesBadgeTests.read(added: 12, removed: 7)
+        let second = try ChangesBadgeTests.read(added: 1, removed: 1)
+        await transport.scriptChangesReads([.success(first), .success(second)])
+        let hold = ScriptedTransportCallGate()
+        await transport.gateNextChangesRead(using: hold)
+        let gate = GitExecGate()
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.idle)
+        defer { feed.finish() }
+        let a = Self.presentation(transport: transport, gate: gate, clock: clock, feed: feed)
+        let b = Self.presentation(transport: transport, gate: gate, clock: clock, feed: feed)
+        defer {
+            a.stopFollowingAgent()
+            b.stopFollowingAgent()
+        }
+        a.startFollowingAgent()
+        await Self.drain()
+        await clock.fireAll()
+        await hold.waitForEntry()
+        a.stopFollowingAgent()
+
+        b.startFollowingAgent()
+        await Self.drain()
+        await clock.fireAll()
+        await Self.drain()
+        #expect(await transport.changesReadRequests.count == 1)
+        b.stopFollowingAgent()
+        await Self.drain()
+
+        await hold.open()
+        let aStore = try #require(a.agentStore)
+        await Self.waitUntilSettled(aStore, .loaded(first.changes))
+        await Self.drain()
+        #expect(await transport.changesReadRequests.count == 1)
+        let bStore = try #require(b.agentStore)
+        #expect(bStore.phase == .loading)
+
+        b.startFollowingAgent()
+        await Self.drain()
+        await clock.fireAll()
+        await Self.waitUntilSettled(bStore, .loaded(second.changes))
+        #expect(await transport.changesReadRequests.count == 2)
+    }
+
+    @Test func automaticUpdatesAnnounceOnlyWhileChangesIsShown() async throws {
+        let transport = ScriptedTransport()
+        let dirty = try ChangesBadgeTests.read(added: 12, removed: 7)
+        let clean = try ChangesStoreTests.read(GitProbeRecordings.clean)
+        await transport.scriptChangesReads([.success(dirty), .success(clean), .success(dirty)])
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.working)
+        defer { feed.finish() }
+        var announcements: [String] = []
+        let changes = Self.presentation(
+            transport: transport, clock: clock, feed: feed,
+            announce: { announcements.append($0) })
+        changes.startFollowingAgent()
+        defer { changes.stopFollowingAgent() }
+        await Self.drain()
+        await clock.fireAll()
+        let store = try #require(changes.agentStore)
+        await Self.waitUntilSettled(store, .loaded(dirty.changes))
+
+        feed.send(.done)
+        await Self.drain()
+        await clock.fireAll()
+        await Self.waitUntilSettled(store, .loaded(clean.changes))
+        #expect(announcements.isEmpty)
+
+        changes.open()
+        feed.send(.working)
+        feed.send(.done)
+        await Self.drain()
+        await clock.fireAll()
+        await Self.waitUntilSettled(store, .loaded(dirty.changes))
+        #expect(announcements == ["Checkout Changes updated."])
+        changes.close()
+    }
+
+    /// Worktree Details offers Changes for the Agent's own linked Worktree.
+    /// Back hands that newer read to the badge; another Checkout's does not.
+    @Test func worktreeChangesOfTheAgentsCheckoutUpdateTheBadgeOnBack() async throws {
+        let transport = ScriptedTransport()
+        let agentRead = try ChangesBadgeTests.read(added: 12, removed: 7)
+        let worktreeRead = try ChangesBadgeTests.read(added: 15, removed: 9)
+        let elsewhere = try ChangesStoreTests.read(GitProbeRecordings.worktree)
+        await transport.scriptChangesReads([
+            .success(agentRead), .success(worktreeRead), .success(elsewhere),
+        ])
+        #expect(elsewhere.changes.checkout.topLevel != agentRead.changes.checkout.topLevel)
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.idle)
+        defer { feed.finish() }
+        var now = Date(timeIntervalSince1970: 1_000)
+        let changes = Self.presentation(
+            transport: transport, clock: clock, feed: feed, now: { now })
+        changes.startFollowingAgent()
+        defer { changes.stopFollowingAgent() }
+        await Self.drain()
+        await clock.fireAll()
+        let store = try #require(changes.agentStore)
+        await Self.waitUntilSettled(store, .loaded(agentRead.changes))
+
+        now = Date(timeIntervalSince1970: 2_000)
+        changes.open(directory: "/home/dev/src/tracking")
+        let worktree = try #require(changes.store)
+        #expect(worktree !== store)
+        await worktree.appear()
+        #expect(worktree.phase == .loaded(worktreeRead.changes))
+        changes.close()
+        #expect(Self.texts(store) == "+15 \u{2212}9")
+        #expect(store.readAt == Date(timeIntervalSince1970: 2_000))
+
+        now = Date(timeIntervalSince1970: 3_000)
+        changes.open(directory: "/home/dev/src/wt")
+        let other = try #require(changes.store)
+        await other.appear()
+        #expect(other.phase == .loaded(elsewhere.changes))
+        changes.close()
+        #expect(Self.texts(store) == "+15 \u{2212}9")
+        #expect(store.readAt == Date(timeIntervalSince1970: 2_000))
+        #expect(await transport.changesReadRequests.count == 3)
+    }
+
+    @Test func thePresentationStopsFollowingWhenItGoesAway() async throws {
+        let transport = ScriptedTransport()
+        await transport.scriptChangesReads([.success(try ChangesBadgeTests.read(added: 12, removed: 7))])
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.idle)
+        defer { feed.finish() }
+        var changes: AgentChangesPresentation? = Self.presentation(
+            transport: transport, clock: clock, feed: feed)
+        changes?.startFollowingAgent()
+        weak let weakStore = changes?.agentStore
+        await Self.drain()
+        #expect(weakStore != nil)
+        changes = nil
+        await Self.drain()
+        await clock.fireAll()
+        await Self.drain()
+        #expect(weakStore == nil)
+        #expect(await transport.changesReadRequests.isEmpty)
+    }
+
+    static func drain() async {
+        for _ in 0..<100 { await Task.yield() }
+    }
+
+    /// The document is published inside the Host gate, a hop before the
+    /// read ends; the next read can start only once it has.
+    static func waitUntilSettled(_ store: ChangesStore, _ phase: ChangesStore.Phase) async {
+        await waitUntil { store.phase == phase && store.activeRead == nil }
+    }
+
+    static func waitUntil(_ condition: () -> Bool) async {
+        for _ in 0..<2_000 {
+            if condition() { return }
+            await Task.yield()
+        }
+        #expect(condition())
+    }
+
+    static func eventually(_ condition: () async -> Bool) async {
+        for _ in 0..<2_000 {
+            if await condition() { return }
+            await Task.yield()
+        }
+        #expect(await condition())
     }
 }

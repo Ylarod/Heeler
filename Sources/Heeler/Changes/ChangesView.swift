@@ -5,9 +5,16 @@ import SwiftUI
 /// nothing here knows git.
 struct ChangesView: View {
     let store: ChangesStore
+    /// Agent detail's own store, which that detail follows and keeps after
+    /// Back for its switcher badge; this view only asks for one read when it
+    /// opens. A Worktree's store is this view's alone.
+    var sharesAgentDetailStore = false
     let onBack: () -> Void
     /// A pull shows the system's own indicator; the bar's is for the rest.
     @State private var isPulling = false
+    /// One read per opening of a shared store: coming back from a view
+    /// pushed over Changes reads nothing new, as `appear()` does.
+    @State private var hasStartedOpeningRead = false
     /// Try Again's read. Like the first read's `.task`, it ends when Changes
     /// leave the screen rather than running on for a store nobody shows.
     @State private var retry: Task<Void, Never>?
@@ -27,8 +34,23 @@ struct ChangesView: View {
                     .id(ObjectIdentifier(diff))
             }
         }
-        .task { await store.appear() }
-        .task { await store.followAgentStatus() }
+        .task {
+            if sharesAgentDetailStore {
+                guard !hasStartedOpeningRead else { return }
+                hasStartedOpeningRead = true
+                // Owned by the store, so Back hands its result to the badge;
+                // a read the badge already started is adopted instead.
+                store.startRefresh()
+            } else {
+                await store.appear()
+            }
+        }
+        .task {
+            // Agent detail's following already drives a shared store, and
+            // this task's end would stop it.
+            guard !sharesAgentDetailStore else { return }
+            await store.followAgentStatus()
+        }
         .onDisappear {
             retry?.cancel()
             store.fileDiff.current?.cancel()

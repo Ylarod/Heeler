@@ -5,12 +5,13 @@ import UIKit
 
 @testable import Heeler
 
-/// Changes opened in place of Agent detail. The presentation owns the only
-/// reference to its store, so closing it discards the content.
+/// Changes opened in place of Agent detail. The Agent's own Changes keep one
+/// store for the life of Agent detail, which its switcher badge reads too;
+/// Worktree Changes get a store of their own that closing discards.
 @MainActor
 @Suite("Changes presentation")
 struct AgentChangesPresentationTests {
-    @Test func openingMakesOneStoreAndClosingDiscardsIt() {
+    @Test func theAgentsChangesAreOneStoreForTheLifeOfAgentDetail() async throws {
         var made = 0
         let presentation = AgentChangesPresentation {
             made += 1
@@ -19,21 +20,25 @@ struct AgentChangesPresentationTests {
             }
         }
         #expect(presentation.store == nil)
+        #expect(presentation.agentStore == nil)
 
         presentation.open()
-        let first = presentation.store
+        let first = try #require(presentation.store)
         presentation.open()
-        #expect(first != nil)
         #expect(presentation.store === first)
+        #expect(presentation.agentStore === first)
         #expect(made == 1)
+        await first.refresh()
+        #expect(first.phase == .failed(ChangesReadError.unavailable.message))
 
         presentation.close()
         #expect(presentation.store == nil)
+        #expect(presentation.agentStore === first)
 
         presentation.open()
-        #expect(presentation.store !== first)
-        #expect(presentation.store?.phase == .loading)
-        #expect(made == 2)
+        #expect(presentation.store === first)
+        #expect(first.phase == .failed(ChangesReadError.unavailable.message))
+        #expect(made == 1)
     }
 
     /// Worktree Details and the dirty-removal refusal hand that Worktree's
@@ -358,9 +363,9 @@ struct AgentDetailChangesTests {
         mode: AgentInputMode
     ) async throws {
         let transport = ScriptedTransport()
-        await transport.scriptChangesReads([
-            .success(try ChangesStoreTests.read(GitProbeRecordings.hostile))
-        ])
+        // Agent detail's badge reads once it settles; opening Changes reads again.
+        let read = try ChangesStoreTests.read(GitProbeRecordings.hostile)
+        await transport.scriptChangesReads([.success(read), .success(read)])
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
@@ -424,9 +429,8 @@ struct AgentDetailChangesTests {
     /// theme's owner, and coming back claims it for Changes again.
     @Test func changesClaimTheChromeAgainWhenAgentDetailComesBack() async throws {
         let transport = ScriptedTransport()
-        await transport.scriptChangesReads([
-            .success(try ChangesStoreTests.read(GitProbeRecordings.clean))
-        ])
+        let read = try ChangesStoreTests.read(GitProbeRecordings.clean)
+        await transport.scriptChangesReads([.success(read), .success(read)])
         let composer = AgentComposerStore(target: "w1:p1") { _ in
             Agent(.fixture(paneID: "w1:p1"))
         }
@@ -550,9 +554,8 @@ struct AgentDetailChangesTests {
     @Test(arguments: [AgentInputMode.composer, .direct])
     func insertingARemovedLineReturnsWithoutSendingAndWaitsForAttach(mode: AgentInputMode) async throws {
         let transport = ScriptedTransport()
-        await transport.scriptChangesReads([
-            .success(try ChangesStoreTests.read(GitProbeRecordings.subdir))
-        ])
+        let read = try ChangesStoreTests.read(GitProbeRecordings.subdir)
+        await transport.scriptChangesReads([.success(read), .success(read)])
         let patch = FilePatch(
             files: GitProbe.parsePatchFiles(Data("""
                 diff --git a/pkg/modified.txt b/pkg/modified.txt

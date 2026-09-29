@@ -357,29 +357,15 @@
             #expect(store.insertionText(for: firstFile) == "Fixtures/receipts/ ")
         }
 
-        /// The Agent detail factory: one store over the console's Changes
-        /// reads, the Host gate, and that Agent's status stream.
+        /// Agent detail's own store, from the production factory: the
+        /// console's Changes reads, the Host gate, and that Agent's status.
         private func productionChangesStore(
             for agent: ConsoleAgent, console: ConsoleStore
         ) -> ChangesStore {
-            let hostID = agent.hostID
-            let agentID = agent.id
-            let openingDirectory = agent.directory
-            return ChangesStore(
-                directory: { [console] in
-                    console.agents.first { $0.id == agentID }?.directory ?? openingDirectory
-                },
-                read: { [console] request in
-                    try await console.readChanges(request, on: hostID)
-                },
-                readPatch: { [console] request in
-                    try await console.readFilePatch(request, on: hostID)
-                },
-                listUntrackedDirectory: { [console] request in
-                    try await console.listUntrackedDirectory(request, on: hostID)
-                },
-                gate: console.gitExecGate(for: hostID),
-                agentStatus: { [console] in console.agentStatusUpdates(for: agentID) })
+            AgentChangesPresentation.forAgentDetail(
+                agentID: agent.id, hostID: agent.hostID, openingDirectory: agent.directory,
+                console: console
+            ).ensureAgentStore()
         }
 
         private func waitUntilDemoAgentsLoad(_ composition: DemoScreenshotComposition) async {

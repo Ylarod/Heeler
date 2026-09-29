@@ -2,10 +2,12 @@ import Foundation
 import Observation
 import UIKit
 
-/// One Changes view's document: the Checkout containing an Agent's current
-/// directory, read over the Transport seam. Owned by the view that shows it
-/// and discarded with it, so nothing outlives the Agent detail it belongs
-/// to. Status edges refresh the list; lazy file reads stay independent.
+/// One Checkout's Changes document: the Checkout containing an Agent's
+/// current directory, read over the Transport seam. Agent detail keeps its
+/// Agent's store for its whole lifetime, shared by the switcher badge and
+/// Changes; a Worktree's store lives only while its Changes are shown. So
+/// nothing outlives the Agent detail it belongs to. Status edges refresh the
+/// list; lazy file reads stay independent.
 @MainActor
 @Observable
 final class ChangesStore {
@@ -66,6 +68,18 @@ final class ChangesStore {
     @ObservationIgnored private let announce: @MainActor (String) -> Void
     @ObservationIgnored var activeRead: Task<Void, Never>?
     @ObservationIgnored var readID = UUID()
+    /// The read that has entered the Transport, which a departing Agent
+    /// detail lets finish rather than stacking another git process.
+    @ObservationIgnored var dispatchedReadID: UUID?
+    /// Counts reads begun, so Agent detail's settled read can tell that
+    /// Changes already read in the meantime.
+    @ObservationIgnored var readsStarted = 0
+    /// Agent detail's current following, so a stale one never stops it.
+    @ObservationIgnored var agentDetailFollowID: UUID?
+    /// Gates "Checkout Changes updated."; false while Agent detail reads its
+    /// store for the badge with Changes closed, since nothing on screen
+    /// changed for VoiceOver to hear about.
+    @ObservationIgnored var announcesAutomaticUpdates = true
 
     var freshness: ChangesFreshness? {
         guard case .loaded = phase, let readAt,
@@ -126,8 +140,9 @@ final class ChangesStore {
             list: GitExecGate.wrapping(gate, operation: listUntrackedDirectory))
     }
 
-    /// Reads once per presentation; returning to the view reads nothing
-    /// new until a read has completed.
+    /// Reads once per store; returning to the view reads nothing new once a
+    /// read has completed. Agent detail's store is read by its own following
+    /// and by `startRefresh()` instead.
     func appear() async {
         startFollowingAgentStatus()
         await applyBufferedOpeningStatus()
@@ -141,14 +156,33 @@ final class ChangesStore {
     }
 
     func refresh(automatic: Bool) async {
-        guard activeRead == nil, !Task.isCancelled else { return }
+        guard let task = startRead(automatic: automatic) else { return }
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    /// Reads the Checkout again without tying the read to the caller: it
+    /// belongs to the store, so leaving the view that asked does not cancel
+    /// it. A read already running is adopted instead of starting another.
+    func startRefresh() {
+        startRead()
+    }
+
+    /// Starts a read owned by the store; nil while one is running.
+    @discardableResult
+    func startRead(automatic: Bool = false) -> Task<Void, Never>? {
+        guard activeRead == nil, !Task.isCancelled else { return nil }
         guard let directory = directory() ?? lastDirectory else {
             phase = .failed("This Agent has no working directory.")
-            return
+            return nil
         }
         lastDirectory = directory
         let id = UUID()
         readID = id
+        readsStarted += 1
         isRefreshing = phase != .loading
         let task = Task { [weak self, gate] in
             guard let self else { return }
@@ -171,17 +205,14 @@ final class ChangesStore {
             if !Task.isCancelled { self.runPendingAutomaticRefresh() }
         }
         activeRead = task
-        await withTaskCancellationHandler {
-            await task.value
-        } onCancel: {
-            task.cancel()
-        }
+        return task
     }
 
     /// Called inside the Host gate, which is released on local completion.
     private func readAndApply(directory: String, id: UUID, automatic: Bool) async {
         guard !Task.isCancelled, readID == id else { return }
         autoRefresh.readSawWorking = autoRefresh.status == .working
+        dispatchedReadID = id
         do {
             let result = try await read(ChangesReadRequest(directory: directory))
             try Task.checkCancellation()
@@ -196,7 +227,7 @@ final class ChangesStore {
             readAt = now()
             autoRefresh.readWasWhileWorking = autoRefresh.readSawWorking || autoRefresh.status == .working
             fileDiff.listDidRefresh(result.changes)
-            if automatic, hadRead {
+            if automatic, hadRead, announcesAutomaticUpdates {
                 let previousFiles: [ChangedFile]?
                 if case .loaded(let old) = previous { previousFiles = old.files } else { previousFiles = nil }
                 if previousFiles != result.changes.files { announce("Checkout Changes updated.") }
@@ -251,5 +282,35 @@ final class ChangesStore {
         activeRead?.cancel()
         activeRead = nil
         isRefreshing = false
+    }
+
+    /// Whether the running read has already entered the Transport.
+    var isReadDispatched: Bool {
+        activeRead != nil && dispatchedReadID == readID
+    }
+
+    /// Back from Changes on Agent detail's store: the document and any read
+    /// stay for the badge; the diff, expansions, and announcements go.
+    func leavePresentation() {
+        announcesAutomaticUpdates = false
+        fileDiff.close()
+        untrackedDirectories.collapseAll()
+    }
+
+    /// Worktree Changes can show the Agent's own Checkout. When that store
+    /// closes with a newer successful read of the same Checkout, this store
+    /// takes its document, keeping its own directory prefix: the totals are
+    /// the whole Checkout's either way.
+    func adoptNewerRead(of other: ChangesStore) {
+        guard case .loaded(let changes) = other.phase, let otherReadAt = other.readAt,
+            case .loaded(let own) = phase, own.checkout.topLevel == changes.checkout.topLevel,
+            otherReadAt > readAt ?? .distantPast
+        else { return }
+        untrackedDirectories.collapseAll()
+        phase = .loaded(changes)
+        readAt = otherReadAt
+        timedOutKeepingContent = false
+        autoRefresh.readWasWhileWorking = other.autoRefresh.readWasWhileWorking
+        fileDiff.listDidRefresh(changes)
     }
 }

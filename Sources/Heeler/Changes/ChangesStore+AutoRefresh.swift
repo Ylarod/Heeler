@@ -33,8 +33,13 @@ final class ChangesAutoRefresh {
 }
 
 extension ChangesStore {
-    /// SwiftUI owns this task across both the list and an open diff. A fresh
-    /// appearance gets a fresh stream; its first value is always a baseline.
+    /// Agent detail waits this long before its first read, so passing
+    /// through Agents quickly costs the Host no git exec.
+    static let appearanceSettle: Duration = .milliseconds(300)
+
+    /// Worktree Changes' SwiftUI task owns this across both the list and an
+    /// open diff. A fresh appearance gets a fresh stream; its first value is
+    /// always a baseline.
     func followAgentStatus() async {
         guard !Task.isCancelled else { return }
         startFollowingAgentStatus()
@@ -123,6 +128,51 @@ extension ChangesStore {
         autoRefresh.debounceID = UUID()
         autoRefresh.debounce?.cancel()
         autoRefresh.debounce = nil
+    }
+
+    /// Agent detail's reads for the switcher badge: one once the page has
+    /// settled, unless Changes read in the meantime or a read is running,
+    /// then one for each exit from Working, until the caller is cancelled.
+    /// No timers: nothing else reads.
+    func followForAgentDetail() async {
+        guard !Task.isCancelled else { return }
+        let id = UUID()
+        agentDetailFollowID = id
+        defer {
+            // The presentation's deinit cancels without stopping first.
+            if agentDetailFollowID == id { stopFollowingForAgentDetail() }
+        }
+        startFollowingAgentStatus()
+        // The baseline lands before the read, as it does for `appear()`.
+        await applyBufferedOpeningStatus()
+        let readsBefore = readsStarted
+        do {
+            try await autoRefresh.sleep(Self.appearanceSettle)
+        } catch {
+            return
+        }
+        guard !Task.isCancelled, agentDetailFollowID == id else { return }
+        if readsStarted == readsBefore { startRead() }
+        guard let status = autoRefresh.statusTask else { return }
+        await withTaskCancellationHandler {
+            await status.value
+        } onCancel: {
+            status.cancel()
+        }
+    }
+
+    /// Agent detail left the screen. A read still queued at the Host gate is
+    /// dropped, but one that git is already running keeps the gate until it
+    /// answers: the remote process cannot be stopped, so the next Agent's
+    /// read queues behind it instead of stacking git processes on the Host.
+    /// The document and an open diff stay for Agent detail's return.
+    func stopFollowingForAgentDetail() {
+        agentDetailFollowID = nil
+        autoRefresh.statusID = UUID()
+        autoRefresh.statusTask?.cancel()
+        autoRefresh.statusTask = nil
+        dropPendingAutomaticRefresh()
+        if activeRead != nil, !isReadDispatched { cancelRead() }
     }
 
     /// Back invalidates replies immediately, even if a test transport ignores
