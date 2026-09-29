@@ -7,6 +7,8 @@ enum DiffPalette {
     static let addedBackground = adaptive(light: 0xEAF3FC, dark: 0x112B41)
     static let removedInk = adaptive(light: 0x8A215B, dark: 0xF1B5D8)
     static let removedBackground = adaptive(light: 0xFBEFF6, dark: 0x3B2032)
+    /// Neutral fill for a side-by-side cell that has no line.
+    static let blankBackground = UIColor.secondarySystemBackground
 
     static func ink(for kind: DiffLine.Kind) -> UIColor {
         switch kind {

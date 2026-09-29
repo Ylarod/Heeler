@@ -44,6 +44,7 @@
         @State private var bannerStore: AgentNotificationBannerStore
         @State private var liveActivities: HostLiveActivityCoordinator
         @State private var activity: AppActivityCoordinator
+        @State private var diffLayout = DiffLayoutSettings(defaults: DemoScreenshotFixture.makeDefaults(), offersSideBySide: UIDevice.current.userInterfaceIdiom == .pad)
 
         init() {
             let composition = DemoScreenshotComposition.make()
@@ -86,6 +87,7 @@
                 activity: activity
             )
             .preferredColorScheme(appearance.preferredColorScheme)
+            .environment(\.diffLayoutSettings, diffLayout)
             .task {
                 console.setHosts(hosts.hosts)
                 notificationPreferences.setHosts(hosts.hosts)

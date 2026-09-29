@@ -48,8 +48,16 @@ private struct FileDiffDocumentView<Footer: View>: View {
     let refreshError: String?
     let footer: Footer
     private let rows: [Row]
+    private let pairedRows: [Row]
+    private let pairRowIDByLineID: [Int: Int]
     private let numberDigits: Int
     @Namespace private var rotor
+    @Environment(\.diffLayoutSettings) private var injectedSettings
+    @ScaledMetric(relativeTo: .callout) private var columnWidth: CGFloat =
+        DiffLayoutPolicy.defaultColumnWidth
+    @State private var usableWidth: CGFloat?
+    /// Not observable: writing it as the user scrolls would rebuild every row.
+    @State private var anchor = DiffScrollAnchor<Row.ID>()
 
     init(patch: FilePatch, refreshError: String?, @ViewBuilder footer: () -> Footer) {
         self.patch = patch
@@ -69,9 +77,25 @@ private struct FileDiffDocumentView<Footer: View>: View {
         }
         self.rows = rows
         numberDigits = String(maximumNumber).count
+        var paired: [Row] = []
+        var lineMap: [Int: Int] = [:]
+        for file in patch.files {
+            paired.append(.file(file))
+            for hunk in file.hunks {
+                paired.append(.hunk(hunk))
+                for side in SideBySideDiff.rows(for: hunk) {
+                    paired.append(.pair(side))
+                    if let left = side.left { lineMap[left.id] = side.id }
+                    if let right = side.right { lineMap[right.id] = side.id }
+                }
+            }
+        }
+        self.pairedRows = paired
+        self.pairRowIDByLineID = lineMap
     }
 
     var body: some View {
+        let decision = self.decision
         ScrollViewReader { scroll in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -87,14 +111,40 @@ private struct FileDiffDocumentView<Footer: View>: View {
                             .foregroundStyle(.secondary)
                             .padding()
                     }
-                    ForEach(rows) { row in
+                    ForEach(decision.layout == .sideBySide ? pairedRows : rows) { row in
                         rowView(row)
                             .id(row.id)
                     }
                     footer
                 }
+                .scrollTargetLayout()
             }
             .accessibilityIdentifier("file-diff-scroll")
+            .scrollPosition(id: scrolledLine, anchor: .top)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                DiffLayoutPolicy.usableWidth(
+                    width: proxy.size.width,
+                    leadingInset: proxy.safeAreaInsets.leading,
+                    trailingInset: proxy.safeAreaInsets.trailing)
+            } action: { usableWidth = $0 }
+            .onAppear { anchor.adopt(scroll) }
+            .onChange(of: decision.layout) { _, layout in
+                keepTopLine(for: layout, proxy: scroll)
+            }
+            .onChange(of: usableWidth) { old, new in
+                guard let old, let new, abs(new - old) >= 1 else {
+                    anchor.adopt(scroll)
+                    return
+                }
+                keepTopLine(for: resolvedLayout(usableWidth: new, columnWidth: columnWidth), proxy: scroll)
+            }
+            .onChange(of: columnWidth) { _, columnWidth in
+                guard let usableWidth else { return }
+                keepTopLine(
+                    for: resolvedLayout(usableWidth: usableWidth, columnWidth: columnWidth),
+                    proxy: scroll)
+            }
+            .animation(nil, value: decision.layout)
             .accessibilityRotor("Hunks") {
                 ForEach(patch.files) { file in
                     ForEach(file.hunks) { hunk in
@@ -114,12 +164,28 @@ private struct FileDiffDocumentView<Footer: View>: View {
                     }
                 }
             }
+            .toolbar {
+                if decision.toggle != .hidden {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Picker("Diff Layout", selection: layoutSelection) {
+                            ForEach(DiffLayout.allCases) { option in
+                                Text(option.title).tag(option)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .disabled(decision.toggle == .disabled)
+                        .accessibilityIdentifier("diff-layout-picker")
+                    }
+                }
+            }
         }
     }
 
     @ViewBuilder
     private func rowView(_ row: Row) -> some View {
         switch row {
+        case .pair(let pair):
+            FileDiffSideBySideRow(row: pair, numberDigits: numberDigits)
         case .file(let file):
             VStack(alignment: .leading, spacing: 6) {
                 Text(file.newPath ?? file.oldPath ?? "File")
@@ -164,14 +230,115 @@ private struct FileDiffDocumentView<Footer: View>: View {
         case file(DiffFile)
         case hunk(DiffHunk)
         case line(DiffLine)
+        case pair(SideBySideRow)
 
         var id: ID {
             switch self {
             case .file(let file): .file(file.id)
             case .hunk(let hunk): .hunk(hunk.id)
             case .line(let line): .line(line.id)
+            case .pair(let pair): .line(pair.id)
             }
         }
+    }
+
+    private var settings: DiffLayoutSettings {
+        injectedSettings ?? .shared
+    }
+
+    private var decision: DiffLayoutDecision {
+        let settings = settings
+        guard settings.offersSideBySide else {
+            return DiffLayoutDecision(layout: .unified, toggle: .hidden)
+        }
+        let preference = settings.layout
+        guard let usableWidth else {
+            return DiffLayoutDecision(layout: .unified, toggle: .disabled)
+        }
+        return DiffLayoutPolicy.resolve(
+            preference: preference,
+            offersSideBySide: true,
+            usableWidth: usableWidth,
+            columnWidth: columnWidth)
+    }
+
+    private var layoutSelection: Binding<DiffLayout> {
+        let settings = settings
+        return Binding(get: { settings.layout }, set: { settings.select($0) })
+    }
+
+    private var scrolledLine: Binding<Row.ID?> {
+        let anchor = anchor
+        return Binding(get: { anchor.top }, set: { anchor.note($0) })
+    }
+
+    /// A side-by-side row id is already a unified line id. The other way
+    /// maps whichever line is at the top onto the pair that shows it.
+    private func anchorTarget(for remembered: Row.ID, layout: DiffLayout) -> Row.ID {
+        guard layout == .sideBySide, case .line(let lineID) = remembered,
+            let pairID = pairRowIDByLineID[lineID]
+        else { return remembered }
+        return .line(pairID)
+    }
+
+    private func resolvedLayout(usableWidth: CGFloat, columnWidth: CGFloat) -> DiffLayout {
+        DiffLayoutPolicy.resolve(
+            preference: settings.layout,
+            offersSideBySide: settings.offersSideBySide,
+            usableWidth: usableWidth,
+            columnWidth: columnWidth
+        ).layout
+    }
+
+    private func keepTopLine(for layout: DiffLayout, proxy: ScrollViewProxy) {
+        anchor.adopt(proxy)
+        guard let top = anchor.top else { return }
+        anchor.restore(anchorTarget(for: top, layout: layout))
+    }
+
+}
+
+/// Reference box for the topmost row. Observable state here would
+/// re-render the whole document on every scrolled line. It lives outside
+/// the generic document view so the deferred scroll can hold it weakly.
+@MainActor
+private final class DiffScrollAnchor<ID: Hashable> {
+    var top: ID?
+    private var proxy: ScrollViewProxy?
+    private var pending: ID?
+    private var generation = 0
+    private var frozen = false
+
+    func adopt(_ proxy: ScrollViewProxy) {
+        self.proxy = proxy
+    }
+
+    func note(_ id: ID?) {
+        guard !frozen, let id else { return }
+        top = id
+    }
+
+    func restore(_ target: ID) {
+        top = target
+        pending = target
+        frozen = true
+        generation += 1
+        let generation = generation
+        Task { [weak self] in
+            await Task.yield()
+            self?.scrollIfCurrent(generation)
+        }
+    }
+
+    private func scrollIfCurrent(_ generation: Int) {
+        guard generation == self.generation else { return }
+        if let proxy, let pending {
+            withTransaction(Transaction(animation: nil)) {
+                proxy.scrollTo(pending, anchor: .top)
+            }
+        }
+        pending = nil
+        frozen = false
     }
 }
 

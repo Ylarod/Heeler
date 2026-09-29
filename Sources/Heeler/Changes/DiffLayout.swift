@@ -5,7 +5,7 @@ import UIKit
 
 /// How a file diff lays out. Side by Side is the default; Unified is the
 /// remembered alternative. The choice is app-wide.
-enum DiffLayout: String, CaseIterable, Identifiable, Sendable {
+enum DiffLayout: String, CaseIterable, Identifiable, Hashable, Sendable {
     case sideBySide
     case unified
 
