@@ -135,11 +135,8 @@ private struct FileDiffDocumentView<Footer: View>: View {
                         VStack(alignment: .leading, spacing: 0) {
                             rowView(row)
                         }
-                        .background {
-                            Color.clear
-                                .anchorPreference(key: DiffLineFramesKey.self, value: .bounds) { frame in
-                                    lineFrameAnchor(for: row, frame)
-                                }
+                        .anchorPreference(key: DiffLineFramesKey.self, value: .bounds) { frame in
+                            lineFrameAnchor(for: row, frame)
                         }
                         .id(row.id)
                     }
@@ -154,11 +151,8 @@ private struct FileDiffDocumentView<Footer: View>: View {
                     // `safeAreaInsets.top` still reports the bar, and adding it
                     // selects the next row.
                     let probe: CGFloat = 4
-                    let inspectionStarted = Date.timeIntervalSinceReferenceDate
                     let inspection = DiffLineFrames.inspect(
                         in: anchors, probe: probe, pendingLine: anchor.pendingLine, proxy: proxy)
-                    let _ = anchor.recordInspection(
-                        anchors: anchors.count, elapsed: Date.timeIntervalSinceReferenceDate - inspectionStarted)
                     let _ = anchor.observe(
                         line: inspection.line.map(Row.ID.line),
                         pendingFrame: inspection.pendingFrame,
@@ -180,7 +174,6 @@ private struct FileDiffDocumentView<Footer: View>: View {
                     trailingInset: proxy.safeAreaInsets.trailing)
             } action: { usableWidth = $0 }
             .onAppear { anchor.adopt(scroll) }
-            .onDisappear { anchor.reportInspection() }
             .onChange(of: decision.layout) { _, layout in
                 keepTopLine(for: layout, proxy: scroll)
             }
@@ -421,20 +414,6 @@ private enum DiffLineFrames {
 /// A restore always clears, including when its target never appears.
 @MainActor
 private final class DiffScrollAnchor<ID: Hashable> {
-    private var inspectionCount = 0
-    private var inspectionAnchorCount = 0
-    private var inspectionSeconds: TimeInterval = 0
-
-    func recordInspection(anchors: Int, elapsed: TimeInterval) {
-        inspectionCount += 1
-        inspectionAnchorCount = max(inspectionAnchorCount, anchors)
-        inspectionSeconds += elapsed
-    }
-
-    func reportInspection() {
-        print("[DEBUG-scroll-fix] inspections=\(inspectionCount) max_anchors=\(inspectionAnchorCount) inspection_ms=\(inspectionSeconds * 1000)")
-    }
-
     var top: ID?
     var needsRestore = false
     private(set) var pendingLine: Int?

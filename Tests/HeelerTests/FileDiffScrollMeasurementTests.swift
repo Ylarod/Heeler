@@ -11,14 +11,17 @@ import UIKit
 @MainActor
 @Suite("File diff scroll measurement", .serialized, .timeLimit(.minutes(1)))
 struct FileDiffScrollMeasurementTests {
-    @Test(arguments: [DiffLayout?.none, .some(.unified), .some(.sideBySide)])
-    func measuresOpeningAndScrollingFiveThousandWrappedLines(layout: DiffLayout?) async throws {
+    @Test(arguments: DiffScrollMeasurementConfiguration.allCases)
+    func measuresOpeningAndScrollingFiveThousandWrappedLines(
+        configuration: DiffScrollMeasurementConfiguration
+    ) async throws {
+        let layout = configuration.layout
         let lineCount = 5_000
         let defaultsName = "diff-scroll-measurement-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: defaultsName))
         defer { defaults.removePersistentDomain(forName: defaultsName) }
         let settings = DiffLayoutSettings(defaults: defaults, offersSideBySide: true)
-        if let layout { settings.select(layout) }
+        settings.select(layout)
         var renderedLayout = "unresolved"
         var viewportWidth: CGFloat = 0
         var openMilliseconds = -1.0
@@ -28,19 +31,19 @@ struct FileDiffScrollMeasurementTests {
             sampler?.stop()
             print(DiffScrollSampler.report(
                 lineCount: lineCount, openMilliseconds: openMilliseconds, sampler: sampler,
-                layout: renderedLayout, requested: layout?.rawValue ?? "automatic", width: viewportWidth))
+                layout: renderedLayout, width: viewportWidth))
         }
-        let patch = Self.patch(lineCount: lineCount, includesLayoutProbe: layout != nil)
+        let patch = Self.patch(lineCount: lineCount, includesLayoutProbe: configuration != .compactUnified)
         let store = FileDiffStore(
             file: FileDiffViewTests.file,
             checkout: FileDiffViewTests.changesRead().changes.checkout,
             read: { _ in patch })
         let started = CACurrentMediaTime()
         let controller = UIHostingController(rootView: FileDiffView(store: store)
-            .environment(\.diffLayoutSettings, layout == nil ? nil : settings)
+            .environment(\.diffLayoutSettings, settings)
             .environment(\.dynamicTypeSize, .large))
         let window = try await makeTestWindow(
-            frame: CGRect(x: 0, y: 0, width: layout == nil ? 402 : 1376, height: layout == nil ? 874 : 1032),
+            frame: CGRect(origin: .zero, size: configuration.size),
             rootViewController: controller)
         defer { window.isHidden = true }
 
@@ -49,7 +52,6 @@ struct FileDiffScrollMeasurementTests {
         let opened = try await Self.waitUntil(timeout: .seconds(10)) {
             controller.view.layoutIfNeeded()
             guard Self.lineIsVisible(0, in: controller.view) else { return false }
-            guard let layout else { return true }
             let lines = patch.files[0].hunks[0].lines
             let label = layout == .sideBySide
                 ? SideBySideRow(id: 0, left: lines[0], right: lines[1]).accessibilityLabel
@@ -61,16 +63,10 @@ struct FileDiffScrollMeasurementTests {
         let scroll = try #require(
             Self.scrollView(in: controller.view), "the laid-out diff has no underlying scroll view")
         viewportWidth = scroll.bounds.width
-        if let layout {
-            renderedLayout = layout.rawValue
-            try #require(abs(viewportWidth - 1376) < 1, "the measured viewport must be 1376 pt wide")
-        } else {
-            renderedLayout = DiffLayoutPolicy.resolve(
-                preference: DiffLayoutSettings.shared.layout,
-                offersSideBySide: DiffLayoutSettings.shared.offersSideBySide,
-                usableWidth: scroll.bounds.width - scroll.safeAreaInsets.left - scroll.safeAreaInsets.right,
-                columnWidth: DiffLayoutPolicy.defaultColumnWidth, numberDigits: 4).layout.rawValue
-        }
+        renderedLayout = layout.rawValue
+        try #require(
+            abs(viewportWidth - configuration.size.width) < 1,
+            "the measured viewport must match the requested width")
         let activeSampler = DiffScrollSampler(
             scroll: scroll, root: controller.view, lastLine: lineCount - 1,
             maximumFramesPerSecond: window.screen.maximumFramesPerSecond)
@@ -269,7 +265,7 @@ private final class DiffScrollSampler: NSObject {
 
     static func report(
         lineCount: Int, openMilliseconds: Double, sampler: DiffScrollSampler?,
-        layout: String, requested: String, width: CGFloat
+        layout: String, width: CGFloat
     ) -> String {
         let intervals = sampler?.intervals ?? []
         let budget = sampler?.budget ?? 0
@@ -293,10 +289,26 @@ private final class DiffScrollSampler: NSObject {
             }
         }
         return String(
-            format: "DIFF-SCROLL-MEASUREMENT layout=%@ requested=%@ width=%.0f lines=%d open_ms=%.2f frames=%d scroll_s=%.3f p50_ms=%.2f p95_ms=%.2f max_ms=%.2f budget_ms=%.2f frames_over_2x=%d longest_run_over_2x=%d reached_bottom=%d returned_to_top=%d",
-            layout, requested, width, lineCount, openMilliseconds, intervals.count, sampler?.duration ?? 0,
+            format: "DIFF-SCROLL-MEASUREMENT layout=%@ width=%.0f lines=%d open_ms=%.2f frames=%d scroll_s=%.3f p50_ms=%.2f p95_ms=%.2f max_ms=%.2f budget_ms=%.2f frames_over_2x=%d longest_run_over_2x=%d reached_bottom=%d returned_to_top=%d",
+            layout, width, lineCount, openMilliseconds, intervals.count, sampler?.duration ?? 0,
             percentile(0.5), percentile(0.95), (sorted.last ?? 0) * 1_000,
             budget * 1_000, longFrames, longestRun,
             sampler?.reachedBottom == true ? 1 : 0, sampler?.returnedToTop == true ? 1 : 0)
+    }
+}
+
+/// Explicit settings and dimensions shared by both measurement suites.
+/// Keep the original narrow stress case as well as both wide iPad layouts.
+enum DiffScrollMeasurementConfiguration: String, CaseIterable, Sendable {
+    case compactUnified
+    case wideUnified
+    case sideBySide
+
+    var layout: DiffLayout { self == .sideBySide ? .sideBySide : .unified }
+
+    var size: CGSize {
+        self == .compactUnified
+            ? CGSize(width: 402, height: 874)
+            : CGSize(width: 1376, height: 1032)
     }
 }
