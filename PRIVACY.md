@@ -29,8 +29,9 @@ Agent Notifications use the limited-purpose Push Relay described below.
   only over the direct SSH connection between your device and your Host. The
   limited notification data described below takes a separate route.
 - **Changes.** While Agent detail is open for an Agent with a working
-  directory, Heeler asks git on your Host for the Checkout's changed file
-  names and line counts: when Agent detail opens, when the Agent stops
+  directory, Heeler asks git on your Host for the Checkout's branch or
+  detached commit, its latest commit's subject and time, and its changed
+  file names and line counts: when Agent detail opens, when the Agent stops
   working, and when you open Changes. Changes also asks for file contents
   and diffs as you open them. They travel only over the direct SSH
   connection between your device and your Host, and Heeler keeps them in
