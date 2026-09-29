@@ -26,12 +26,20 @@ struct ChangesBadgeTests {
         ChangesBadge(phase: .loaded(changes), timedOutKeepingContent: false)
     }
 
+    /// The Changes header writes the same exact counts, zeroes included.
+    private static func expectHeaderMatches(_ badge: ChangesBadge, _ changes: CheckoutChanges) {
+        let header = ChangesLineCounts.texts(
+            added: changes.totals.added, removed: changes.totals.removed, showsZeroes: true)
+        #expect(header.added == badge.addedText())
+        #expect(header.removed == badge.removedText())
+    }
+
     @Test func showsTheHeadersLineTotalsForALoadedDirtyCheckout() throws {
         let changes = try Self.read(added: 12, removed: 7).changes
         let badge = try #require(Self.badge(changes))
         #expect(badge.addedText(locale: Self.english) == "+12")
         #expect(badge.removedText(locale: Self.english) == "\u{2212}7")
-        #expect(changes.totalsSummary.contains("\(badge.addedText()) \(badge.removedText()) lines"))
+        Self.expectHeaderMatches(badge, changes)
         #expect(badge.accessibilityValue == "12 lines added, 7 lines removed")
     }
 
@@ -70,7 +78,7 @@ struct ChangesBadgeTests {
         let badge = try #require(Self.badge(changes))
         #expect(badge.addedText(locale: Self.english) == "+0")
         #expect(badge.removedText(locale: Self.english) == "\u{2212}0")
-        #expect(changes.totalsSummary.contains("\(badge.addedText()) \(badge.removedText()) lines"))
+        Self.expectHeaderMatches(badge, changes)
         #expect(
             badge.accessibilityValue
                 == "0 lines added, 0 lines removed, 2 files changed, 1 untracked item")

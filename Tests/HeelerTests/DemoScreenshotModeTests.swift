@@ -456,7 +456,6 @@
                 if file.kind == .untracked {
                     #expect(file.lineCounts == nil)
                     #expect(file.staging == nil)
-                    #expect(file.countsSummary == "New")
                 } else {
                     #expect(file.lineCounts != nil)
                 }

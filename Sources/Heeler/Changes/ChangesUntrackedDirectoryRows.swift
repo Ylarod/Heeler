@@ -23,7 +23,7 @@ struct ChangesUntrackedDirectoryRows: View {
 
     private var directoryRow: some View {
         Button(action: toggle) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)

@@ -44,6 +44,12 @@ struct CheckoutLocation: Sendable, Equatable, Hashable {
     /// The top level with the Host's home directory shortened to `~`.
     let displayPath: String
 
+    /// The top level's last path component, as "storefront".
+    var name: String {
+        let component = displayPath.split(separator: "/").last.map(String.init) ?? ""
+        return component.isEmpty ? displayPath : component
+    }
+
     /// Whether `directory` is the top level or lies beneath it, compared as
     /// raw path bytes. A directory spelled through a symlink does not
     /// match, which costs its caller only a read of its own.
@@ -198,8 +204,55 @@ struct ChangedFile: Sendable, Equatable, Identifiable {
         return accessibilityLabel + ", " + lineCounts.accessibilityLabel
     }
 
-    var countsSummary: String? {
-        kind == .untracked ? "New" : lineCounts?.summary
+    /// The last path component. A directory keeps its trailing slash.
+    var fileName: String { Self.split(displayPath).name }
+
+    /// The path's directory, empty at the top level.
+    var directory: String { Self.split(displayPath).directory }
+
+    /// The row's second line: the directory, where a rename came from, an
+    /// untracked folder, and staging, as "Sources/Checkout · staged". The
+    /// change letter carries the kind, and unstaged is the unmarked case.
+    /// Nil for an unstaged file at the top level.
+    var rowSubtitle: String? {
+        var parts: [String] = []
+        var startsWithPhrase = false
+        func phrase(_ text: String) {
+            if parts.isEmpty { startsWithPhrase = true }
+            parts.append(text)
+        }
+        if let displayOriginalPath {
+            let original = Self.split(displayOriginalPath)
+            if original.name == fileName, !original.directory.isEmpty, !directory.isEmpty {
+                parts.append("\(original.directory) → \(directory)")
+            } else if original.directory == directory {
+                if !directory.isEmpty { parts.append(directory) }
+                phrase("from \(original.name)")
+            } else {
+                if !directory.isEmpty { parts.append(directory) }
+                phrase("from \(displayOriginalPath)")
+            }
+        } else if !directory.isEmpty {
+            parts.append(directory)
+        }
+        if isUntrackedDirectory { phrase("untracked folder") }
+        switch staging {
+        case .staged: phrase("staged")
+        case .both: phrase("staged and unstaged")
+        case .unstaged, nil: break
+        }
+        guard !parts.isEmpty else { return nil }
+        if startsWithPhrase {
+            parts[0] = parts[0].prefix(1).uppercased() + parts[0].dropFirst()
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private static func split(_ path: String) -> (directory: String, name: String) {
+        let trimmed = path.hasSuffix("/") ? String(path.dropLast()) : path
+        guard let slash = trimmed.lastIndex(of: "/") else { return ("", path) }
+        let name = String(path[path.index(after: slash)...])
+        return (String(trimmed[..<slash]), name)
     }
 
     static func displayText(_ bytes: Data) -> String {
@@ -259,11 +312,23 @@ enum ChangesReadError: Error, Sendable, Equatable {
 }
 
 extension CheckoutChanges {
-    /// Both totals summaries start with the files-changed count, which is
-    /// only a lower bound when the Host capped its status output.
+    /// The header's file counts and its VoiceOver summary both start with
+    /// the files-changed count, which is only a lower bound when the Host
+    /// capped its status output.
     private var fileCountQualifier: String { isStatusTruncated ? "more than " : "" }
 
-    var totalsSummary: String { fileCountQualifier + totals.summary }
+    /// The header's file counts, as "11 changed · 3 untracked". Line
+    /// totals show beside it on their own.
+    var filesSummary: String {
+        var parts: [String] = []
+        if totals.trackedFiles > 0 || isStatusTruncated {
+            parts.append(fileCountQualifier + "\(totals.trackedFiles.formatted()) changed")
+        }
+        if totals.untrackedItems > 0 {
+            parts.append("\(totals.untrackedItems.formatted()) untracked")
+        }
+        return parts.joined(separator: " · ")
+    }
 
     /// What VoiceOver reads for the header, as one element: the Checkout,
     /// its linked Worktree marker, the branch or detached commit, and the
@@ -331,13 +396,6 @@ struct ChangesTotals: Sendable, Equatable {
     var untrackedSummary: String {
         "\(untrackedItems.formatted()) untracked \(untrackedItems == 1 ? "item" : "items")"
     }
-
-    var linesSummary: String {
-        guard linesAreAvailable else { return "Line counts unavailable" }
-        return (linesAreComplete ? "" : "At least ") + LineCounts.lines(added: added, removed: removed).summary
-    }
-
-    var summary: String { "\(filesSummary) · \(linesSummary) · \(untrackedSummary)" }
 
     var accessibilitySummary: String {
         let lines = linesAreAvailable

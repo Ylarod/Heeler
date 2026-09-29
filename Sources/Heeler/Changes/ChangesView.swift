@@ -72,7 +72,7 @@ struct ChangesView: View {
                 Section {
                     ChangesHeader(changes: changes, freshness: store.freshness)
                 }
-                Section {
+                Section("Files") {
                     if changes.isClean {
                         Text(ChangesStore.cleanMessage)
                             .foregroundStyle(.secondary)
@@ -130,8 +130,9 @@ struct ChangesView: View {
     }
 }
 
-/// The Checkout, its branch or detached commit, and the latest commit. One
-/// VoiceOver element whose summary names the Checkout and never an Agent.
+/// The Checkout by name and path, its branch with its upstream, the latest
+/// commit, and its totals. One VoiceOver element whose summary names the
+/// Checkout and never an Agent.
 private struct ChangesHeader: View {
     let changes: CheckoutChanges
     let freshness: ChangesFreshness?
@@ -140,40 +141,47 @@ private struct ChangesHeader: View {
     var body: some View {
         // The latest commit's age is relative, so it moves on by itself.
         TimelineView(.periodic(from: .now, by: 60)) { context in
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(changes.checkout.displayPath)
-                        .font(.body.monospaced())
-                        .fixedSize(horizontal: false, vertical: true)
-                    if changes.checkout.isLinkedWorktree {
-                        Text("Worktree")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Capsule().fill(.quaternary))
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(verbatim: changes.checkout.name)
+                            .font(.title3.weight(.semibold))
+                        if changes.checkout.isLinkedWorktree {
+                            Text("Worktree")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(.quaternary))
+                        }
                     }
-                }
-                HStack(spacing: 6) {
-                    Image(
-                        systemName: changes.head.branch == .detached
-                            ? "smallcircle.filled.circle" : "arrow.triangle.branch")
-                        .imageScale(.small)
+                    Text(verbatim: changes.checkout.displayPath)
+                        .font(.caption.monospaced())
                         .foregroundStyle(.secondary)
-                    Text(changes.head.branchTitle)
                 }
-                .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+                ChangesBranchRow(head: changes.head)
                 if let latest = changes.head.latestCommit {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(latest.subject)
-                            .font(.subheadline)
-                            .lineLimit(3)
-                        Text(latest.age(relativeTo: context.date, locale: locale))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        ChangesHeaderIcon(systemName: "smallcircle.circle")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(latest.subject)
+                                .font(.subheadline)
+                                .lineLimit(3)
+                            Text(latest.age(relativeTo: context.date, locale: locale))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
-                ChangesHeadDetails(head: changes.head)
-                ChangesTotalsLine(summary: changes.totalsSummary)
+                if changes.head.isUnborn {
+                    Text("No commits yet")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                if !changes.isClean {
+                    Divider()
+                    ChangesTotalsRow(changes: changes)
+                }
                 if let freshness {
                     Text(freshness.text(relativeTo: context.date, locale: locale))
                         .font(.caption)
@@ -181,6 +189,7 @@ private struct ChangesHeader: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            .padding(.vertical, 4)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(
                 changes.accessibilitySummary(relativeTo: context.date, locale: locale)
@@ -191,29 +200,47 @@ private struct ChangesHeader: View {
     }
 }
 
-/// One file: a change-kind badge beside its path, which wraps under itself
-/// rather than under the badge, and its kind and staging below.
+/// One file, as VS Code lists it: its name, with its directory, rename, and
+/// staging beneath, then its line counts and its change letter. VoiceOver
+/// reads its path, kind, staging, and counts.
 struct ChangesFileRow: View {
     let file: ChangedFile
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(file.kind.symbol)
-                .font(.caption.monospaced().weight(.bold))
-                .frame(minWidth: 20)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous).fill(.quaternary))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(file.displayPath)
-                    .font(.callout.monospaced())
-                ChangedFileDetails(file: file)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: file.fileName)
+                    .font(.callout)
+                    .strikethrough(file.kind == .deleted, color: .secondary)
+                if let subtitle = file.rowSubtitle {
+                    Text(verbatim: subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            trailing
+            Text(verbatim: file.kind.symbol)
+                .font(.subheadline.monospaced().weight(.bold))
+                .foregroundStyle(Color(uiColor: ChangeKindPalette.color(for: file.kind)))
+                .frame(minWidth: 16)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(file.rowAccessibilityLabel)
+    }
+
+    @ViewBuilder
+    private var trailing: some View {
+        if file.kind == .untracked {
+            if !file.isUntrackedDirectory {
+                Text("New")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        } else if let lineCounts = file.lineCounts {
+            ChangesLineCounts(counts: lineCounts, font: .footnote.weight(.medium))
+        }
     }
 }
 

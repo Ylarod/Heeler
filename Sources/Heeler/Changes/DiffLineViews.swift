@@ -305,7 +305,7 @@ struct FileDiffFileBar: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             if let lineCounts {
-                FileDiffLineCounts(counts: lineCounts)
+                ChangesLineCounts(counts: lineCounts)
             }
         }
         .padding(.horizontal, 16)
@@ -316,37 +316,6 @@ struct FileDiffFileBar: View {
         .accessibilityValue(
             [detail, summary, lineCounts?.accessibilityLabel].compactMap(\.self)
                 .joined(separator: ", "))
-    }
-}
-
-/// "+4 −8" in the diff's inks, or "Binary".
-struct FileDiffLineCounts: View {
-    let counts: LineCounts
-    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
-
-    var body: some View {
-        let palette = DiffPalette.current(differentiatingWithoutColor: differentiateWithoutColor)
-        Group {
-            switch counts {
-            case .lines(let added, let removed):
-                HStack(spacing: 5) {
-                    if added > 0 || removed == 0 {
-                        Text(verbatim: "+\(added.formatted())")
-                            .foregroundStyle(Color(uiColor: palette.added.ink))
-                    }
-                    if removed > 0 {
-                        Text(verbatim: "−\(removed.formatted())")
-                            .foregroundStyle(Color(uiColor: palette.removed.ink))
-                    }
-                }
-            case .binary:
-                Text("Binary")
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .font(.footnote.weight(.semibold))
-        .monospacedDigit()
-        .fixedSize()
     }
 }
 

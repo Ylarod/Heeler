@@ -14,15 +14,15 @@ struct ChangesStoreLineCountsTests {
             == .lines(added: 3, removed: 1))
         let binary = try #require(changes.files.first { $0.displayPath == "logo.bin" })
         #expect(binary.lineCounts == .binary)
-        #expect(binary.countsSummary == "Binary")
         #expect(binary.rowAccessibilityLabel == "logo.bin, modified, staged, binary")
         let new = try #require(changes.files.first { $0.displayPath == "notes.txt" })
         #expect(new.lineCounts == nil)
-        #expect(new.countsSummary == "New")
         #expect(new.rowAccessibilityLabel == "notes.txt, untracked")
         #expect(changes.totals.trackedFiles == 2)
         #expect(changes.totals.untrackedItems == 1)
-        #expect(changes.totals.summary == "2 files changed · +3 −1 lines · 1 untracked item")
+        #expect(changes.totals.added == 3)
+        #expect(changes.totals.removed == 1)
+        #expect(changes.filesSummary == "2 changed · 1 untracked")
         #expect(changes.totals.accessibilitySummary
             == "2 files changed. 3 lines added, 1 line removed in tracked files. 1 untracked item")
     }
@@ -55,7 +55,9 @@ struct ChangesStoreLineCountsTests {
         #expect(!changes.head.isUnborn)
         #expect(summary(changes).contains("Detached at 4f87954."))
         #expect(!summary(changes).contains("No commits yet"))
-        #expect(changes.totals.summary == "1 file changed · +1 −0 lines · 0 untracked items")
+        #expect(changes.totals.added == 1)
+        #expect(changes.totals.removed == 0)
+        #expect(changes.filesSummary == "1 changed")
     }
 
     @Test func anUnbornCheckoutSaysNoCommitsYetOnBothObjectFormats() async throws {
@@ -175,5 +177,100 @@ struct ChangesStoreLineCountsTests {
         changes.accessibilitySummary(
             relativeTo: Date(timeIntervalSince1970: 1_790_600_000),
             locale: Locale(identifier: "en_US"))
+    }
+}
+
+@Suite("Changes list row text")
+struct ChangesRowTextTests {
+    @Test func aRowNamesTheFileAndItsDirectory() {
+        let file = Self.file("Sources/Checkout/CartStore.swift", staging: .unstaged)
+        #expect(file.fileName == "CartStore.swift")
+        #expect(file.directory == "Sources/Checkout")
+        #expect(file.rowSubtitle == "Sources/Checkout")
+        let topLevel = Self.file("README.md", staging: .unstaged)
+        #expect(topLevel.fileName == "README.md")
+        #expect(topLevel.directory == "")
+        #expect(topLevel.rowSubtitle == nil)
+    }
+
+    @Test func stagingIsMarkedAndUnstagedIsNot() {
+        #expect(Self.file("a/b.swift", staging: .staged).rowSubtitle == "a · staged")
+        #expect(Self.file("a/b.swift", staging: .both).rowSubtitle == "a · staged and unstaged")
+        #expect(Self.file("b.swift", staging: .staged).rowSubtitle == "Staged")
+        #expect(Self.file("a/b.swift", kind: .conflicted, staging: nil).rowSubtitle == "a")
+    }
+
+    @Test func aRenameShowsWhereItCameFrom() {
+        // Moved between directories under the same name.
+        #expect(
+            Self.file(
+                "Sources/Shipping/ShippingRates.swift",
+                from: "Sources/Checkout/ShippingRates.swift", kind: .renamed, staging: .staged
+            ).rowSubtitle == "Sources/Checkout → Sources/Shipping · staged")
+        // Renamed in place.
+        #expect(
+            Self.file(
+                "Sources/Checkout/PaymentSheet.swift",
+                from: "Sources/Checkout/LegacyPaymentSheet.swift", kind: .renamed, staging: .staged
+            ).rowSubtitle == "Sources/Checkout · from LegacyPaymentSheet.swift · staged")
+        // Renamed and moved, or moved to or from the top level.
+        #expect(
+            Self.file("New/b.swift", from: "Old/a.swift", kind: .renamed, staging: .staged)
+                .rowSubtitle == "New · from Old/a.swift · staged")
+        #expect(
+            Self.file("b.swift", from: "Old/b.swift", kind: .renamed, staging: .staged)
+                .rowSubtitle == "From Old/b.swift · staged")
+    }
+
+    @Test func anUntrackedFolderKeepsItsSlashAndSaysSo() {
+        let nested = Self.file("Fixtures/receipts/", kind: .untracked, staging: nil)
+        #expect(nested.fileName == "receipts/")
+        #expect(nested.directory == "Fixtures")
+        #expect(nested.rowSubtitle == "Fixtures · untracked folder")
+        let topLevel = Self.file("Fixtures/", kind: .untracked, staging: nil)
+        #expect(topLevel.fileName == "Fixtures/")
+        #expect(topLevel.rowSubtitle == "Untracked folder")
+        #expect(Self.file("notes.txt", kind: .untracked, staging: nil).rowSubtitle == nil)
+    }
+
+    @Test func theHeaderCountsChangedAndUntrackedFilesApart() {
+        #expect(Self.changes(tracked: 11, untracked: 3).filesSummary == "11 changed · 3 untracked")
+        #expect(Self.changes(tracked: 2, untracked: 0).filesSummary == "2 changed")
+        #expect(Self.changes(tracked: 0, untracked: 1).filesSummary == "1 untracked")
+        #expect(
+            Self.changes(tracked: 500, untracked: 0, truncated: true).filesSummary
+                == "more than 500 changed")
+    }
+
+    @Test func aCheckoutIsNamedByItsLastComponent() {
+        #expect(Self.location("~/src/storefront").name == "storefront")
+        #expect(Self.location("/workspace/heeler/").name == "heeler")
+        #expect(Self.location("~").name == "~")
+        #expect(Self.location("/").name == "/")
+    }
+
+    private static func file(
+        _ path: String, from original: String? = nil, kind: ChangedFile.Kind = .modified,
+        staging: ChangedFile.Staging?
+    ) -> ChangedFile {
+        ChangedFile(
+            path: Data(path.utf8), originalPath: original.map { Data($0.utf8) }, kind: kind,
+            staging: staging)
+    }
+
+    private static func location(_ displayPath: String) -> CheckoutLocation {
+        CheckoutLocation(topLevel: Data(), isLinkedWorktree: false, displayPath: displayPath)
+    }
+
+    private static func changes(tracked: Int, untracked: Int, truncated: Bool = false)
+        -> CheckoutChanges
+    {
+        var changes = CheckoutChanges(
+            checkout: location("~/src/app"),
+            head: CheckoutHead(branch: .named("main"), commit: nil, latestCommit: nil),
+            files: [])
+        changes.totals = ChangesTotals(trackedFiles: tracked, untrackedItems: untracked)
+        changes.isStatusTruncated = truncated
+        return changes
     }
 }

@@ -13,11 +13,13 @@ Entries reference the issue that motivated them.
   without opening a terminal. Open it from the Agent's More menu, in
   Composer or Direct Input, whenever the Agent has a working directory; it
   takes the place of Agent detail, and Back returns to the Agent with its
-  draft and input mode as they were. A header names the Checkout by its Host
-  path, marks a linked Worktree, and shows the branch or detached commit and
-  the latest commit's subject and age. Below it, each changed file is listed
-  as modified, added, deleted, renamed, untracked, or conflicted, and as
-  staged, unstaged, or both, with conflicts first. Pull down to read it
+  draft and input mode as they were. A header names the Checkout by its folder
+  over its Host path, marks a linked Worktree, and shows the branch or
+  detached commit with how far it is ahead of and behind its upstream, the
+  latest commit's subject and age, and the Checkout's line totals and file
+  counts. Below it, each changed file is listed by name over its folder,
+  with its line counts, whether it is staged, and a letter for modified,
+  added, deleted, renamed, untracked, or conflicted, with conflicts first. Pull down to read it
   again. Each Agent's row in the Agents list ends its second line with the
   Checkout's line totals, such as +12 −7 in green and red, matching the
   Changes header. The list reads them itself: when a row first shows, and
