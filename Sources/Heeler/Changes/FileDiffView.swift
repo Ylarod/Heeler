@@ -122,6 +122,9 @@ private struct FileDiffDocumentView<Footer: View>: View {
                     }
                     ForEach(decision.layout == .sideBySide ? pairedRows : rows) { row in
                         rowView(row)
+                            .anchorPreference(key: DiffLineFramesKey.self, value: .bounds) { frame in
+                                lineFrameAnchor(for: row, frame)
+                            }
                             .id(row.id)
                     }
                     footer
@@ -211,12 +214,21 @@ private struct FileDiffDocumentView<Footer: View>: View {
         }
     }
 
+    /// Line and pair rows publish the frame that tracks the readable edge.
+    /// File and hunk headers publish nothing.
+    private func lineFrameAnchor(for row: Row, _ frame: Anchor<CGRect>) -> [Int: Anchor<CGRect>] {
+        switch row {
+        case .line(let line): [line.id: frame]
+        case .pair(let pair): [pair.id: frame]
+        case .file, .hunk: [:]
+        }
+    }
+
     @ViewBuilder
     private func rowView(_ row: Row) -> some View {
         switch row {
         case .pair(let pair):
             FileDiffSideBySideRow(row: pair, numberDigits: numberDigits)
-                .anchorPreference(key: DiffLineFramesKey.self, value: .bounds) { [pair.id: $0] }
         case .file(let file):
             VStack(alignment: .leading, spacing: 6) {
                 Text(file.newPath ?? file.oldPath ?? "File")
@@ -248,7 +260,6 @@ private struct FileDiffDocumentView<Footer: View>: View {
                 .accessibilityRotorEntry(id: row.id, in: rotor)
         case .line(let line):
             FileDiffLineRow(line: line, numberDigits: numberDigits)
-                .anchorPreference(key: DiffLineFramesKey.self, value: .bounds) { [line.id: $0] }
         }
     }
 
@@ -441,13 +452,20 @@ private final class DiffScrollAnchor<ID: Hashable> {
     }
 
     /// Latest probe sample. Ignored while a restore is in flight so the new
-    /// layout cannot replace the line captured at the change.
+    /// layout cannot replace the line captured at the change. A sample with
+    /// no line means a header is on the edge, so the remembered line is cleared
+    /// and a later switch does not scroll back to it.
     func observe(line: ID?, pendingFrame: CGRect?, probe: CGFloat, readerHeight: CGFloat) {
         sampleToken &+= 1
         sampleProbe = probe
         sampleContainerHeight = containerHeight > 1 ? containerHeight : readerHeight
         samplePendingFrame = pendingFrame
-        guard let line, !frozen else { return }
+        guard !frozen else { return }
+        guard let line else {
+            live = nil
+            top = nil
+            return
+        }
         live = line
         top = line
     }
