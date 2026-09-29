@@ -26,7 +26,7 @@ struct ChangesLineCounts: View {
             switch counts {
             case .lines(let added, let removed) where showsZeroes || added > 0 || removed > 0:
                 let texts = Self.texts(added: added, removed: removed, showsZeroes: showsZeroes)
-                HStack(spacing: 5) {
+                HStack(spacing: 4) {
                     if let added = texts.added {
                         Text(verbatim: added)
                             .foregroundStyle(Color(uiColor: palette.added.ink))
@@ -133,7 +133,7 @@ struct ChangesTotalsRow: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         } else {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
                 if !totals.linesAreComplete {
                     Text("At least")
                         .font(.caption)
@@ -141,7 +141,7 @@ struct ChangesTotalsRow: View {
                 }
                 ChangesLineCounts(
                     counts: .lines(added: totals.added, removed: totals.removed),
-                    font: .title2.weight(.semibold), showsZeroes: true)
+                    font: .title3.weight(.semibold), showsZeroes: true)
             }
         }
     }

@@ -141,7 +141,7 @@ private struct ChangesHeader: View {
     var body: some View {
         // The latest commit's age is relative, so it moves on by itself.
         TimelineView(.periodic(from: .now, by: 60)) { context in
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(verbatim: changes.checkout.name)
