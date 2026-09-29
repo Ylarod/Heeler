@@ -647,6 +647,23 @@ struct AgentDetailChangesTests {
         isVisible: @escaping () -> Bool = { true },
         onShowsChanges: @escaping (Bool) -> Void
     ) -> AgentDetailView {
+        detailBuilder(
+            attach: attach, composer: composer, inputMode: inputMode, defaults: defaults,
+            changes: changes, isVisible: isVisible, onShowsChanges: onShowsChanges)(agent)
+    }
+
+    /// Builds Agent detail for whichever value of its Agent the host hands
+    /// it, over one Console and one set of settings, as the Console rebuilds
+    /// its detail column when that Agent's state changes.
+    private static func detailBuilder(
+        attach: AgentAttachStore,
+        composer: AgentComposerStore,
+        inputMode: AgentInputModeSettings,
+        defaults: UserDefaults,
+        changes: AgentChangesPresentation,
+        isVisible: @escaping () -> Bool = { true },
+        onShowsChanges: @escaping (Bool) -> Void
+    ) -> @MainActor (ConsoleAgent) -> AgentDetailView {
         let console = ConsoleStore(snapshotRetryDelay: .seconds(30)) { _, subscriptions in
             EventsSession(
                 subscriptions: subscriptions,
@@ -659,22 +676,27 @@ struct AgentDetailChangesTests {
             zoom: TerminalZoomSettings(defaults: defaults),
             fonts: TerminalFontSettings(defaults: defaults),
             snippets: SnippetStore(defaults: defaults))
-        return AgentDetailView(
-            agent: agent,
-            console: console,
-            terminal: terminal,
-            inputMode: inputMode,
-            hosts: [],
-            activity: AppActivityCoordinator(),
-            keyboardHandoff: TerminalKeyboardHandoff(),
-            keyboardInset: TerminalKeyboardInset(),
-            stage: AgentDetailStage(isVisible: isVisible, terminalAccess: { .holds }),
-            onSwitch: { _ in },
-            onClosed: {},
-            onShowsChanges: onShowsChanges,
-            composerStore: composer,
-            attachStore: attach,
-            changesPresentation: changes)
+        let activity = AppActivityCoordinator()
+        let keyboardHandoff = TerminalKeyboardHandoff()
+        let keyboardInset = TerminalKeyboardInset()
+        return { agent in
+            AgentDetailView(
+                agent: agent,
+                console: console,
+                terminal: terminal,
+                inputMode: inputMode,
+                hosts: [],
+                activity: activity,
+                keyboardHandoff: keyboardHandoff,
+                keyboardInset: keyboardInset,
+                stage: AgentDetailStage(isVisible: isVisible, terminalAccess: { .holds }),
+                onSwitch: { _ in },
+                onClosed: {},
+                onShowsChanges: onShowsChanges,
+                composerStore: composer,
+                attachStore: attach,
+                changesPresentation: changes)
+        }
     }
 
     private static func makeLiveAttach(
@@ -972,6 +994,96 @@ struct AgentDetailChangesTests {
         for attach in attaches { await attach.leave().value }
     }
 
+    /// An Agent that stops reporting a directory while its own Changes are
+    /// open leaves them working: the read they started when they opened
+    /// still lands, and Agent detail stops following only once they close.
+    @Test func losingTheDirectoryWhileTheAgentsChangesAreOpenKeepsTheirRead() async throws {
+        let transport = ScriptedTransport()
+        let read = try ChangesBadgeTests.read(added: 12, removed: 7)
+        await transport.scriptChangesReads([.success(read)])
+        let composer = AgentComposerStore(target: "w1:p1") { _ in
+            Agent(.fixture(paneID: "w1:p1"))
+        }
+        let attach = try await Self.makeLiveAttach(transport: transport, composer: composer)
+        let suiteName = "changes-lost-directory-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let gate = GitExecGate()
+        let clock = ChangesManualSleeper()
+        let feed = AgentChangesFollowTests.StatusFeed(.idle)
+        defer { feed.finish() }
+        let changes = AgentChangesFollowTests.presentation(
+            transport: transport, gate: gate, clock: clock, feed: feed)
+        let host = UUID()
+        let shown = ShownAgent(AgentSurfaceReplacementTests.makeAgent(pane: "w1:p1", host: host))
+        let controller = UIHostingController(
+            rootView: ChangingAgentDetail(
+                shown: shown,
+                detail: Self.detailBuilder(
+                    attach: attach, composer: composer,
+                    inputMode: AgentInputModeSettings(defaults: defaults), defaults: defaults,
+                    changes: changes, onShowsChanges: { _ in })))
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
+        defer { window.isHidden = true }
+        try #require(
+            await ChangesViewTests.eventually {
+                controller.view.layoutIfNeeded()
+                return !AgentSurfaceReplacementTests.terminals(in: controller.view).isEmpty
+            })
+        #expect(changes.isFollowingAgent)
+
+        // Another git exec on this Host holds the gate, so the read Changes
+        // start on opening waits for it.
+        let other = ScriptedTransportCallGate()
+        let holder = Task { try await gate.run { await other.waitUntilOpen() } }
+        await other.waitForEntry()
+        changes.open()
+        let store = try #require(changes.store)
+        try #require(
+            await ChangesViewTests.eventually {
+                controller.view.layoutIfNeeded()
+                return store.activeRead != nil
+            })
+
+        shown.agent = Self.agentWithoutDirectory(pane: "w1:p1", host: host)
+        for _ in 0..<10 {
+            try await Task.sleep(for: .milliseconds(20))
+            controller.view.layoutIfNeeded()
+        }
+        #expect(changes.isFollowingAgent)
+
+        await other.open()
+        try await holder.value
+        let landed = try await ChangesViewTests.eventually { store.phase == .loaded(read.changes) }
+        #expect(landed, "losing the directory dropped the read Changes started: \(store.phase)")
+        #expect(await transport.changesReadRequests.count == 1)
+
+        try #require(
+            await ChangesViewTests.eventually {
+                ChangesViewTests.activate("Back", in: controller.view)
+            })
+        let stopped = try await ChangesViewTests.eventually {
+            controller.view.layoutIfNeeded()
+            return changes.store == nil && !changes.isFollowingAgent
+        }
+        #expect(stopped, "Back kept following an Agent without a directory")
+        await attach.leave().value
+    }
+
+    private static func agentWithoutDirectory(pane: String, host: UUID) -> ConsoleAgent {
+        ConsoleAgent(
+            hostID: host,
+            hostName: "devbox",
+            agent: Agent(
+                terminalID: "term_\(pane)", kind: "claude", title: "",
+                status: .idle, workspaceID: "w", tabID: "w:t", paneID: pane,
+                cwd: "", revision: 1, name: nil),
+            workspaceLabel: nil,
+            repositoryCheckout: nil,
+            lastOutputSnippet: nil)
+    }
+
     @Test func anAgentWithoutADirectoryHasNoBadge() async throws {
         let transport = ScriptedTransport()
         let composer = AgentComposerStore(target: "w1:p1") { _ in
@@ -1034,6 +1146,27 @@ private struct SwitchingDetails: View {
         NavigationStack {
             details[selection.index].id(selection.index)
         }
+    }
+}
+
+/// The Agent value a hosted detail is built from, as the Console hands its
+/// detail column the Agent's latest state.
+@MainActor
+@Observable
+private final class ShownAgent {
+    var agent: ConsoleAgent
+
+    init(_ agent: ConsoleAgent) { self.agent = agent }
+}
+
+/// Rebuilds one detail from the Agent's latest value while keeping its
+/// identity, as the Console does while the selection stays on that Agent.
+private struct ChangingAgentDetail: View {
+    let shown: ShownAgent
+    let detail: @MainActor (ConsoleAgent) -> AgentDetailView
+
+    var body: some View {
+        NavigationStack { detail(shown.agent) }
     }
 }
 

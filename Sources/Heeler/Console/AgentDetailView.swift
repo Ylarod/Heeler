@@ -313,7 +313,7 @@ struct AgentDetailView: View {
         }
         .onChange(of: agent.directory == nil) { _, lacksDirectory in
             if lacksDirectory {
-                changes.stopFollowingAgent()
+                changes.agentLostDirectory()
             } else if hasAppeared, isVisible() {
                 changes.startFollowingAgent()
             }

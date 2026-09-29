@@ -21,6 +21,8 @@ final class AgentChangesPresentation {
     /// Agent detail's reads for the badge. Owned here rather than by a
     /// SwiftUI task, which restarts when Changes and the terminal swap.
     @ObservationIgnored private var following: Task<Void, Never>?
+    /// The Agent lost its directory while its own Changes were open.
+    @ObservationIgnored private var stopsFollowingOnClose = false
 
     /// Nil follows the Agent. A Worktree directory stays fixed for the
     /// life of that store, even if the Agent later moves.
@@ -63,6 +65,7 @@ final class AgentChangesPresentation {
     /// Agent detail is on screen: read once it settles, then whenever the
     /// Agent leaves Working. A second start while following keeps it.
     func startFollowingAgent() {
+        stopsFollowingOnClose = false
         guard following == nil else { return }
         let store = ensureAgentStore()
         following = Task { await store.followForAgentDetail() }
@@ -71,10 +74,22 @@ final class AgentChangesPresentation {
     /// Agent detail left the screen: no more reads for it, and a read still
     /// queued at the Host gate is dropped.
     func stopFollowingAgent() {
+        stopsFollowingOnClose = false
         guard let following else { return }
         following.cancel()
         self.following = nil
         agentStore?.stopFollowingForAgentDetail()
+    }
+
+    /// The Agent no longer reports a directory. Following stops now, unless
+    /// the Agent's own Changes are open: they keep it, and the read they
+    /// started, until they close.
+    func agentLostDirectory() {
+        if let store, store === agentStore {
+            stopsFollowingOnClose = true
+        } else {
+            stopFollowingAgent()
+        }
     }
 
     /// Opens Changes. `directory` is a Worktree's checkout path; nil shows
@@ -125,6 +140,7 @@ final class AgentChangesPresentation {
         store = nil
         if shown === agentStore {
             shown.leavePresentation()
+            if stopsFollowingOnClose { stopFollowingAgent() }
         } else if let agentStore {
             agentStore.adoptNewerRead(of: shown)
             agentStore.resumeAutomaticRefresh(after: shown)
