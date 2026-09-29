@@ -77,5 +77,364 @@
             #expect(card.headline == row.workspaceLabel)
             #expect(card.additionalRows.first == row.agent.terminalTitleStripped)
         }
+
+        @Test func reviewerSampleListsFilesWithCounts() throws {
+            let read = try DemoChangesSample.read(
+                ChangesReadRequest(directory: "/workspace/storefront"))
+            let changes = read.changes
+
+            #expect(read.directoryPrefix.isEmpty)
+            #expect(changes.checkout.displayPath == "/workspace/storefront")
+            #expect(!changes.checkout.isLinkedWorktree)
+            #expect(changes.head.branchTitle == "checkout-retry")
+            #expect(changes.head.commit?.count == 40)
+            #expect(changes.head.commit?.allSatisfy(\.isHexDigit) == true)
+            #expect(changes.head.latestCommit?.subject == "Keep the cart when a payment retry fails")
+            let committedAt = try #require(changes.head.latestCommit?.committedAt)
+            let age = Date().timeIntervalSince(committedAt)
+            #expect(age > 30 * 60 && age < 50 * 60)
+            let upstream = try #require(changes.head.upstream)
+            #expect(upstream.name == "origin/checkout-retry")
+            guard case .tracking(let ahead, let behind) = upstream.state else {
+                Issue.record("storefront upstream should be tracking")
+                return
+            }
+            #expect(ahead == 2)
+            #expect(behind == 0)
+            #expect(!changes.isClean)
+            #expect(!changes.isStatusTruncated)
+            #expect(!changes.isMetadataTruncated)
+            expectTotalsMatchFiles(changes)
+            #expect(listsLikeProduction(changes.files))
+            #expect(changes.files.map(\.displayPath) == [
+                "Fixtures/receipts/",
+                "Resources/checkout-hero.png",
+                "Sources/Checkout/CartStore.swift",
+                "Sources/Checkout/CheckoutView.swift",
+                "Sources/Checkout/PaymentCoordinator.swift",
+                "Sources/Checkout/PaymentSheet.swift",
+                "Sources/Checkout/RetryBanner.swift",
+                "Tests/CheckoutTests/CheckoutFlowTests.swift",
+                "Tests/CheckoutTests/PaymentRetryTests.swift",
+            ])
+            #expect(changes.files.first { $0.displayPath == "Sources/Checkout/CheckoutView.swift" }?.staging == .both)
+            #expect(changes.files.first { $0.displayPath == "Sources/Checkout/RetryBanner.swift" }?.kind == .added)
+            #expect(changes.files.first { $0.displayPath == "Sources/Checkout/RetryBanner.swift" }?.staging == .staged)
+            #expect(
+                changes.files.first { $0.displayPath == "Resources/checkout-hero.png" }?.lineCounts == .binary)
+            let renamed = try #require(changes.files.first { $0.kind == .renamed })
+            #expect(renamed.displayPath == "Sources/Checkout/PaymentSheet.swift")
+            #expect(renamed.displayOriginalPath == "Sources/Checkout/LegacyPaymentSheet.swift")
+            #expect(renamed.staging == .staged)
+            #expect(changes.files.contains { $0.kind == .untracked && !$0.isUntrackedDirectory })
+            #expect(changes.files.contains { $0.isUntrackedDirectory })
+        }
+
+        /// The reviewer's modified file is the shape side-by-side screenshots
+        /// need: unequal runs, a pure addition, context, a long line, and a
+        /// missing trailing newline.
+        @Test func reviewerSamplePatchHasSideBySideShape() throws {
+            let read = try DemoChangesSample.read(
+                ChangesReadRequest(directory: "/workspace/storefront"))
+            let coordinator = try #require(
+                read.changes.files.first {
+                    $0.displayPath == "Sources/Checkout/PaymentCoordinator.swift"
+                })
+            let request = try #require(
+                FilePatchRequest(file: coordinator, checkout: read.changes.checkout))
+            let patch = try DemoChangesSample.patch(request)
+            #expect(patch.files.count == 1)
+            #expect(!patch.isTruncated)
+            let hunks = try #require(patch.files.first?.hunks)
+            #expect(hunks.contains { hunk in
+                let removed = hunk.lines.filter { $0.kind == .removed }.count
+                let added = hunk.lines.filter { $0.kind == .added }.count
+                return removed != added
+            })
+            #expect(hunks.contains { containsRun($0.lines, removed: 3, added: 1) })
+            #expect(hunks.contains { hunk in
+                hunk.oldCount == 0 && !hunk.lines.isEmpty && hunk.lines.allSatisfy { $0.kind == .added }
+            })
+            #expect(hunks.flatMap(\.lines).contains { $0.kind == .context })
+            #expect(hunks.flatMap(\.lines).contains { $0.text.count > 120 })
+            #expect(hunks.flatMap(\.lines).contains { $0.missingNewline })
+        }
+
+        @Test func everyDemoDirectoryServesCountsThatMatchItsDiff() throws {
+            let directories = Set(
+                DemoScreenshotFixture.profiles.values.flatMap { profile in
+                    profile.snapshot.agents.compactMap(\.cwd)
+                })
+            #expect(directories == Set([
+                "/workspace/heeler",
+                "/workspace/payments-api",
+                "/workspace/product-docs",
+                "/workspace/storefront",
+            ]))
+            for directory in directories {
+                let read = try DemoChangesSample.read(ChangesReadRequest(directory: directory))
+                #expect(!read.changes.isClean)
+                #expect(read.directoryPrefix.isEmpty)
+                #expect(read.changes.checkout.displayPath == directory)
+                #expect(read.changes.checkout.isLinkedWorktree == (directory == "/workspace/heeler"))
+                #expect(read.changes.head.commit?.count == 40)
+                #expect(read.changes.head.latestCommit != nil)
+                guard case .named(let branch) = read.changes.head.branch, !branch.isEmpty else {
+                    Issue.record("\(directory) should name a branch")
+                    continue
+                }
+                guard case .tracking = read.changes.head.upstream?.state else {
+                    Issue.record("\(directory) should track an upstream")
+                    continue
+                }
+                expectTotalsMatchFiles(read.changes)
+                #expect(listsLikeProduction(read.changes.files))
+                for file in read.changes.files {
+                    if file.isUntrackedDirectory {
+                        let listing = try DemoChangesSample.listUntrackedDirectory(
+                            UntrackedDirectoryRequest(
+                                topLevel: read.changes.checkout.topLevel, directory: file.path))
+                        #expect(listing.total == listing.entries.count)
+                        #expect(!listing.entries.isEmpty)
+                        #expect(!listing.isTruncated)
+                        #expect(listing.limitNotice == nil)
+                        #expect(listsLikeProduction(listing.entries))
+                        for entry in listing.entries {
+                            #expect(entry.kind == .untracked)
+                            #expect(entry.lineCounts == nil)
+                            #expect(!entry.isUntrackedDirectory)
+                            #expect(entry.displayPath.hasPrefix(file.displayPath))
+                            let child = try #require(
+                                FilePatchRequest(file: entry, checkout: read.changes.checkout))
+                            expectConsistentPatch(try DemoChangesSample.patch(child), file: entry)
+                        }
+                    } else {
+                        let request = try #require(
+                            FilePatchRequest(file: file, checkout: read.changes.checkout))
+                        expectConsistentPatch(try DemoChangesSample.patch(request), file: file)
+                    }
+                }
+            }
+        }
+
+        @Test func sampleUsesInventedNamesOnly() throws {
+            let forbidden = [
+                "heeler", "herdr", "github", "anthropic", "openai", "stripe",
+                "microsoft", "google", "apple", "voiceover", "claude", "codex",
+                "gemini", "opencode",
+            ]
+            for text in try sampleTexts() {
+                let folded = text.lowercased()
+                for name in forbidden {
+                    #expect(!folded.contains(name), "sample text contains \(name): \(text)")
+                }
+            }
+        }
+
+        @Test func unknownSamplePathIsAVisibleFailure() {
+            #expect(throws: ChangesReadError.notAGitWorkingTree) {
+                try DemoChangesSample.read(ChangesReadRequest(directory: "/var/log/payments"))
+            }
+            #expect(throws: ChangesReadError.gitFailed("No sample diff for this file.")) {
+                try DemoChangesSample.patch(
+                    FilePatchRequest(
+                        topLevel: Data("/workspace/storefront".utf8),
+                        path: Data("Missing.swift".utf8),
+                        isUntracked: false))
+            }
+            #expect(throws: ChangesReadError.gitFailed("No sample listing for this directory.")) {
+                try DemoChangesSample.listUntrackedDirectory(
+                    UntrackedDirectoryRequest(
+                        topLevel: Data("/workspace/storefront".utf8),
+                        directory: Data("Missing/".utf8)))
+            }
+        }
+
+        @Test func demoConsoleReadsSampleChangesWithoutAHost() async throws {
+            let composition = DemoScreenshotComposition.make()
+            composition.console.setHosts(composition.hosts.hosts)
+            await composition.console.resume()
+            defer { composition.console.setHosts([]) }
+            await waitUntilDemoAgentsLoad(composition)
+
+            let reviewer = try #require(composition.console.agents.first)
+            #expect(reviewer.agent.status == .blocked)
+            #expect(reviewer.hostName == "Build Server")
+            let directory = try #require(reviewer.directory)
+            #expect(directory == "/workspace/storefront")
+            let live = try await composition.console.readChanges(
+                ChangesReadRequest(directory: directory), on: reviewer.hostID)
+            let direct = try DemoChangesSample.read(ChangesReadRequest(directory: directory))
+            #expect(live.changes.files == direct.changes.files)
+            #expect(live.changes.totals == direct.changes.totals)
+            #expect(live.changes.checkout == direct.changes.checkout)
+            #expect(live.directoryPrefix.isEmpty)
+            #expect(live.changes.head.branchTitle == direct.changes.head.branchTitle)
+            #expect(live.changes.head.latestCommit?.subject == direct.changes.head.latestCommit?.subject)
+
+            let coordinator = try #require(
+                live.changes.files.first {
+                    $0.displayPath == "Sources/Checkout/PaymentCoordinator.swift"
+                })
+            let patchRequest = try #require(
+                FilePatchRequest(file: coordinator, checkout: live.changes.checkout))
+            let patch = try await composition.console.readFilePatch(patchRequest, on: reviewer.hostID)
+            let directPatch = try DemoChangesSample.patch(patchRequest)
+            #expect(patch == directPatch)
+            #expect(patch.files.first?.hunks.isEmpty == false)
+
+            let receipts = try #require(live.changes.files.first { $0.isUntrackedDirectory })
+            let listingRequest = UntrackedDirectoryRequest(
+                topLevel: live.changes.checkout.topLevel, directory: receipts.path)
+            let listing = try await composition.console.listUntrackedDirectory(
+                listingRequest, on: reviewer.hostID)
+            let directListing = try DemoChangesSample.listUntrackedDirectory(listingRequest)
+            #expect(listing == directListing)
+            #expect(!listing.entries.isEmpty)
+        }
+
+        private func waitUntilDemoAgentsLoad(_ composition: DemoScreenshotComposition) async {
+            while composition.console.agents.count != 5
+                || composition.hosts.hosts.contains(where: {
+                    composition.console.sidebarSnapshots.snapshot(for: $0.id) == nil
+                })
+            {
+                let changes = AsyncStream<Void>.makeStream()
+                withObservationTracking {
+                    _ = composition.console.agents
+                    _ = composition.console.sidebarSnapshots.states
+                } onChange: {
+                    changes.continuation.yield(())
+                }
+                for await _ in changes.stream { break }
+                changes.continuation.finish()
+            }
+        }
+
+        private func expectTotalsMatchFiles(_ changes: CheckoutChanges) {
+            let untracked = changes.files.filter { $0.kind == .untracked }
+            #expect(changes.totals.untrackedItems == untracked.count)
+            #expect(changes.totals.trackedFiles == changes.files.count - untracked.count)
+            var added = 0
+            var removed = 0
+            for file in changes.files {
+                if file.kind == .untracked {
+                    #expect(file.lineCounts == nil)
+                    #expect(file.staging == nil)
+                    #expect(file.countsSummary == "New")
+                } else {
+                    #expect(file.lineCounts != nil)
+                }
+                if case .lines(let fileAdded, let fileRemoved) = file.lineCounts {
+                    added += fileAdded
+                    removed += fileRemoved
+                }
+            }
+            #expect(changes.totals.added == added)
+            #expect(changes.totals.removed == removed)
+            #expect(changes.totals.linesAreComplete)
+            #expect(changes.totals.linesAreAvailable)
+        }
+
+        private func listsLikeProduction(_ files: [ChangedFile]) -> Bool {
+            let ordered = files.sorted { lhs, rhs in
+                let lhsConflicted = lhs.kind == .conflicted
+                let rhsConflicted = rhs.kind == .conflicted
+                if lhsConflicted != rhsConflicted { return lhsConflicted }
+                return lhs.path.lexicographicallyPrecedes(rhs.path)
+            }
+            return files.map(\.path) == ordered.map(\.path)
+        }
+
+        private func containsRun(_ lines: [DiffLine], removed: Int, added: Int) -> Bool {
+            let kinds = lines.map(\.kind)
+            let width = removed + added
+            guard width > 0, kinds.count >= width else { return false }
+            for index in 0...(kinds.count - width) {
+                let removedMatch = (0..<removed).allSatisfy { kinds[index + $0] == .removed }
+                let addedMatch = (0..<added).allSatisfy { kinds[index + removed + $0] == .added }
+                if removedMatch && addedMatch { return true }
+            }
+            return false
+        }
+
+        private func expectConsistentPatch(_ patch: FilePatch, file: ChangedFile) {
+            #expect(!patch.isTruncated)
+            #expect(!patch.files.isEmpty)
+            if file.lineCounts == .binary {
+                #expect(patch.files.contains { $0.isBinary })
+                return
+            }
+            #expect(patch.files.contains { !$0.hunks.isEmpty })
+            let lines = patch.files.flatMap(\.hunks).flatMap(\.lines)
+            let added = lines.filter { $0.kind == .added }.count
+            let removed = lines.filter { $0.kind == .removed }.count
+            if file.kind == .untracked {
+                #expect(file.lineCounts == nil)
+                #expect(added > 0)
+                #expect(removed == 0)
+            } else if case .lines(let fileAdded, let fileRemoved) = file.lineCounts {
+                #expect(added == fileAdded)
+                #expect(removed == fileRemoved)
+            } else {
+                Issue.record("tracked file \(file.displayPath) is missing line counts")
+            }
+            for hunk in patch.files.flatMap(\.hunks) {
+                let context = hunk.lines.filter { $0.kind == .context }.count
+                let hunkRemoved = hunk.lines.filter { $0.kind == .removed }.count
+                let hunkAdded = hunk.lines.filter { $0.kind == .added }.count
+                #expect(context + hunkRemoved == hunk.oldCount)
+                #expect(context + hunkAdded == hunk.newCount)
+            }
+        }
+
+        /// Relative paths, diff lines, and header words. The fixture's checkout
+        /// path is excluded: demo mode already names one Checkout `heeler`.
+        private func sampleTexts() throws -> [String] {
+            var texts: [String] = []
+            let directories = Set(
+                DemoScreenshotFixture.profiles.values.flatMap { profile in
+                    profile.snapshot.agents.compactMap(\.cwd)
+                })
+            for directory in directories {
+                let read = try DemoChangesSample.read(ChangesReadRequest(directory: directory))
+                if case .named(let branch) = read.changes.head.branch { texts.append(branch) }
+                texts.append(read.changes.head.latestCommit?.subject ?? "")
+                texts.append(read.changes.head.upstream?.name ?? "")
+                texts.append(read.changes.head.commit ?? "")
+                for file in read.changes.files {
+                    texts.append(file.displayPath)
+                    if let original = file.displayOriginalPath { texts.append(original) }
+                    var patches: [FilePatch] = []
+                    if file.isUntrackedDirectory {
+                        let listing = try DemoChangesSample.listUntrackedDirectory(
+                            UntrackedDirectoryRequest(
+                                topLevel: read.changes.checkout.topLevel, directory: file.path))
+                        for entry in listing.entries {
+                            texts.append(entry.displayPath)
+                            let request = try #require(
+                                FilePatchRequest(file: entry, checkout: read.changes.checkout))
+                            patches.append(try DemoChangesSample.patch(request))
+                        }
+                    } else {
+                        let request = try #require(
+                            FilePatchRequest(file: file, checkout: read.changes.checkout))
+                        patches.append(try DemoChangesSample.patch(request))
+                    }
+                    for patch in patches {
+                        for diff in patch.files {
+                            texts.append(diff.oldPath ?? "")
+                            texts.append(diff.newPath ?? "")
+                            texts.append(diff.summary ?? "")
+                            for hunk in diff.hunks {
+                                texts.append(hunk.section)
+                                texts.append(contentsOf: hunk.lines.map(\.text))
+                            }
+                        }
+                    }
+                }
+            }
+            return texts
+        }
     }
 #endif
