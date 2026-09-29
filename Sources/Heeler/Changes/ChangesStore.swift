@@ -78,6 +78,10 @@ final class ChangesStore {
 
     let fileDiff: FileDiffPresenter
 
+    @ObservationIgnored var insertReference: (@MainActor (String) -> Void)?
+    @ObservationIgnored var copyToPasteboard: (@MainActor (String) -> Void)?
+    @ObservationIgnored var referencesFollowAgentDirectory = true
+
     /// `directory` is asked on every read, so an Agent that moved to another
     /// Checkout is read where it is now.
     init(
