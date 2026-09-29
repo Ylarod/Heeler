@@ -39,16 +39,40 @@ struct DiffLayoutDecision: Equatable, Sendable {
 enum DiffLayoutPolicy {
     /// Text columns each side must fit before Side by Side is offered.
     static let minimumColumnsPerSide = 50
-    /// Padding, one line-number column, spacing and the glyph, in columns.
-    /// About 72 pt at the default size (12 + 4×8 + 8 + 12 + 8).
-    static let gutterColumnsPerSide = 7
     /// SF Mono's advance at the 16 pt callout size (0.618 em). The research
     /// note's 10.51 pt at 17 pt is the same ratio. `@ScaledMetric` grows
     /// this with Dynamic Type.
     static let defaultColumnWidth: CGFloat = 9.89
+    /// Horizontal padding on one side of a side-by-side cell. Both edges count.
+    static let horizontalPadding: CGFloat = 12
+    /// Gap between the line number, the glyph, and the text.
+    static let stackSpacing: CGFloat = 8
+    /// One monospaced digit at the caption size. `@ScaledMetric` grows it.
+    static let defaultDigitWidth: CGFloat = 8
+    /// The callout glyph column. `@ScaledMetric` grows it with the text.
+    static let defaultGlyphWidth: CGFloat = 12
+    /// The hairline between the two columns, counted once for the row.
+    static let dividerWidth: CGFloat = 1
 
-    static func requiredWidth(columnWidth: CGFloat) -> CGFloat {
-        CGFloat(2 * (minimumColumnsPerSide + gutterColumnsPerSide)) * columnWidth
+    /// Chrome before the text on one side: both paddings, both gaps, the
+    /// line-number run, and the glyph. A four-digit number is 84 pt at the
+    /// default size (32 + 12 + 16 + 24).
+    static func sideChrome(digitWidth: CGFloat, glyphWidth: CGFloat, numberDigits: Int) -> CGFloat {
+        horizontalPadding * 2
+            + stackSpacing * 2
+            + digitWidth * CGFloat(max(numberDigits, 1))
+            + glyphWidth
+    }
+
+    static func requiredWidth(
+        columnWidth: CGFloat,
+        digitWidth: CGFloat = defaultDigitWidth,
+        glyphWidth: CGFloat = defaultGlyphWidth,
+        numberDigits: Int = 1
+    ) -> CGFloat {
+        let text = CGFloat(minimumColumnsPerSide) * columnWidth
+        let side = sideChrome(digitWidth: digitWidth, glyphWidth: glyphWidth, numberDigits: numberDigits)
+        return 2 * (side + text) + dividerWidth
     }
 
     static func usableWidth(width: CGFloat, leadingInset: CGFloat, trailingInset: CGFloat) -> CGFloat {
@@ -59,12 +83,20 @@ enum DiffLayoutPolicy {
         preference: DiffLayout,
         offersSideBySide: Bool,
         usableWidth: CGFloat,
-        columnWidth: CGFloat
+        columnWidth: CGFloat,
+        digitWidth: CGFloat = defaultDigitWidth,
+        glyphWidth: CGFloat = defaultGlyphWidth,
+        numberDigits: Int = 1
     ) -> DiffLayoutDecision {
         guard offersSideBySide else {
             return DiffLayoutDecision(layout: .unified, toggle: .hidden)
         }
-        guard usableWidth >= requiredWidth(columnWidth: columnWidth) else {
+        let required = requiredWidth(
+            columnWidth: columnWidth,
+            digitWidth: digitWidth,
+            glyphWidth: glyphWidth,
+            numberDigits: numberDigits)
+        guard usableWidth >= required else {
             return DiffLayoutDecision(layout: .unified, toggle: .disabled)
         }
         return DiffLayoutDecision(layout: preference, toggle: .enabled)

@@ -55,6 +55,10 @@ private struct FileDiffDocumentView<Footer: View>: View {
     @Environment(\.diffLayoutSettings) private var injectedSettings
     @ScaledMetric(relativeTo: .callout) private var columnWidth: CGFloat =
         DiffLayoutPolicy.defaultColumnWidth
+    @ScaledMetric(relativeTo: .caption) private var digitWidth: CGFloat =
+        DiffLayoutPolicy.defaultDigitWidth
+    @ScaledMetric(relativeTo: .callout) private var glyphWidth: CGFloat =
+        DiffLayoutPolicy.defaultGlyphWidth
     @State private var usableWidth: CGFloat?
     /// Not observable: writing it as the user scrolls would rebuild every row.
     @State private var anchor = DiffScrollAnchor<Row.ID>()
@@ -259,7 +263,10 @@ private struct FileDiffDocumentView<Footer: View>: View {
             preference: preference,
             offersSideBySide: true,
             usableWidth: usableWidth,
-            columnWidth: columnWidth)
+            columnWidth: columnWidth,
+            digitWidth: digitWidth,
+            glyphWidth: glyphWidth,
+            numberDigits: numberDigits)
     }
 
     private var layoutSelection: Binding<DiffLayout> {
@@ -286,7 +293,10 @@ private struct FileDiffDocumentView<Footer: View>: View {
             preference: settings.layout,
             offersSideBySide: settings.offersSideBySide,
             usableWidth: usableWidth,
-            columnWidth: columnWidth
+            columnWidth: columnWidth,
+            digitWidth: digitWidth,
+            glyphWidth: glyphWidth,
+            numberDigits: numberDigits
         ).layout
     }
 

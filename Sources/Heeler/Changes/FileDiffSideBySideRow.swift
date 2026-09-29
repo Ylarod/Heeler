@@ -13,7 +13,7 @@ struct FileDiffSideBySideRow: View {
                 line: row.left, number: row.left?.oldNumber, numberDigits: numberDigits)
             Rectangle()
                 .fill(Color(uiColor: .separator))
-                .frame(width: 1)
+                .frame(width: DiffLayoutPolicy.dividerWidth)
                 .frame(maxHeight: .infinity)
                 .accessibilityHidden(true)
             FileDiffSideBySideCell(
@@ -34,13 +34,15 @@ struct FileDiffSideBySideCell: View {
     let line: DiffLine?
     let number: Int?
     let numberDigits: Int
-    @ScaledMetric(relativeTo: .caption) private var digitWidth: CGFloat = 8
-    @ScaledMetric(relativeTo: .callout) private var glyphWidth: CGFloat = 12
+    @ScaledMetric(relativeTo: .caption) private var digitWidth: CGFloat =
+        DiffLayoutPolicy.defaultDigitWidth
+    @ScaledMetric(relativeTo: .callout) private var glyphWidth: CGFloat =
+        DiffLayoutPolicy.defaultGlyphWidth
 
     var body: some View {
         Group {
             if let line {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: DiffLayoutPolicy.stackSpacing) {
                     Text(number.map(String.init) ?? "")
                         .frame(width: digitWidth * CGFloat(numberDigits), alignment: .trailing)
                     Text(line.glyph)
@@ -59,7 +61,7 @@ struct FileDiffSideBySideCell: View {
                 }
                 .font(.caption.monospaced())
                 .foregroundStyle(Color(uiColor: DiffPalette.ink(for: line.kind)))
-                .padding(.horizontal, 12)
+                .padding(.horizontal, DiffLayoutPolicy.horizontalPadding)
                 .padding(.vertical, 3)
             } else {
                 Color.clear
