@@ -259,7 +259,60 @@ struct ChangesGitExecGateTests {
         #expect(await transport.changesReadRequests.count == 2)
     }
 
+    /// Agent detail builds its stores with the production factory, which
+    /// hands them the Host's gate: the badge's settle read waits behind
+    /// another git exec on that Host instead of running beside it.
+    @Test func agentDetailsStoresReadThroughTheHostsGate() async throws {
+        let host = Host.fixture()
+        let transport = ScriptedTransport()
+        let read = try ChangesStoreTests.read(GitProbeRecordings.hostile)
+        await transport.scriptChangesReads([.success(read)])
+        let console = ConsoleStore(snapshotRetryDelay: .milliseconds(10)) { _, subscriptions in
+            EventsSession(subscriptions: subscriptions, connect: { transport }, keepalive: nil)
+        }
+        console.setHosts([host])
+        defer { console.setHosts([]) }
+        await console.resume()
+        try await Self.waitUntil("the Host never connected") {
+            console.hostStatuses[host.id] == .connected
+        }
+
+        let gate = console.gitExecGate(for: host.id)
+        let other = ScriptedTransportCallGate()
+        let holder = Task { try await gate.run { await other.waitUntilOpen() } }
+        await other.waitForEntry()
+        let changes = AgentChangesPresentation.forAgentDetail(
+            agentID: ConsoleAgent.ID(hostID: host.id, paneID: "w1:p1"), hostID: host.id,
+            openingDirectory: "/home/dev/src/app", console: console)
+        changes.startFollowingAgent()
+        defer { changes.stopFollowingAgent() }
+        let store = try #require(changes.agentStore)
+        try await Self.waitUntil("the settle read never started") { store.readsStarted == 1 }
+        await Self.drain()
+        #expect(await transport.changesReadRequests.isEmpty)
+        #expect(store.phase == .loading)
+
+        await other.open()
+        try await holder.value
+        try await Self.waitUntil("the settle read never landed") {
+            store.phase == .loaded(read.changes)
+        }
+        #expect(
+            await transport.changesReadRequests
+                == [ChangesReadRequest(directory: "/home/dev/src/app")])
+    }
+
     private static func drain() async {
         for _ in 0..<100 { await Task.yield() }
+    }
+
+    private static func waitUntil(
+        _ comment: Comment, timeout: Duration = .seconds(5), _ condition: () -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while !condition(), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try #require(condition(), comment)
     }
 }
