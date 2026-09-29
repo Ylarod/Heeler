@@ -333,6 +333,30 @@
             #expect(blocked.freshness == nil)
         }
 
+        @Test func reviewerDemoChangesInsertRelativeFileReference() async throws {
+            let composition = DemoScreenshotComposition.make()
+            composition.console.setHosts(composition.hosts.hosts)
+            await composition.console.resume()
+            defer { composition.console.setHosts([]) }
+            await waitUntilDemoAgentsLoad(composition)
+
+            let reviewer = try #require(
+                composition.console.agents.first { $0.agent.name == "reviewer" })
+            #expect(reviewer.directory == "/workspace/storefront")
+            let store = productionChangesStore(for: reviewer, console: composition.console)
+            defer { store.cancel() }
+            await store.appear()
+            guard case .loaded(let changes) = store.phase else {
+                Issue.record("reviewer Changes should be loaded, got \(store.phase)")
+                return
+            }
+            #expect(changes.checkout.displayPath == "/workspace/storefront")
+            #expect(store.directoryPrefix.isEmpty)
+            let firstFile = try #require(changes.files.first)
+            #expect(firstFile.displayPath == "Fixtures/receipts/")
+            #expect(store.insertionText(for: firstFile) == "Fixtures/receipts/ ")
+        }
+
         /// The Agent detail factory: one store over the console's Changes
         /// reads, the Host gate, and that Agent's status stream.
         private func productionChangesStore(
