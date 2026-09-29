@@ -584,6 +584,12 @@ struct AgentRowChangesTests {
         #expect(abs(totals.height - latency.height) <= 1, "\(totals) and \(latency) differ in size")
         #expect(totals.maxX <= latency.minX, "\(totals) overlaps \(latency)")
         #expect(latency.minX - totals.maxX <= 8.5, "\(totals) sits apart from \(latency)")
+        // Tide's git item follows the Agent status, on the same line.
+        let git = try #require(AccessibilityProbe.frame(labeled: "Git", in: root))
+        let status = try #require(AccessibilityProbe.frame(labeled: "Agent status", in: root))
+        #expect(abs(git.midY - totals.midY) <= 1, "\(git) and \(totals) sit on different lines")
+        #expect(git.minX >= status.maxX, "\(git) overlaps \(status)")
+        #expect(git.maxX <= totals.minX, "\(git) overlaps \(totals)")
 
         await Self.exitWorking(feed, clock: clock)
         await Self.waitUntilSettled(store, .loaded(second.changes))
@@ -594,6 +600,59 @@ struct AgentRowChangesTests {
         await Self.drain()
         await Self.exitWorking(feed, clock: clock)
         #expect(await transport.changesReadRequests.count == 2)
+    }
+
+    /// On a narrow iPhone, a long branch shortens so the whole line fits:
+    /// the status, Tide's counts, the totals, and the latency stay whole.
+    @Test func aLongBranchGivesWayOnANarrowStatusLine() async throws {
+        var changes = TideGitItemTests.changes(
+            branch: .named("feature/checkout-retry-keeps-the-cart"),
+            files: (0..<27).map { TideGitItemTests.file("f\($0).swift", staging: .both) },
+            untracked: 9, upstream: .tracking(ahead: 12, behind: 3))
+        changes.totals.added = 1_234
+        changes.totals.removed = 567
+        let read = CheckoutChangesRead(changes: changes, directoryPrefix: Data())
+        let clock = ChangesManualSleeper()
+        let store = ChangesStore(
+            directory: { Self.trackingDirectory }, read: { _ in read },
+            sleep: { try await clock.sleep($0) })
+        await store.refresh()
+        let rows = AgentRowChanges { _ in store }
+        defer { rows.retain { _ in false } }
+        let width: CGFloat = 375
+        let controller = UIHostingController(
+            rootView: AnyView(
+                AgentDetailStatusChrome(
+                    status: .working,
+                    hostTelemetry: HostTelemetryPresentation(
+                        status: .connected, latency: .milliseconds(120)),
+                    changes: AgentDetailChanges(
+                        rows: rows, agent: Self.agent(directory: Self.trackingDirectory)),
+                    chromeColorScheme: .dark)
+                    .environment(\.locale, Locale(identifier: "en_US"))))
+        controller.safeAreaRegions = []
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: width, height: 80), rootViewController: controller)
+        defer { window.isHidden = true }
+
+        let root: UIView = controller.view
+        let totals = try #require(await Self.frame(
+            labeled: "Changes: 1,234 lines added, 567 lines removed", in: root))
+        let frames = [
+            try #require(AccessibilityProbe.frame(labeled: "Agent status", in: root)),
+            try #require(AccessibilityProbe.frame(labeled: "Git", in: root)),
+            totals,
+            try #require(AccessibilityProbe.frame(labeled: "Host API connection latency", in: root)),
+        ]
+        for (left, right) in zip(frames, frames.dropFirst()) {
+            #expect(left.maxX <= right.minX + 0.5, "\(left) overlaps \(right)")
+            #expect(abs(left.midY - right.midY) <= 1, "\(left) and \(right) sit on different lines")
+        }
+        #expect(frames[0].minX >= 0 && frames[3].maxX <= width + 0.5)
+        // Exact totals still fit beside the shortened branch.
+        let element = try #require(AccessibilityProbe.elements(
+            labeled: "Changes: 1,234 lines added, 567 lines removed", in: root).first)
+        #expect(AgentCardChangesTotalsTests.identifier(of: element) == "agent-status-changes.exact")
     }
 
     /// The totals publish after the read settles; the hosted line lays
@@ -1221,7 +1280,7 @@ struct AgentCardChangesTotalsTests {
         return (controller, window)
     }
 
-    private static func identifier(of node: NSObject) -> String? {
+    static func identifier(of node: NSObject) -> String? {
         let getter = #selector(getter: UIAccessibilityIdentification.accessibilityIdentifier)
         guard node.responds(to: getter) else { return nil }
         return node.value(forKey: "accessibilityIdentifier") as? String

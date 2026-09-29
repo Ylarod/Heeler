@@ -342,6 +342,7 @@
 		A236FAB25CBCB58BDDDBA00C /* TerminalMouseReporting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4997A79DA8D98F7BA97E60F6 /* TerminalMouseReporting.swift */; };
 		A25418700A3D7FCCC08026BF /* AttachRestorationTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBE2F11B705B68BB1FBE993D /* AttachRestorationTrace.swift */; };
 		A2DE15E21439EDC3B04F5DFA /* HostListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79662827F6A91D8EFBF112F7 /* HostListView.swift */; };
+		A3048755E431CE08A6FF7A68 /* TideGitPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144737AC56D07A133F1417F6 /* TideGitPrompt.swift */; };
 		A32FEE6CB03586CB5117A3C5 /* TerminalZoomSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2CED0240EA91B680CF3A758 /* TerminalZoomSettings.swift */; };
 		A3B80BE78A1BAF5243EB9BCC /* UntrackedDirectoryListing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7859F47BE902D8B547E59220 /* UntrackedDirectoryListing.swift */; };
 		A40851D640AB870EC1DB334D /* TerminalInputTraitsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B393A4DA056DD5941212E67 /* TerminalInputTraitsTests.swift */; };
@@ -627,6 +628,7 @@
 		1307E3AC0A258284A1DA4EE8 /* CheckoutChanges+Limits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CheckoutChanges+Limits.swift"; sourceTree = "<group>"; };
 		13300392C48361465F32D1C9 /* ConsoleSheetPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleSheetPresentation.swift; sourceTree = "<group>"; };
 		13F076778BEA3359D447E78D /* SettingsViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewTests.swift; sourceTree = "<group>"; };
+		144737AC56D07A133F1417F6 /* TideGitPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TideGitPrompt.swift; sourceTree = "<group>"; };
 		151586845D0A1EE54968B536 /* PreflightReportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreflightReportTests.swift; sourceTree = "<group>"; };
 		153C35138F25F70F35B2E1A0 /* ChangesStore+FileDiff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChangesStore+FileDiff.swift"; sourceTree = "<group>"; };
 		15655021A341CBCDD42719A2 /* NotificationPreferencesStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPreferencesStoreTests.swift; sourceTree = "<group>"; };
@@ -1496,6 +1498,7 @@
 				823B6F199C67B0FB96B59893 /* GitProbe+UntrackedDirectory.swift */,
 				070BC48D21ADD93FEBD05C66 /* GitProbe+Version.swift */,
 				9F6BFE3BA5E8872CF291E4A6 /* SideBySideDiff.swift */,
+				144737AC56D07A133F1417F6 /* TideGitPrompt.swift */,
 				C8C3B1F51F6106B2D243B545 /* UntrackedDirectoryExpansions.swift */,
 				7859F47BE902D8B547E59220 /* UntrackedDirectoryListing.swift */,
 			);
@@ -2320,6 +2323,7 @@
 				8021380654A6B6A28447C108 /* TerminalTouchScroll.swift in Sources */,
 				B308A85B836999D93492364C /* TerminalWindowResizeTracker.swift in Sources */,
 				A32FEE6CB03586CB5117A3C5 /* TerminalZoomSettings.swift in Sources */,
+				A3048755E431CE08A6FF7A68 /* TideGitPrompt.swift in Sources */,
 				0D88F7CC5BA9BD7CAF4FED62 /* Transport.swift in Sources */,
 				5B0522DF97BC46599DDE4E93 /* TransportConnector.swift in Sources */,
 				ED24AA39EBC4BC6B7341EEFB /* TransportError+Presentation.swift in Sources */,

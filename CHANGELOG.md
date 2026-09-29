@@ -29,7 +29,10 @@ Entries reference the issue that motivated them.
   room. Agent detail's status line, just above the input and keyboard,
   shows the same totals beside the Host's latency and reads them as a row
   does while it shows, so they stay current on iPhone, where the list is
-  hidden. Changes opens on the row's latest read while it reads again, and
+  hidden. After the Agent's status, that line shows the Checkout as fish's
+  Tide prompt does, in Tide's colors: the branch, or the commit while
+  detached, then commits behind and ahead of its upstream and conflicted,
+  staged, modified, and untracked counts, as main ⇣1 ⇡2 +3 !4 ?2. Changes opens on the row's latest read while it reads again, and
   hands its read back to the row. Tap a file to read its diff: green
   additions and red removals (blue and mauve with Differentiate Without
   Color), changed words outlined inside a changed line, long lines wrapping

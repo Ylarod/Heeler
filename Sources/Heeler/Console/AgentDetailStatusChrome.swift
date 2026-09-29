@@ -1,26 +1,35 @@
 import SwiftUI
 
-/// Shared Agent Status + Checkout totals + Host telemetry caption used by
-/// Composer and Direct Input. One presentation keeps accessibility and
-/// visual treatment aligned.
+/// Shared Agent Status + Tide git item + Checkout totals + Host telemetry
+/// caption used by Composer and Direct Input. One presentation keeps
+/// accessibility and visual treatment aligned.
 struct AgentDetailStatusChrome: View {
     let status: AgentStatus
     let hostTelemetry: HostTelemetryPresentation?
-    /// The Agent's Checkout totals, as its Agents list row shows them.
+    /// The Agent's Checkout, as a Tide git item and the totals its Agents
+    /// list row shows.
     var changes: AgentDetailChanges? = nil
     let chromeColorScheme: ColorScheme
 
     var body: some View {
+        let store = changes?.store
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             statusLabel
+                .fixedSize()
+            if let store {
+                // Gives way first: only its branch shortens.
+                TideGitPrompt(store: store)
+                    .layoutPriority(-1)
+            }
             Spacer(minLength: 8)
-            if let store = changes?.store {
+            if let store {
                 ChangesRowTotals(
                     store: store, font: .caption2.weight(.medium),
                     identifier: "agent-status-changes")
             }
             if let hostTelemetry {
                 hostTelemetryLabel(hostTelemetry)
+                    .fixedSize()
             }
         }
         .padding(.horizontal, 16)

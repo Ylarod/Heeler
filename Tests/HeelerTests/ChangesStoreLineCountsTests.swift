@@ -274,3 +274,88 @@ struct ChangesRowTextTests {
         return changes
     }
 }
+
+@MainActor
+@Suite("Tide git item")
+struct TideGitItemTests {
+    @Test func countsEachSideOfEachFileAsTideDoes() {
+        let item = TideGitItem(Self.changes(
+            files: [
+                Self.file("a.swift", staging: .staged),
+                Self.file("b.swift", staging: .unstaged),
+                Self.file("c.swift", staging: .both),
+                Self.file("d.swift", kind: .conflicted, staging: nil),
+                Self.file("notes/", kind: .untracked, staging: nil),
+            ],
+            untracked: 1, upstream: .tracking(ahead: 2, behind: 1)))
+        #expect(item.text == "main ⇣1 ⇡2 ~1 +2 !2 ?1")
+        #expect(item.counts.map(\.role) == [.upstream, .upstream, .conflicted, .staged, .dirty, .untracked])
+        #expect(
+            item.accessibilityValue
+                == "Branch main, 1 commit behind, 2 commits ahead, 1 conflicted, 2 staged, "
+                + "2 modified, 1 untracked")
+    }
+
+    @Test func aCleanCheckoutShowsItsBranchAlone() {
+        for upstream: CheckoutUpstream.State in [.tracking(ahead: 0, behind: 0), .deleted, .unknown] {
+            let item = TideGitItem(Self.changes(files: [], upstream: upstream))
+            #expect(item.text == "main")
+            #expect(item.counts.isEmpty)
+        }
+    }
+
+    @Test func aDetachedHeadShowsItsShortCommit() {
+        let item = TideGitItem(Self.changes(branch: .detached, files: []))
+        #expect(item.isDetached)
+        #expect(item.location == "4f1a9c2")
+        #expect(item.text == "@4f1a9c2")
+        #expect(item.accessibilityValue == "Detached at 4f1a9c2")
+    }
+
+    @Test func aLongBranchShortensAsTideDoes() {
+        let name = "feature/checkout-retry-keeps-the-cart"
+        let item = TideGitItem(Self.changes(branch: .named(name), files: []))
+        #expect(item.location == "feature/checkout-retry-…")
+        #expect(item.location.count == TideGitItem.truncationLength)
+        #expect(item.accessibilityValue == "Branch \(name)")
+        #expect(TideGitItem.shortened(String(repeating: "a", count: 24)).count == 24)
+        #expect(!TideGitItem.shortened(String(repeating: "a", count: 24)).hasSuffix("…"))
+    }
+
+    @Test func aCappedStatusSaysItsCountsAreIncomplete() {
+        var changes = Self.changes(files: [Self.file("a.swift", staging: .unstaged)])
+        changes.isStatusTruncated = true
+        #expect(TideGitItem(changes).accessibilityValue == "Branch main, 1 modified, file counts incomplete")
+    }
+
+    @Test func showsOnlyForALoadedReadThatDidNotTimeOut() {
+        let changes = Self.changes(files: [])
+        #expect(TideGitItem(phase: .loading, timedOutKeepingContent: false) == nil)
+        #expect(TideGitItem(phase: .notAGitWorkingTree, timedOutKeepingContent: false) == nil)
+        #expect(TideGitItem(phase: .loaded(changes), timedOutKeepingContent: true) == nil)
+        #expect(TideGitItem(phase: .loaded(changes), timedOutKeepingContent: false) != nil)
+    }
+
+    static func file(
+        _ path: String, kind: ChangedFile.Kind = .modified, staging: ChangedFile.Staging?
+    ) -> ChangedFile {
+        ChangedFile(path: Data(path.utf8), originalPath: nil, kind: kind, staging: staging)
+    }
+
+    static func changes(
+        branch: CheckoutHead.Branch = .named("main"), files: [ChangedFile], untracked: Int = 0,
+        upstream: CheckoutUpstream.State? = nil
+    ) -> CheckoutChanges {
+        var changes = CheckoutChanges(
+            checkout: CheckoutLocation(
+                topLevel: Data(), isLinkedWorktree: false, displayPath: "~/src/app"),
+            head: CheckoutHead(
+                branch: branch, commit: "4f1a9c2e8b7d6a5031e4f8c9b2a7d6e5f0c1b3a4",
+                latestCommit: nil,
+                upstream: upstream.map { CheckoutUpstream(name: "origin/main", state: $0) }),
+            files: files)
+        changes.totals.untrackedItems = untracked
+        changes.totals.trackedFiles = files.filter { $0.kind != .untracked }.count
+        return changes
+    }
+}
