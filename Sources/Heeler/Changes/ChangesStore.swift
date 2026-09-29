@@ -81,9 +81,9 @@ final class ChangesStore {
     /// changed for VoiceOver to hear about.
     @ObservationIgnored var announcesAutomaticUpdates = true
     /// True while another shown store reads this Checkout for each exit from
-    /// Working, as Worktree Changes of the Agent's own Checkout do: this
-    /// store's automatic refresh then waits for Back instead of reading the
-    /// same Checkout again.
+    /// Working, as Worktree Changes of the Checkout the Agent is in now do:
+    /// this store's automatic refresh then waits for Back instead of reading
+    /// the same Checkout again.
     @ObservationIgnored var automaticRefreshIsCoveredElsewhere: (@MainActor () -> Bool)?
 
     var freshness: ChangesFreshness? {
@@ -311,14 +311,22 @@ final class ChangesStore {
         untrackedDirectories.collapseAll()
     }
 
+    /// Whether this store's next read lands inside `checkout`: for the
+    /// Agent's own store, whether the Agent is in that Checkout now rather
+    /// than when this store last read.
+    func readsInside(_ checkout: CheckoutLocation) -> Bool {
+        guard let directory = directory() ?? lastDirectory else { return false }
+        return checkout.contains(directory: directory)
+    }
+
     /// Worktree Changes can show the Agent's own Checkout. When that store
-    /// closes with a newer successful read of the same Checkout, this store
-    /// takes its document, keeping its own directory prefix: the totals are
-    /// the whole Checkout's either way.
+    /// closes with a newer successful read of the same Checkout, and the
+    /// Agent is still in it, this store takes its document, keeping its own
+    /// directory prefix: the totals are the whole Checkout's either way.
     func adoptNewerRead(of other: ChangesStore) {
         guard case .loaded(let changes) = other.phase, let otherReadAt = other.readAt,
             case .loaded(let own) = phase, own.checkout.topLevel == changes.checkout.topLevel,
-            otherReadAt > readAt ?? .distantPast
+            otherReadAt > readAt ?? .distantPast, readsInside(changes.checkout)
         else { return }
         untrackedDirectories.collapseAll()
         phase = .loaded(changes)

@@ -43,6 +43,18 @@ struct CheckoutLocation: Sendable, Equatable, Hashable {
     let isLinkedWorktree: Bool
     /// The top level with the Host's home directory shortened to `~`.
     let displayPath: String
+
+    /// Whether `directory` is the top level or lies beneath it, compared as
+    /// raw path bytes. A directory spelled through a symlink does not
+    /// match, which costs its caller only a read of its own.
+    func contains(directory: String) -> Bool {
+        let slash = UInt8(ascii: "/")
+        let path = Array(directory.utf8)
+        var top = Array(topLevel)
+        while top.count > 1, top.last == slash { top.removeLast() }
+        guard !top.isEmpty, path.starts(with: top) else { return false }
+        return path.count == top.count || top.last == slash || path[top.count] == slash
+    }
 }
 
 /// What HEAD points at, and the latest commit's subject and time.

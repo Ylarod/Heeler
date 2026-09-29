@@ -126,13 +126,16 @@ extension ChangesStore {
     }
 
     /// Back from Worktree Changes of this Checkout, which read in this
-    /// store's place. When their last read answered every exit from Working
-    /// and Back adopted it, the waiting refresh is done; otherwise it runs.
+    /// store's place. When their last read answered every exit from Working,
+    /// the Agent is still in their Checkout, and Back adopted it, the
+    /// waiting refresh is done; otherwise it runs where the Agent is now.
     /// Both stores follow the same Agent's status, so the shown one had
     /// every exit this one waited on.
     func resumeAutomaticRefresh(after other: ChangesStore) {
         guard autoRefresh.pending else { return }
-        if other.hasAnsweredEveryWorkingExit, readAt != nil, readAt == other.readAt {
+        if other.hasAnsweredEveryWorkingExit, readAt != nil, readAt == other.readAt,
+            let checkout = other.checkout, readsInside(checkout)
+        {
             autoRefresh.pending = false
         } else {
             runPendingAutomaticRefresh()

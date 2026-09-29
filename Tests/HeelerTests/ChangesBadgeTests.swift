@@ -226,6 +226,52 @@ struct AgentChangesFollowTests {
         })
     }
 
+    /// Answers each Changes read by its directory, so two stores reading
+    /// different Checkouts at once get their own documents in either order.
+    @MainActor
+    final class DirectoryReads {
+        private var outcomes: [String: [CheckoutChangesRead]]
+        private(set) var requests: [String] = []
+
+        init(_ outcomes: [String: [CheckoutChangesRead]]) { self.outcomes = outcomes }
+
+        func read(_ request: ChangesReadRequest) throws -> CheckoutChangesRead {
+            requests.append(request.directory)
+            guard var queue = outcomes[request.directory], !queue.isEmpty else {
+                throw ChangesReadError.unavailable
+            }
+            let next = queue.removeFirst()
+            outcomes[request.directory] = queue
+            return next
+        }
+    }
+
+    /// The tracking recording's top level, where the Agent starts.
+    static let trackingDirectory = "/home/dev/src/tracking"
+    /// The worktree recording's top level, another Checkout.
+    static let otherCheckoutDirectory = "/home/dev/src/app-wt"
+
+    /// An Agent whose directory the test moves between Checkouts.
+    static func presentation(
+        reads: DirectoryReads,
+        clock: ChangesManualSleeper,
+        feed: StatusFeed,
+        agentDirectory: @escaping @MainActor () -> String,
+        now: @escaping @MainActor () -> Date
+    ) -> AgentChangesPresentation {
+        let gate = GitExecGate()
+        return AgentChangesPresentation(makeStoreIn: { fixed in
+            ChangesStore(
+                directory: { fixed ?? agentDirectory() },
+                read: { try await reads.read($0) },
+                gate: gate,
+                agentStatus: { feed.stream() },
+                sleep: { try await clock.sleep($0) },
+                now: now,
+                announce: { _ in })
+        })
+    }
+
     private static func badge(_ store: ChangesStore?) -> ChangesBadge? {
         store.flatMap {
             ChangesBadge(phase: $0.phase, timedOutKeepingContent: $0.timedOutKeepingContent)
@@ -714,6 +760,117 @@ struct AgentChangesFollowTests {
         await Self.waitUntilSettled(store, .loaded(refreshed.changes))
         #expect(await transport.changesReadRequests.count == 4)
         #expect(Self.texts(store) == "+2 \u{2212}0")
+    }
+
+    /// Worktree Changes stand in for the badge only while the Agent is in
+    /// their Checkout. An Agent that moved elsewhere while Working reads
+    /// where it is now on its exit, and Back keeps that read.
+    @Test func anAgentThatLeftTheShownWorktreeWhileWorkingReadsWhereItIsNow() async throws {
+        let agentRead = try ChangesBadgeTests.read(added: 12, removed: 7)
+        let opened = try ChangesBadgeTests.read(added: 15, removed: 9)
+        let exited = try ChangesBadgeTests.read(added: 2, removed: 0)
+        let moved = try ChangesStoreTests.read(GitProbeRecordings.worktree)
+        #expect(moved.changes.checkout.topLevel == Data(Self.otherCheckoutDirectory.utf8))
+        let reads = DirectoryReads([
+            Self.trackingDirectory: [agentRead, opened, exited],
+            Self.otherCheckoutDirectory: [moved],
+        ])
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.working)
+        defer { feed.finish() }
+        var directory = Self.trackingDirectory
+        var now = Date(timeIntervalSince1970: 1_000)
+        let changes = Self.presentation(
+            reads: reads, clock: clock, feed: feed,
+            agentDirectory: { directory }, now: { now })
+        changes.startFollowingAgent()
+        defer { changes.stopFollowingAgent() }
+        await Self.drain()
+        await clock.fireAll()
+        let store = try #require(changes.agentStore)
+        await Self.waitUntilSettled(store, .loaded(agentRead.changes))
+
+        now = Date(timeIntervalSince1970: 2_000)
+        changes.open(directory: Self.trackingDirectory)
+        let worktree = try #require(changes.store)
+        await worktree.appear()
+        #expect(worktree.phase == .loaded(opened.changes))
+        await Self.drain()
+
+        directory = Self.otherCheckoutDirectory
+        now = Date(timeIntervalSince1970: 3_000)
+        feed.send(.done)
+        await Self.drain()
+        await clock.fireAll()
+        await Self.waitUntilSettled(worktree, .loaded(exited.changes))
+        await Self.waitUntilSettled(store, .loaded(moved.changes))
+
+        changes.close()
+        worktree.cancel()
+        #expect(store.phase == .loaded(moved.changes))
+        await Self.drain()
+        await clock.fireAll()
+        await Self.drain()
+        #expect(reads.requests.count == 4)
+        #expect(reads.requests.filter { $0 == Self.otherCheckoutDirectory }.count == 1)
+        #expect(store.phase == .loaded(moved.changes))
+    }
+
+    /// Worktree Changes answered the exit from Working while the Agent was
+    /// still in their Checkout, but the Agent moved before Back: Back does
+    /// not hand their read to the badge, and the waiting refresh reads
+    /// where the Agent is now.
+    @Test func backAfterTheAgentLeftTheShownWorktreeReadsWhereItIsNow() async throws {
+        let agentRead = try ChangesBadgeTests.read(added: 12, removed: 7)
+        let opened = try ChangesBadgeTests.read(added: 15, removed: 9)
+        let exited = try ChangesBadgeTests.read(added: 2, removed: 0)
+        let moved = try ChangesStoreTests.read(GitProbeRecordings.worktree)
+        let reads = DirectoryReads([
+            Self.trackingDirectory: [agentRead, opened, exited],
+            Self.otherCheckoutDirectory: [moved],
+        ])
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.working)
+        defer { feed.finish() }
+        var directory = Self.trackingDirectory
+        var now = Date(timeIntervalSince1970: 1_000)
+        let changes = Self.presentation(
+            reads: reads, clock: clock, feed: feed,
+            agentDirectory: { directory }, now: { now })
+        changes.startFollowingAgent()
+        defer { changes.stopFollowingAgent() }
+        await Self.drain()
+        await clock.fireAll()
+        let store = try #require(changes.agentStore)
+        await Self.waitUntilSettled(store, .loaded(agentRead.changes))
+
+        now = Date(timeIntervalSince1970: 2_000)
+        changes.open(directory: Self.trackingDirectory)
+        let worktree = try #require(changes.store)
+        await worktree.appear()
+        await Self.drain()
+
+        now = Date(timeIntervalSince1970: 3_000)
+        feed.send(.done)
+        await Self.drain()
+        await clock.fireAll()
+        await Self.waitUntilSettled(worktree, .loaded(exited.changes))
+        await Self.drain()
+        await clock.fireAll()
+        await Self.drain()
+        #expect(reads.requests.count == 3)
+        #expect(Self.texts(store) == "+12 \u{2212}7")
+
+        directory = Self.otherCheckoutDirectory
+        changes.close()
+        worktree.cancel()
+        await Self.waitUntilSettled(store, .loaded(moved.changes))
+        #expect(
+            reads.requests
+                == [
+                    Self.trackingDirectory, Self.trackingDirectory, Self.trackingDirectory,
+                    Self.otherCheckoutDirectory,
+                ])
     }
 
     @Test func thePresentationStopsFollowingWhenItGoesAway() async throws {

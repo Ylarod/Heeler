@@ -50,12 +50,13 @@ final class AgentChangesPresentation {
         store.referencesFollowAgentDirectory = true
         store.announcesAutomaticUpdates = false
         // Worktree Changes of this same Checkout follow the same Agent and
-        // read for each exit from Working; Back hands their read over.
+        // read for each exit from Working; Back hands their read over. An
+        // Agent that has since left that Checkout reads where it is now.
         store.automaticRefreshIsCoveredElsewhere = { [weak self, weak store] in
             guard let self, let store, let shown = self.store, shown !== store,
                 let own = store.checkout, let other = shown.checkout
             else { return false }
-            return own.topLevel == other.topLevel
+            return own.topLevel == other.topLevel && store.readsInside(other)
         }
         prepare(store)
         agentStore = store
