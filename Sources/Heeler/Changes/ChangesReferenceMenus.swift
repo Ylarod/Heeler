@@ -167,13 +167,13 @@ private struct DiffLineAccessibilityActions: ViewModifier {
         // Availability changes the commands, not the row's view structure.
         content.accessibilityActions {
             if let actions {
-                Button(name("Copy", "Line")) { actions.copyLine(lineID) }
-                Button(name("Copy", "Hunk")) { actions.copyHunk(containingLine: lineID) }
+                Button { actions.copyLine(lineID) } label: { name("Copy", "Line") }
+                Button { actions.copyHunk(containingLine: lineID) } label: { name("Copy", "Hunk") }
                 if actions.pathAvailability != .unavailable {
-                    Button(name("Copy", "Path")) { actions.copyPath() }
+                    Button { actions.copyPath() } label: { name("Copy", "Path") }
                 }
                 if actions.pathAvailability == .copyAndInsert {
-                    Button(name("Insert", "Line Reference")) { actions.insertLine(lineID) }
+                    Button { actions.insertLine(lineID) } label: { name("Insert", "Line Reference") }
                 }
             }
         }
