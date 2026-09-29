@@ -331,6 +331,79 @@ struct TerminalInputControllerTests {
         #expect(
             controller.userMessageIndex.entries.map(\.rawText) == ["[review] do it"])
     }
+    @Test func aHeldReferenceWaitsForOutputAndFlushesOnlyOnce() {
+        let controller = TerminalInputController()
+        var writes: [Data] = []
+        #expect(controller.insertReferenceWhenLive("file.swift:2 "))
+        let generation = controller.beginSession { writes.append($0) }
+        #expect(writes.isEmpty)
+
+        controller.sessionDidBecomeLive(generation)
+        controller.sessionDidBecomeLive(generation)
+        #expect(writes == [Data("file.swift:2 ".utf8)])
+        #expect(controller.userMessageIndex.entries.isEmpty)
+    }
+
+    @Test func aHeldReferenceSurvivesReplacementAndIgnoresOldLiveSignals() {
+        let controller = TerminalInputController()
+        var oldWrites: [Data] = []
+        var newWrites: [Data] = []
+        let old = controller.beginSession { oldWrites.append($0) }
+        #expect(controller.insertReferenceWhenLive("first.swift "))
+        controller.detachSessionForReplacement()
+        controller.endSession(old)
+        let replacement = controller.beginSession { newWrites.append($0) }
+        controller.sessionDidBecomeLive(old)
+        #expect(oldWrites.isEmpty)
+        #expect(newWrites.isEmpty)
+
+        controller.sessionDidBecomeLive(replacement)
+        #expect(newWrites == [Data("first.swift ".utf8)])
+        #expect(oldWrites.isEmpty)
+    }
+
+    @Test func anEndedConnectingSessionKeepsHeldReferencesInInsertionOrder() {
+        let controller = TerminalInputController()
+        let old = controller.beginSession { _ in Issue.record("wrote before Attach was live") }
+        #expect(controller.insertReferenceWhenLive("first.swift "))
+        controller.endSession(old)
+        #expect(controller.insertReferenceWhenLive("second.swift:3 "))
+        var writes: [Data] = []
+        let generation = controller.beginSession { writes.append($0) }
+        controller.sessionDidBecomeLive(generation)
+        #expect(writes == [Data("first.swift second.swift:3 ".utf8)])
+    }
+
+    @Test func aReferenceTypesImmediatelyIntoAnAlreadyLiveAttachWithoutEnter() {
+        let controller = TerminalInputController()
+        var writes: [Data] = []
+        let generation = controller.beginSession { writes.append($0) }
+        controller.sessionDidBecomeLive(generation)
+        #expect(controller.insertReferenceWhenLive("file.swift:2 "))
+        #expect(writes == [Data("file.swift:2 ".utf8)])
+        #expect(controller.userMessageIndex.entries.isEmpty)
+    }
+
+    @Test func leavingDiscardsAHeldReference() {
+        let controller = TerminalInputController()
+        #expect(controller.insertReferenceWhenLive("file.swift:2 "))
+        controller.discardHeldInsertion()
+        var writes: [Data] = []
+        let generation = controller.beginSession { writes.append($0) }
+        controller.sessionDidBecomeLive(generation)
+        #expect(writes.isEmpty)
+    }
+
+    @Test(arguments: ["file\rname ", "file\nname ", "file\tname ", "file\u{1B}name ", "file\u{85}name "])
+    func aHeldReferenceRejectsEveryControlCharacter(text: String) {
+        let controller = TerminalInputController()
+        #expect(!controller.insertReferenceWhenLive(text))
+        var writes: [Data] = []
+        let generation = controller.beginSession { writes.append($0) }
+        controller.sessionDidBecomeLive(generation)
+        #expect(!controller.insertReferenceWhenLive(text))
+        #expect(writes.isEmpty)
+    }
 }
 
 @Suite("Terminal text safety")
