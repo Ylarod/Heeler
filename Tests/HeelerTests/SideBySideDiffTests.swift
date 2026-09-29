@@ -27,9 +27,8 @@ struct SideBySideDiffTests {
         ]))
 
         #expect(rows.map(\.id) == [0, 1, 2])
-        #expect(rows.map { ($0.left?.text, $0.right?.text) } == [
-            ("a", "d"), ("b", nil), ("c", nil),
-        ])
+        #expect(rows.map { $0.left?.text } == ["a", "b", "c"])
+        #expect(rows.map { $0.right?.text } == ["d", nil, nil])
     }
 
     @Test func surplusAddedLeavesTheRemovedSideBlank() {
@@ -40,9 +39,8 @@ struct SideBySideDiffTests {
         ]))
 
         #expect(rows.map(\.id) == [0, 2])
-        #expect(rows.map { ($0.left?.text, $0.right?.text) } == [
-            ("a", "b"), (nil, "c"),
-        ])
+        #expect(rows.map { $0.left?.text } == ["a", nil])
+        #expect(rows.map { $0.right?.text } == ["b", "c"])
     }
 
     @Test func contextIsOneRowOnBothSidesAndBreaksChangeBlocks() {
@@ -68,9 +66,8 @@ struct SideBySideDiffTests {
             line(1, .removed, old: 1, new: nil, "a"),
         ]))
 
-        #expect(rows.map { ($0.left?.text, $0.right?.text) } == [
-            (nil, "b"), ("a", nil),
-        ])
+        #expect(rows.map { $0.left?.text } == [nil, "a"])
+        #expect(rows.map { $0.right?.text } == ["b", nil])
     }
 
     @Test func newAndDeletedFilesAreOneSided() {
