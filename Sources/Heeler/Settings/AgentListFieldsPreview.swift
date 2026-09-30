@@ -3,14 +3,16 @@ import SwiftUI
 /// Console preview for a Host's current rows.
 ///
 /// Draws the same `AgentCardView` the Agent list uses, with sample values, so
-/// typography, status, Host footer, and field emphasis cannot drift. The Host
-/// section owns the strip label, tint, and padding.
+/// typography, status, Host footer, Changes totals, and field emphasis
+/// cannot drift. The Host section owns the strip label, tint, and padding.
 struct AgentListFieldsPreview: View {
     let layout: AgentRowLayout
     let hostName: String
 
     var body: some View {
-        AgentCardView(agent: Self.sampleAgent(hostName: hostName), layout: layout)
+        AgentCardView(
+            agent: Self.sampleAgent(hostName: hostName), layout: layout,
+            sampleChanges: Self.sampleChanges)
             .allowsHitTesting(false)
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isStaticText)
@@ -48,6 +50,10 @@ struct AgentListFieldsPreview: View {
             tabPosition: 1,
             workspaceTabCount: 2)
     }
+
+    /// Where the list shows a Checkout's line totals, with sample counts.
+    static let sampleChanges = ChangesBadge(
+        totals: ChangesTotals(trackedFiles: 3, added: 12, removed: 7))
 
     private static let sampleHostID = UUID(uuid: (
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1

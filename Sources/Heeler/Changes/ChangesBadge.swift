@@ -31,6 +31,12 @@ struct ChangesBadge: Equatable {
         isStatusTruncated = changes.isStatusTruncated
     }
 
+    /// Fixed totals, for a card that stands in for an Agent.
+    init(totals: ChangesTotals, isStatusTruncated: Bool = false) {
+        self.totals = totals
+        self.isStatusTruncated = isStatusTruncated
+    }
+
     func addedText(_ style: Style = .exact, locale: Locale = .current) -> String {
         "+" + Self.count(totals.added, style: style, locale: locale)
     }
@@ -102,22 +108,52 @@ enum ChangesBadgePalette {
 }
 
 /// An Agent's Checkout totals, "+12 −7" in green and red, at the trailing
-/// end of its Agents list row's first detail line and of Agent detail's
+/// end of its Agents list row's last detail line and of Agent detail's
 /// status line. Not a control; the row opens the Agent, and the Agent menu
 /// opens Changes. Exact totals come first; a line without room takes the
 /// shortened form.
 struct ChangesRowTotals: View {
-    let store: ChangesStore
+    enum Source {
+        /// The latest read of an Agent's Checkout.
+        case store(ChangesStore)
+        /// Fixed totals, as the Agent List Fields preview shows.
+        case sample(ChangesBadge)
+    }
+
+    let source: Source
     /// The surrounding line's size, so the totals match its text.
     var font: Font = .caption.weight(.semibold)
     /// Where the totals show, as UI tests find them.
     var identifier = "agent-row-changes"
     @Environment(\.locale) private var locale
 
+    init(
+        store: ChangesStore, font: Font = .caption.weight(.semibold),
+        identifier: String = "agent-row-changes"
+    ) {
+        self.init(source: .store(store), font: font, identifier: identifier)
+    }
+
+    init(
+        source: Source, font: Font = .caption.weight(.semibold),
+        identifier: String = "agent-row-changes"
+    ) {
+        self.source = source
+        self.font = font
+        self.identifier = identifier
+    }
+
+    private var badge: ChangesBadge? {
+        switch source {
+        case .store(let store):
+            ChangesBadge(phase: store.phase, timedOutKeepingContent: store.timedOutKeepingContent)
+        case .sample(let badge):
+            badge
+        }
+    }
+
     var body: some View {
-        if let badge = ChangesBadge(
-            phase: store.phase, timedOutKeepingContent: store.timedOutKeepingContent)
-        {
+        if let badge {
             ViewThatFits(in: .horizontal) {
                 totals(badge, style: .exact)
                 totals(badge, style: .compact)

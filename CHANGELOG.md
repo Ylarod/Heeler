@@ -20,9 +20,10 @@ Entries reference the issue that motivated them.
   counts. Below it, each changed file is listed by name over its folder,
   with its line counts, whether it is staged, and a letter for modified,
   added, deleted, renamed, untracked, or conflicted, with conflicts first. Pull down to read it
-  again. Each Agent's row in the Agents list ends its second line with the
+  again. Each Agent's row in the Agents list ends its last line with the
   Checkout's line totals, such as +12 −7 in green and red, matching the
-  Changes header. The list reads them itself: when a row first shows, and
+  Changes header, and the Agent List Fields preview shows them there with
+  sample counts. The list reads them itself: when a row first shows, and
   again when that Agent stops working, waiting while no row shows it. They
   stay hidden while the Checkout is clean, unreadable, or not yet read, and
   shorten from 1,000 lines, as in 1.2K or 12.3K, when the row is short of
@@ -51,6 +52,9 @@ Entries reference the issue that motivated them.
   the others sit right, so one status no longer shows the same number on both
   sides. Expanded, the island leads with that status spelled out and marks
   each Agent with the same glyph. (#398)
+- An Agent's row in the Agents list ends its second line with the Host name
+  rather than its last, making room for the Checkout's line totals there.
+  (#382)
 
 ## [0.1.11] - 2026-09-28
 

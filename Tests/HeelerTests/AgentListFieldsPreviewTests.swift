@@ -33,7 +33,8 @@ struct AgentListFieldsPreviewTests {
             != pixels(AgentListFieldsPreview(layout: after, hostName: "Host")),
             "The settings preview must show the saved field style")
         #expect(try pixels(AgentListFieldsPreview(layout: after, hostName: "Host"))
-            == pixels(AgentCardView(agent: agent, layout: after)),
+            == pixels(AgentCardView(
+                agent: agent, layout: after, sampleChanges: AgentListFieldsPreview.sampleChanges)),
             "The settings preview must match the Agent card")
     }
 
@@ -45,7 +46,11 @@ struct AgentListFieldsPreviewTests {
             [.init(.terminalTitle)],
         ])
         #expect(try pixels(AgentListFieldsPreview(layout: layout, hostName: "Studio Mac"))
-            == pixels(AgentCardView(agent: agent, layout: layout)))
+            == pixels(AgentCardView(
+                agent: agent, layout: layout, sampleChanges: AgentListFieldsPreview.sampleChanges)))
+        #expect(try pixels(AgentListFieldsPreview(layout: layout, hostName: "Studio Mac"))
+            != pixels(AgentCardView(agent: agent, layout: layout)),
+            "The settings preview must show where the list puts a Checkout's totals")
     }
 
     @MainActor

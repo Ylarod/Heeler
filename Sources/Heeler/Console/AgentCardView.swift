@@ -2,10 +2,11 @@ import SwiftUI
 import UIKit
 
 /// The shared Agent Row Layout leads each card; status and Heeler Pin end
-/// Row 1, the Checkout's Changes totals end the first additional row, and
-/// the Host name ends the last one (both share a line of their own when
-/// Row 1 is the only row). Fields retain their emphasis using accessible
-/// semantic colors; plugin colors and weights do not replace app typography.
+/// Row 1, the Host name ends the first additional row, and the Checkout's
+/// Changes totals end the last one, after the Host when that is the same
+/// row (both share a line of their own when Row 1 is the only row). Fields
+/// retain their emphasis using accessible semantic colors; plugin colors
+/// and weights do not replace app typography.
 struct AgentCardView: View {
     let agent: ConsoleAgent
     var layout: AgentRowLayout = .heelerDefault
@@ -13,6 +14,12 @@ struct AgentCardView: View {
     /// The Agents list's read of this Agent's Checkout; nil where the card
     /// is only a preview.
     var changes: ChangesStore? = nil
+    /// Totals shown in place of a read, for the Agent List Fields preview.
+    var sampleChanges: ChangesBadge? = nil
+
+    private var totalsSource: ChangesRowTotals.Source? {
+        if let changes { .store(changes) } else { sampleChanges.map { .sample($0) } }
+    }
 
     private var presentation: AgentCardPresentation {
         AgentCardPresentation(agent: agent, layout: layout)
@@ -44,26 +51,26 @@ struct AgentCardView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    // The totals and the Host keep their width; the row's
+                    // The Host and the totals keep their width; the row's
                     // fields truncate first.
                     if index == 0 || isLast {
                         Spacer(minLength: 8)
                     }
-                    if index == 0, let changes {
-                        ChangesRowTotals(store: changes).layoutPriority(1)
-                    }
-                    if isLast {
+                    if index == 0 {
                         hostText.layoutPriority(1)
+                    }
+                    if isLast, let totalsSource {
+                        ChangesRowTotals(source: totalsSource).layoutPriority(1)
                     }
                 }
             }
             if additionalRows.isEmpty {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Spacer(minLength: 0)
-                    if let changes {
-                        ChangesRowTotals(store: changes).layoutPriority(1)
-                    }
                     hostText
+                    if let totalsSource {
+                        ChangesRowTotals(source: totalsSource).layoutPriority(1)
+                    }
                 }
             }
         }

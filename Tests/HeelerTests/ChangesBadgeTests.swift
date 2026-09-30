@@ -1265,11 +1265,11 @@ struct AgentCardChangesTotalsTests {
     }
 
     private static func host(
-        _ store: ChangesStore?, width: CGFloat
+        _ store: ChangesStore?, width: CGFloat, layout: AgentRowLayout = .heelerDefault
     ) async throws -> (UIHostingController<AnyView>, UIWindow) {
         let controller = UIHostingController(
             rootView: AnyView(
-                AgentCardView(agent: agent, changes: store)
+                AgentCardView(agent: agent, layout: layout, changes: store)
                     .environment(\.locale, Locale(identifier: "en_US"))
                     .frame(width: width)
                     .fixedSize(horizontal: false, vertical: true)))
@@ -1287,8 +1287,8 @@ struct AgentCardChangesTotalsTests {
     }
 
     /// Row 1 ends in the status. With one row after it, as here, the totals
-    /// end that row just before the Host, on the Host's line.
-    @Test func theTotalsSitJustBeforeTheHostOnItsLine() async throws {
+    /// end that row just after the Host, on the Host's line.
+    @Test func theTotalsFollowTheHostOnItsLine() async throws {
         let store = try await Self.store(added: 12, removed: 7)
         let (controller, window) = try await Self.host(store, width: 402)
         defer { window.isHidden = true }
@@ -1298,11 +1298,27 @@ struct AgentCardChangesTotalsTests {
         let host = try #require(AccessibilityProbe.frame(labeled: "devbox", in: root))
         let status = try #require(AccessibilityProbe.frame(labeled: "Idle", in: root))
         #expect(abs(totals.midY - host.midY) <= 1, "\(totals) and \(host) sit on different lines")
-        #expect(totals.maxX <= host.minX, "\(totals) overlaps \(host)")
-        #expect(host.minX - totals.maxX <= 8.5, "\(totals) sits apart from \(host)")
+        #expect(host.maxX <= totals.minX, "\(totals) overlaps \(host)")
+        #expect(totals.minX - host.maxX <= 8.5, "\(totals) sits apart from \(host)")
         #expect(totals.minY >= status.maxY - 0.5, "\(totals) overlaps \(status)")
         let element = try #require(AccessibilityProbe.elements(labeled: label, in: root).first)
         #expect(Self.identifier(of: element) == "agent-row-changes.exact")
+    }
+
+    /// With more rows, the Host ends the first one after Row 1 and the
+    /// totals end the last.
+    @Test func theHostEndsTheFirstDetailLineAndTheTotalsTheLast() async throws {
+        let store = try await Self.store(added: 12, removed: 7)
+        let (controller, window) = try await Self.host(
+            store, width: 402, layout: .consoleDefault)
+        defer { window.isHidden = true }
+        let root: UIView = controller.view
+        let totals = try #require(AccessibilityProbe.frame(
+            labeled: "Changes: 12 lines added, 7 lines removed", in: root))
+        let host = try #require(AccessibilityProbe.frame(labeled: "devbox", in: root))
+        let status = try #require(AccessibilityProbe.frame(labeled: "Idle", in: root))
+        #expect(host.minY >= status.maxY - 0.5, "\(host) does not sit below \(status)")
+        #expect(totals.minY >= host.maxY - 0.5, "\(totals) does not sit below \(host)")
     }
 
     /// A card too narrow for the exact totals shows the shortened ones, and
