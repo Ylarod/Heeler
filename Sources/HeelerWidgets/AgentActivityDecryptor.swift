@@ -39,28 +39,28 @@ enum AgentActivityPresentation: Equatable, Sendable {
         agents.first
     }
 
-    /// Rows drawn below the headline (the headline consumes the first
-    /// agent).
-    var secondaryAgents: [AgentActivityDetails.AgentDetail] {
-        Array(expandedAgents.dropFirst())
-    }
-
-    private var expandedAgents: [AgentActivityDetails.AgentDetail] {
+    /// Rows drawn in the expanded Dynamic Island, under its status header:
+    /// as many of the first `rowLimit` Agents as fit, with the overflow
+    /// caption when some are left out, in the height the island leaves them.
+    var expandedAgents: [AgentActivityDetails.AgentDetail] {
+        let metrics = AgentActivityIslandMetrics.self
         let candidates = Array(agents.prefix(AgentActivityCopy.rowLimit))
         for shown in stride(from: candidates.count, through: 1, by: -1) {
             let prefix = Array(candidates.prefix(shown))
-            let rowHeight = prefix.reduce(0) { $0 + AgentActivityRowMetrics.minimumHeight(for: $1) }
-            let captionHeight = counts.total > shown ? 12 : 0
-            if rowHeight + CGFloat(captionHeight + 24 + shown * 4) <= 160 { return prefix }
+            let rowHeight = prefix.reduce(0) { $0 + metrics.rowHeight(for: $1) }
+            let lines = CGFloat(counts.total > shown ? shown + 1 : shown)
+            let captionHeight = counts.total > shown ? metrics.overflowCaptionHeight : 0
+            let height = rowHeight + captionHeight + (lines - 1) * metrics.rowSpacing
+            if height <= metrics.rowsHeightBudget { return prefix }
         }
         return Array(candidates.prefix(1))
     }
 
-    /// Remaining eligible agents beyond the headline and drawn rows, using
-    /// the full inventory in `counts` (the envelope list is capped at 5).
-    /// Zero in counts-only: there is nothing to overflow from.
+    /// Remaining eligible agents beyond the expanded rows, using the full
+    /// inventory in `counts` (the envelope list is capped at 5). Zero in
+    /// counts-only: there is nothing to overflow from.
     var overflowCount: Int {
-        let shown = (primaryAgent == nil ? 0 : 1) + secondaryAgents.count
+        let shown = expandedAgents.count
         guard shown > 0 else { return 0 }
         return max(0, counts.total - shown)
     }
@@ -189,8 +189,8 @@ enum AgentActivityDecryptor {
 
 enum AgentActivityCopy {
     static let genericAppName = "Heeler"
-    // Governs the Dynamic Island expanded rows (headline + rowLimit - 1);
-    // the lock screen sizes itself via `lockScreenAgents` instead.
+    // Governs the Dynamic Island expanded rows; the lock screen sizes itself
+    // via `lockScreenAgents` instead.
     static let rowLimit = 3
 }
 
@@ -207,11 +207,13 @@ extension AgentActivityAttributes.ContentState.Counts {
         return items
     }
 
-    /// First non-zero count in attention order: blocked, done, working.
-    var attentionStatusItem: (status: String, count: Int)? {
-        if blocked > 0 { return ("blocked", blocked) }
-        if done > 0 { return ("done", done) }
-        if working > 0 { return ("working", working) }
-        return nil
+    /// Non-zero counts in attention order: blocked, done, working. The
+    /// Dynamic Island leads with the first and trails with the rest.
+    var attentionItems: [(status: String, count: Int)] {
+        var items: [(String, Int)] = []
+        if blocked > 0 { items.append(("blocked", blocked)) }
+        if done > 0 { items.append(("done", done)) }
+        if working > 0 { items.append(("working", working)) }
+        return items
     }
 }
