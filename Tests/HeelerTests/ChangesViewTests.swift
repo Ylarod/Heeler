@@ -478,8 +478,19 @@ struct AgentDetailChangesTests {
         }
         #expect(reclaimed, "Changes never reclaimed the chrome: \(shownChanges)")
         #expect(changes.store != nil)
+        // Hiding the window mid-pop leaves the scene's keyboard layout guide
+        // offset by the transition, which later keyboard tests then read.
+        let settled = try await ChangesViewTests.eventually {
+            Self.navigationControllers(in: controller).allSatisfy { $0.transitionCoordinator == nil }
+        }
+        #expect(settled, "the pop never finished")
 
         await attach.leave().value
+    }
+
+    private static func navigationControllers(in root: UIViewController) -> [UINavigationController] {
+        (root as? UINavigationController).map { [$0] } ?? []
+            + root.children.flatMap { navigationControllers(in: $0) }
     }
 
     private static func makeDetail(
