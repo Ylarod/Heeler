@@ -95,20 +95,37 @@ struct AgentActivityPresentationTests {
     }
 
     @Test func attentionOrderPrefersBlockedThenDoneThenWorking() {
-        let blockedFirst = AgentActivityAttributes.ContentState.Counts(
-            working: 2, blocked: 1, done: 0)
-        #expect(blockedFirst.attentionStatusItem?.status == "blocked")
-        #expect(blockedFirst.attentionStatusItem?.count == 1)
+        let allThree = AgentActivityAttributes.ContentState.Counts(
+            working: 2, blocked: 1, done: 3)
+        #expect(allThree.attentionItems.map(\.status) == ["blocked", "done", "working"])
+        #expect(allThree.attentionItems.map(\.count) == [1, 3, 2])
 
         let doneBeforeWorking = AgentActivityAttributes.ContentState.Counts(
             working: 2, blocked: 0, done: 1)
-        #expect(doneBeforeWorking.attentionStatusItem?.status == "done")
-        #expect(doneBeforeWorking.attentionStatusItem?.count == 1)
+        #expect(doneBeforeWorking.attentionItems.map(\.status) == ["done", "working"])
 
         let workingOnly = AgentActivityAttributes.ContentState.Counts(
             working: 3, blocked: 0, done: 0)
-        #expect(workingOnly.attentionStatusItem?.status == "working")
-        #expect(workingOnly.attentionStatusItem?.count == 3)
+        #expect(workingOnly.attentionItems.map(\.status) == ["working"])
+        #expect(workingOnly.attentionItems.map(\.count) == [3])
+    }
+
+    /// One status used to draw its count on both sides of the camera (2 and
+    /// 2). Its glyph now leads alone and the count trails.
+    @MainActor
+    @Test func aLoneStatusDrawsItsCountOnOneSideOfTheCamera() throws {
+        let lone = AgentActivityAttributes.ContentState.Counts(working: 2, blocked: 0, done: 0)
+        let mixed = AgentActivityAttributes.ContentState.Counts(working: 2, blocked: 1, done: 0)
+
+        let glyphAlone = try renderedWidth(AgentActivityCompactLeading(counts: lone))
+        #expect(abs(glyphAlone - AgentActivityIslandMetrics.tokenGlyph) < 0.5)
+        #expect(try renderedWidth(AgentActivityCompactTrailing(counts: lone)) > 0)
+
+        let glyphAndCount = try renderedWidth(AgentActivityCompactLeading(counts: mixed))
+        #expect(glyphAndCount > glyphAlone + 5)
+        #expect(
+            try renderedWidth(AgentActivityCompactTrailing(counts: mixed))
+                > AgentActivityIslandMetrics.tokenGlyph + 5)
     }
 
     @Test func narrationIncludesStatusForIslandAccessibility() {
@@ -259,7 +276,7 @@ struct AgentActivityPresentationTests {
         #expect(presentation.lockScreenAgents(isStale: true).count == 3)
         #expect(presentation.lockScreenTrailingCaption(isStale: true)
             == "+2 more · May be out of date")
-        #expect(presentation.secondaryAgents.count == 1)
+        #expect(presentation.expandedAgents.count == 2)
         #expect(presentation.overflowCount == 3)
         let three = configuredPresentation(agentCount: 3)
         #expect(three.lockScreenAgents(isStale: false).count == 3)
@@ -267,6 +284,35 @@ struct AgentActivityPresentationTests {
         let four = configuredPresentation(agentCount: 4)
         #expect(four.lockScreenAgents(isStale: false).count == 3)
         #expect(four.lockScreenTrailingCaption(isStale: false) == "+1 more")
+    }
+
+    /// The island clips its expanded content short of the 160 pt limit, which
+    /// used to cut the overflow caption in half under two three-row Agents.
+    @MainActor
+    @Test func expandedIslandRowsStayInsideTheHeightTheIslandLeavesThem() throws {
+        for count in [1, 2, 3, 5] {
+            let presentation = configuredPresentation(agentCount: count)
+            let rows = AgentActivityIslandRows(presentation: presentation, hostID: "host")
+                .frame(width: 335)
+            #expect(
+                try renderedSize(rows).height <= AgentActivityIslandMetrics.rowsHeightBudget + 0.5,
+                "\(count) agents")
+        }
+        let three = configuredPresentation(agentCount: 3)
+        #expect(three.expandedAgents.count == 2)
+        #expect(three.overflowCount == 1)
+    }
+
+    /// Larger text sizes grew the rows while the island stayed 160 pt tall.
+    @MainActor
+    @Test func expandedIslandRowsIgnoreLargerDynamicTypeSizes() throws {
+        let rows = AgentActivityIslandRows(
+            presentation: configuredPresentation(agentCount: 3), hostID: "host"
+        )
+        .frame(width: 335)
+        let standard = try renderedSize(rows.environment(\.dynamicTypeSize, .large))
+        let enlarged = try renderedSize(rows.environment(\.dynamicTypeSize, .accessibility3))
+        #expect(enlarged.height == standard.height)
     }
 
     @Test func threeRowCardsUseTheComfortableTargetHeight() {
@@ -364,6 +410,18 @@ struct AgentActivityPresentationTests {
             .environment(\.colorScheme, surface == .lockScreen ? .light : .dark))
         renderer.scale = 1
         return try #require(renderer.uiImage?.pngData())
+    }
+
+    @MainActor
+    private func renderedWidth(_ view: some View) throws -> CGFloat {
+        try renderedSize(view).width
+    }
+
+    @MainActor
+    private func renderedSize(_ view: some View) throws -> CGSize {
+        let renderer = ImageRenderer(content: view.environment(\.colorScheme, .dark))
+        renderer.scale = 2
+        return try #require(renderer.uiImage).size
     }
 
     private func rgba(_ color: UIColor, _ style: UIUserInterfaceStyle) -> [Int] {
