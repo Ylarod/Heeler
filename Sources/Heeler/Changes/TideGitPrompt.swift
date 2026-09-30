@@ -96,14 +96,15 @@ struct TideGitItem: Equatable {
     }
 }
 
-/// Tide's lean branch color on dark themes; on light ones, the same hue
-/// dark enough to read.
+/// Catppuccin Mauve, Mocha on dark and Latte on light, from the flavours
+/// that color Agent Status. Not Tide's green: beside it, the added-lines
+/// total and Done already mean green. Latte Mauve reads at 5.4:1 on white.
 enum TideGitPalette {
-    static let branch = DiffPalette.adaptive(light: 0x1A7F37, dark: 0x5FD700)
+    static let branch = DiffPalette.adaptive(light: 0x8839EF, dark: 0xCBA6F7)
 }
 
 /// The Tide git item in Agent detail's status line, at that line's size.
-/// Only the branch takes Tide's color; the counts stay secondary, so the
+/// Only the branch takes a color; the counts stay secondary, so the
 /// line's colors are the branch and the Checkout totals beside it, which
 /// the staged count's "+" would otherwise echo. Only the branch gives way
 /// when the line is short of room.
