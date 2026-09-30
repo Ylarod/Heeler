@@ -23,8 +23,10 @@ struct AgentDetailStatusChrome: View {
             }
             Spacer(minLength: 8)
             if let store {
+                // Regular weight, as the latency beside it: the inks already
+                // make the totals stand out, and a heavier weight read larger.
                 ChangesRowTotals(
-                    store: store, font: .caption2.weight(.medium),
+                    store: store, font: .caption2,
                     identifier: "agent-status-changes")
             }
             if let hostTelemetry {

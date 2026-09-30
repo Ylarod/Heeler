@@ -122,20 +122,20 @@ struct ChangesRowTotals: View {
 
     let source: Source
     /// The surrounding line's size, so the totals match its text.
-    var font: Font = .caption.weight(.semibold)
+    var font: Font = .caption
     /// Where the totals show, as UI tests find them.
     var identifier = "agent-row-changes"
     @Environment(\.locale) private var locale
 
     init(
-        store: ChangesStore, font: Font = .caption.weight(.semibold),
+        store: ChangesStore, font: Font = .caption,
         identifier: String = "agent-row-changes"
     ) {
         self.init(source: .store(store), font: font, identifier: identifier)
     }
 
     init(
-        source: Source, font: Font = .caption.weight(.semibold),
+        source: Source, font: Font = .caption,
         identifier: String = "agent-row-changes"
     ) {
         self.source = source
