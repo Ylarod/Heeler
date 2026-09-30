@@ -286,7 +286,10 @@ struct FileDiffLayoutViewTests {
             // leave room; at the top of the document, settle for the line
             // there. Landing the row 2 pt above the 4 pt probe keeps the
             // probe inside it at fractional offsets.
-            let next = min(max(0, scroll.contentOffset.y + (frame.minY - (edge + 2))), travel)
+            // The top inset under the bars lets the offset go negative; on
+            // an iPhone the bars are tall enough that 0 hides the row.
+            let top = -scroll.adjustedContentInset.top
+            let next = min(max(top, scroll.contentOffset.y + (frame.minY - (edge + 2))), travel)
             if abs(next - scroll.contentOffset.y) < 1 {
                 guard Self.topLineID(in: controller.view, viewport: scroll) != nil else {
                     stable = 0
