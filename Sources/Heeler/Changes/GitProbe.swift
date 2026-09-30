@@ -24,10 +24,10 @@ enum GitProbe {
     /// network fixture's cellular-like profile (about 265 KiB/s) a 2 MiB
     /// status with 0.7 MB of counts took 10.4-10.5 s, past the 10 s deadline
     /// (#395). A 1 MiB status with 512 KiB of counts, 1.58 MB in all, read
-    /// in 6.2-7.0 s on CI's runners but 10.6-11.9 s behind the Jump Host on
-    /// the slower ones, so the caps were halved again. A 512 KiB status still
-    /// holds about 3,000 records, past the 2,000 rows the list shows, and the
-    /// counts for about as many files fit in 256 KiB.
+    /// in 6.2-7.0 s on CI, which left a slower Host's own git time too little
+    /// of the deadline, so the caps were halved again to 0.79 MB. A 512 KiB
+    /// status still holds about 3,000 records, past the 2,000 rows the list
+    /// shows, and the counts for about as many files fit in 256 KiB.
     enum Cap {
         static let version = 4_096
         static let home = 4_096

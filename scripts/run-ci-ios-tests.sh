@@ -2152,7 +2152,7 @@ assert_behavior "git overrun keeps the Host connection" WeakNetworkE2ETests \
 # patch cross the cellular-like profile inside the git deadline (#395).
 assert_behavior "Changes caps fit the git deadline on a cellular link" \
     WeakNetworkE2ETests \
-    '"a status past 2 MiB and a 1 MiB patch read inside the git deadline over the cellular-like profile"'
+    '"a status past its cap and a 1 MiB patch read inside the git deadline over the cellular-like profile"'
 
 fi
 

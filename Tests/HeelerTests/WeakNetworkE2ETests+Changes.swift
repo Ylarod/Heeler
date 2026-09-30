@@ -12,7 +12,7 @@ extension WeakNetworkE2ETests {
     /// then over the cellular-like profile, directly and behind the Jump Host.
     /// Every read must finish inside the production git deadline: a read that
     /// overruns it shows no Changes at all.
-    @Test("a status past 2 MiB and a 1 MiB patch read inside the git deadline over the cellular-like profile")
+    @Test("a status past its cap and a 1 MiB patch read inside the git deadline over the cellular-like profile")
     func largeChangesReadsFitTheGitDeadlineOverACellularLink() async throws {
         let fixture = try #require(WeakNetworkFixture.current)
         try await fixture.control.reset()
@@ -143,7 +143,7 @@ extension WeakNetworkE2ETests {
 
     // MARK: Large Checkout
 
-    static let largeCheckoutFileCount = 14_000
+    static let largeCheckoutFileCount = 5_000
     static let largePatchLineCount = 20_000
 
     /// One route from the device to the fixture Host.
@@ -226,8 +226,11 @@ extension WeakNetworkE2ETests {
     }
 
     /// Every file modified by one line, each status record about 160 bytes,
-    /// so the status alone overflows 2 MiB; `large.txt` is rewritten
-    /// wholesale, so its patch overflows the 1 MiB Load More cap.
+    /// so the status alone prints about 800 KB, past the 512 KiB cap;
+    /// `large.txt` is rewritten wholesale, so its patch overflows the 1 MiB
+    /// Load More cap. No more files than that: the Host's own git time grows
+    /// with every one, and a CI runner took 6.5 s over 14,000 on loopback,
+    /// which measures the runner rather than the link.
     private static func largeCheckoutScript(root: String) -> Data {
         Data(
             """
