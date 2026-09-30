@@ -76,6 +76,8 @@ private struct FileDiffDocumentView<Footer: View>: View {
     @State private var usableWidth: CGFloat?
     /// Not observable: writing it as the user scrolls would rebuild every row.
     @State private var anchor = DiffScrollAnchor<Row.ID>()
+    /// Not observable, for the same reason.
+    @State private var endRecovery = DiffEndRecovery<Row.ID>()
 
     init(
         patch: FilePatch, file: ChangedFile, refreshError: String?,
@@ -175,6 +177,7 @@ private struct FileDiffDocumentView<Footer: View>: View {
                         pendingFrame: inspection.pendingFrame,
                         probe: probe,
                         readerHeight: proxy.size.height)
+                    let _ = endRecovery.noteLines(realized: !anchors.isEmpty, lastLine: lastLineRowID)
                     Color.clear
                         .allowsHitTesting(false)
                 }
@@ -184,7 +187,16 @@ private struct FileDiffDocumentView<Footer: View>: View {
             } action: { _, height in
                 anchor.noteContainerHeight(height)
             }
-            .onAppear { anchor.adopt(scroll) }
+            .onScrollGeometryChange(for: CGFloat?.self) { geometry in
+                geometry.visibleRect.maxY >= geometry.contentSize.height - 1
+                    ? geometry.contentSize.height : nil
+            } action: { _, height in
+                endRecovery.noteEnd(contentHeight: height)
+            }
+            .onAppear {
+                anchor.adopt(scroll)
+                endRecovery.adopt(scroll)
+            }
             .onChange(of: decision.layout) { _, layout in
                 keepTopLine(for: layout, proxy: scroll)
             }
@@ -349,6 +361,16 @@ private struct FileDiffDocumentView<Footer: View>: View {
         return Binding(get: { settings.layout }, set: { settings.select($0) })
     }
 
+    /// The last row that shows code, in the layout on screen.
+    private var lastLineRowID: Row.ID? {
+        (decision.layout == .sideBySide ? pairedRows : rows).last { row in
+            switch row {
+            case .line, .pair: true
+            case .file, .hunk: false
+            }
+        }?.id
+    }
+
     /// A side-by-side row id is already a unified line id. The other way
     /// maps whichever line is at the top onto the pair that shows it.
     private func anchorTarget(for remembered: Row.ID, layout: DiffLayout) -> Row.ID {
@@ -421,6 +443,62 @@ private enum DiffLineFrames {
             bestID = id
         }
         return Inspection(line: bestID, pendingFrame: pendingFrame)
+    }
+}
+
+/// SwiftUI's lazy stack on iOS 26 can leave the viewport past its last row.
+/// Rows it has not measured count at an estimated height; when the real rows
+/// are shorter, a jump to the end of that estimate (the scroll indicator
+/// dragged to the bottom) lands below every row. Nothing is then realized, so
+/// nothing is measured and the estimate never shrinks: the diff stays blank
+/// until the reader scrolls back up. Seen as a scroll to the end with no line
+/// publishing a frame, and ended by scrolling the last line into view, which
+/// measures it. Measured on the iOS 26.5 simulator, not on iOS 27.
+@MainActor
+private final class DiffEndRecovery<ID: Hashable> {
+    private var proxy: ScrollViewProxy?
+    private var linesRealized = true
+    private var lastLine: ID?
+    /// The content height while the viewport reaches its end, else nil.
+    private var endHeight: CGFloat?
+    /// One recovery per content height, so an estimate the scroll cannot
+    /// correct is not retried every frame.
+    private var recoveredHeight: CGFloat?
+    private var isScheduled = false
+
+    func adopt(_ proxy: ScrollViewProxy) {
+        self.proxy = proxy
+    }
+
+    func noteLines(realized: Bool, lastLine: ID?) {
+        linesRealized = realized
+        self.lastLine = lastLine
+        schedule()
+    }
+
+    func noteEnd(contentHeight: CGFloat?) {
+        endHeight = contentHeight
+        schedule()
+    }
+
+    /// The two signals arrive in either order within one update; the check
+    /// waits for both.
+    private func schedule() {
+        guard !linesRealized, endHeight != nil, !isScheduled else { return }
+        isScheduled = true
+        Task { [weak self] in
+            await Task.yield()
+            self?.recover()
+        }
+    }
+
+    private func recover() {
+        isScheduled = false
+        guard !linesRealized, let endHeight, endHeight != recoveredHeight,
+            let proxy, let lastLine
+        else { return }
+        recoveredHeight = endHeight
+        proxy.scrollTo(lastLine, anchor: .bottom)
     }
 }
 
