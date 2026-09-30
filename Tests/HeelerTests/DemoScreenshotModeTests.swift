@@ -407,7 +407,8 @@
 
             // Two Agents share a value, so one row showing it does not mean
             // the other's read has finished; wait for every store as well.
-            let shown = try await ChangesViewTests.eventually {
+            // A slow CI runner takes seconds to mount the whole Console.
+            let shown = try await ChangesViewTests.eventually(timeout: .seconds(15)) {
                 let labels = AccessibilityProbe.labels(in: controller.view)
                 return expected.values.allSatisfy { value in labels.contains { $0.contains(value) } }
                     && composition.console.agents.allSatisfy { agent in
@@ -415,9 +416,18 @@
                             .map { $0.phase != .loading } ?? false
                     }
             }
+            let phases = composition.console.agents.map { agent in
+                let phase = composition.console.rowChanges.store(for: agent)
+                    .map { String("\($0.phase)".prefix(40)) }
+                return "\(agent.agent.name ?? agent.agent.kind): \(phase ?? "none")"
+            }
             #expect(
                 shown,
-                "rows showed \(AccessibilityProbe.labels(in: controller.view).filter { $0.contains("Changes") })")
+                """
+                rows showed \(AccessibilityProbe.labels(in: controller.view).filter { $0.contains("Changes") }); \
+                stores \(phases); \
+                on screen \(AccessibilityProbe.labels(in: controller.view).prefix(40))
+                """)
             // One store per Agent, from the list itself.
             for agent in composition.console.agents {
                 let store = try #require(composition.console.rowChanges.store(for: agent))
