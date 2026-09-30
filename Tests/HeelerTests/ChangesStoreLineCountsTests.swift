@@ -289,7 +289,6 @@ struct TideGitItemTests {
             ],
             untracked: 1, upstream: .tracking(ahead: 2, behind: 1)))
         #expect(item.text == "main ⇣1 ⇡2 ~1 +2 !2 ?1")
-        #expect(item.counts.map(\.role) == [.upstream, .upstream, .conflicted, .staged, .dirty, .untracked])
         #expect(
             item.accessibilityValue
                 == "Branch main, 1 commit behind, 2 commits ahead, 1 conflicted, 2 staged, "

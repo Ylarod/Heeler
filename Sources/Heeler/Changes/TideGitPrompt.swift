@@ -8,26 +8,14 @@ import UIKit
 /// "main ⇣1 ⇡2 ~1 +3 !4 ?2". Changes reads neither Tide's stash count nor
 /// an operation in progress, so those never show.
 struct TideGitItem: Equatable {
-    enum Role: Equatable {
-        case upstream
-        case conflicted
-        case staged
-        case dirty
-        case untracked
-    }
-
-    struct Count: Equatable {
-        let role: Role
-        let text: String
-    }
-
     /// Tide's default `tide_git_truncation_length`.
     static let truncationLength = 24
 
     /// The branch, shortened as Tide shortens it, or the short commit.
     let location: String
     let isDetached: Bool
-    let counts: [Count]
+    /// Each nonzero count with its symbol, as "⇣1" or "+3".
+    let counts: [String]
     let accessibilityValue: String
 
     /// Nil whenever the Agents list row would show no totals for the same
@@ -75,18 +63,18 @@ struct TideGitItem: Equatable {
         }
         let untracked = changes.totals.untrackedItems
 
-        var counts: [Count] = []
-        func add(_ value: Int, _ role: Role, _ symbol: String, _ phrase: String) {
+        var counts: [String] = []
+        func add(_ value: Int, _ symbol: String, _ phrase: String) {
             guard value > 0 else { return }
-            counts.append(Count(role: role, text: symbol + value.formatted()))
+            counts.append(symbol + value.formatted())
             spoken.append("\(value.formatted()) \(phrase)")
         }
-        add(behind, .upstream, "⇣", behind == 1 ? "commit behind" : "commits behind")
-        add(ahead, .upstream, "⇡", ahead == 1 ? "commit ahead" : "commits ahead")
-        add(conflicted, .conflicted, "~", "conflicted")
-        add(staged, .staged, "+", "staged")
-        add(dirty, .dirty, "!", "modified")
-        add(untracked, .untracked, "?", "untracked")
+        add(behind, "⇣", behind == 1 ? "commit behind" : "commits behind")
+        add(ahead, "⇡", ahead == 1 ? "commit ahead" : "commits ahead")
+        add(conflicted, "~", "conflicted")
+        add(staged, "+", "staged")
+        add(dirty, "!", "modified")
+        add(untracked, "?", "untracked")
         self.counts = counts
         // The Host capped its status output, so the file counts are lower
         // bounds; Tide has no mark for that, so only VoiceOver says so.
@@ -98,7 +86,7 @@ struct TideGitItem: Equatable {
 
     /// What the prompt reads, as "main ⇣1 ⇡2 +3".
     var text: String {
-        ([(isDetached ? "@" : "") + location] + counts.map(\.text)).joined(separator: " ")
+        ([(isDetached ? "@" : "") + location] + counts).joined(separator: " ")
     }
 
     /// Tide's `string shorten -m24`: the first 23 characters and an ellipsis.
@@ -108,26 +96,17 @@ struct TideGitItem: Equatable {
     }
 }
 
-/// Tide's lean git colors on dark themes; on light ones, the same hues dark
-/// enough to read.
+/// Tide's lean branch color on dark themes; on light ones, the same hue
+/// dark enough to read.
 enum TideGitPalette {
     static let branch = DiffPalette.adaptive(light: 0x1A7F37, dark: 0x5FD700)
-    static let conflicted = DiffPalette.adaptive(light: 0xCF222E, dark: 0xFF0000)
-    static let changed = DiffPalette.adaptive(light: 0x8A5C00, dark: 0xD7AF00)
-    static let untracked = DiffPalette.adaptive(light: 0x0969DA, dark: 0x00AFFF)
-
-    static func color(for role: TideGitItem.Role) -> UIColor {
-        switch role {
-        case .upstream: branch
-        case .conflicted: conflicted
-        case .staged, .dirty: changed
-        case .untracked: untracked
-        }
-    }
 }
 
 /// The Tide git item in Agent detail's status line, at that line's size.
-/// Only the branch gives way when the line is short of room.
+/// Only the branch takes Tide's color; the counts stay secondary, so the
+/// line's colors are the branch and the Checkout totals beside it, which
+/// the staged count's "+" would otherwise echo. Only the branch gives way
+/// when the line is short of room.
 struct TideGitPrompt: View {
     let store: ChangesStore
     var font: Font = .caption2.weight(.medium)
@@ -150,8 +129,8 @@ struct TideGitPrompt: View {
                         .truncationMode(.middle)
                 }
                 ForEach(Array(item.counts.enumerated()), id: \.offset) { _, count in
-                    Text(verbatim: count.text)
-                        .foregroundStyle(Color(uiColor: TideGitPalette.color(for: count.role)))
+                    Text(verbatim: count)
+                        .foregroundStyle(.secondary)
                         .fixedSize()
                 }
             }
