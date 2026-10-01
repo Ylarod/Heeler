@@ -32,6 +32,7 @@ struct ChangesUntrackedDirectoryRows: View {
                 ChangesFileRow(file: directory)
                     .accessibilityHidden(true)
             }
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(directory.accessibilityLabel)

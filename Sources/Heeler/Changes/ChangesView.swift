@@ -297,6 +297,9 @@ struct ChangesFileRow: View {
                 .foregroundStyle(Color(uiColor: ChangeKindPalette.color(for: file.kind)))
                 .frame(minWidth: 16)
         }
+        // A plain button takes taps only where its label draws; the whole
+        // row is the target, its blank middle included.
+        .contentShape(.rect)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(file.rowAccessibilityLabel)
     }
