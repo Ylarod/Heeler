@@ -11,6 +11,7 @@ struct ChangesView: View {
     /// Try Again's read. Like the first read's `.task`, it ends when Changes
     /// leave the screen rather than running on for a store nobody shows.
     @State private var retry: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -19,12 +20,18 @@ struct ChangesView: View {
                 // scroll position included; a refresh of the same one keeps it.
                 .id(store.checkout)
                 .opacity(store.fileDiff.current == nil ? 1 : 0)
+                // Kept built for its scroll position, so it comes back as
+                // `backPushUncovered` would bring it: from the leading edge.
+                .visualEffect { [isShowingDiff = store.fileDiff.current != nil] content, proxy in
+                    content.offset(x: isShowingDiff ? -proxy.size.width : 0)
+                }
                 .allowsHitTesting(store.fileDiff.current == nil)
                 .accessibilityHidden(store.fileDiff.current != nil)
             if let diff = store.fileDiff.current {
                 FileDiffView(store: diff)
                     .environment(\.changesReferenceActions, ChangesReferenceActions(store: store))
                     .id(ObjectIdentifier(diff))
+                    .transition(.backPush)
             }
         }
         // The bar's back button is custom, so the system's swipe is gone;
@@ -58,11 +65,14 @@ struct ChangesView: View {
         .toolbar(.visible, for: .navigationBar)
     }
 
+    /// Animated, so a diff and Changes leave as a pushed screen pops.
     private func goBack() {
-        if store.fileDiff.current != nil {
-            store.closeDiff()
-        } else {
-            onBack()
+        withAnimation(reduceMotion ? nil : .default) {
+            if store.fileDiff.current != nil {
+                store.closeDiff()
+            } else {
+                onBack()
+            }
         }
     }
 
@@ -335,6 +345,19 @@ struct ChangesFileRow: View {
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                 .truncationMode(file.originalPath == nil ? .head : .tail)
         }
+    }
+}
+
+extension AnyTransition {
+    /// A screen that leaves for the one behind it: in from the trailing edge
+    /// as a push, out toward it as a pop.
+    static var backPush: AnyTransition {
+        .asymmetric(insertion: .push(from: .trailing), removal: .push(from: .leading))
+    }
+
+    /// The screen behind, uncovered by `backPush`.
+    static var backPushUncovered: AnyTransition {
+        .asymmetric(insertion: .push(from: .leading), removal: .push(from: .trailing))
     }
 }
 

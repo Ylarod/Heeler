@@ -240,6 +240,7 @@ struct AgentDetailView: View {
             } else if let store = changes.store {
                 ChangesView(store: store) { changes.close() }
                     .id(ObjectIdentifier(store))
+                    .transition(.backPush)
             } else {
                 AgentTerminalView(
                     agent: agent,
@@ -284,6 +285,7 @@ struct AgentDetailView: View {
                     // must not spend the keyboard handoff meant for the real one.
                     inheritsKeyboardHandoff: !permitsRetention || retainedAgent != nil)
                 .id(ObjectIdentifier(attach))
+                .transition(.backPushUncovered)
             }
         }
         .onAppear {

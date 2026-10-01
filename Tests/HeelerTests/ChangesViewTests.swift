@@ -405,16 +405,19 @@ struct AgentDetailChangesTests {
             ChangesViewTests.activate("Back", in: controller.view)
         }
         try #require(wentBack)
+        // Changes leave with a push transition, so their rows linger until
+        // it finishes.
         let returned = try await ChangesViewTests.eventually {
             controller.view.layoutIfNeeded()
             return !AgentSurfaceReplacementTests.terminals(in: controller.view).isEmpty
+                && !ChangesViewTests.labels(in: controller)
+                    .contains("conflict.txt, conflicted, 4 lines added, 0 lines removed")
         }
         #expect(returned)
         #expect(changes.store == nil)
         #expect(shownChanges.last == false)
         #expect(composer.draft == "keep this draft")
         #expect(inputMode.mode == mode)
-        #expect(!ChangesViewTests.labels(in: controller).contains("conflict.txt, conflicted, 4 lines added, 0 lines removed"))
 
         await attach.leave().value
     }
