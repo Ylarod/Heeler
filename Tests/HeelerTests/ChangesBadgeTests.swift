@@ -979,6 +979,53 @@ struct AgentRowChangesTests {
         #expect(reads.requests.filter { $0 == Self.otherCheckoutDirectory }.count == 2)
     }
 
+    /// An Agent in a repository nested inside a Worktree lies under that
+    /// Worktree's path but not in its Checkout: the Worktree's Changes
+    /// neither stand in for the row nor hand it their read.
+    @Test func worktreeChangesAroundANestedRepositoryLeaveTheRowItsOwn() async throws {
+        let nested = Self.trackingDirectory + "/vendor/lib"
+        let rowRead = try ChangesStoreTests.read(GitProbeRecordings.worktree)
+        let exited = try ChangesStoreTests.read(GitProbeRecordings.worktree)
+        let around = try ChangesBadgeTests.read(added: 10, removed: 0)
+        #expect(rowRead.changes.checkout != around.changes.checkout)
+        let reads = DirectoryReads([
+            nested: [rowRead, exited], Self.trackingDirectory: [around, around, around],
+        ])
+        let clock = ChangesManualSleeper()
+        let feed = StatusFeed(.working)
+        defer { feed.finish() }
+        let world = World()
+        world.directory = nested
+        let fixture = Self.fixture(reads: reads, clock: clock, feed: feed, world: world)
+        defer { fixture.rows.retain { _ in false } }
+        let store = try await Self.showSettledRow(
+            fixture, clock: clock, landing: .loaded(rowRead.changes))
+
+        world.now = Date(timeIntervalSince1970: 2_000)
+        fixture.changes.open(directory: Self.trackingDirectory)
+        let shown = try #require(fixture.changes.store)
+        await shown.appear()
+        #expect(shown.phase == .loaded(around.changes))
+        // The row reads its own Checkout on an exit while they show.
+        world.now = Date(timeIntervalSince1970: 3_000)
+        feed.send(.done)
+        await Self.drain()
+        await clock.fireAll()
+        await Self.drain()
+        await Self.waitUntilSettled(store, .loaded(exited.changes))
+        await Self.waitUntil { shown.activeRead == nil }
+        #expect(reads.requests.filter { $0 == nested }.count == 2)
+
+        // Back after a newer read of the Worktree keeps the row's own.
+        world.now = Date(timeIntervalSince1970: 4_000)
+        await shown.refresh()
+        #expect(shown.readAt == Date(timeIntervalSince1970: 4_000))
+        fixture.changes.close()
+        shown.cancel()
+        #expect(store.phase == .loaded(exited.changes))
+        #expect(store.readAt == Date(timeIntervalSince1970: 3_000))
+    }
+
     /// Open Changes stand in for the row only while the Agent is in their
     /// Checkout. An Agent that moved elsewhere while Working has its row
     /// read where it is now on its exit, and Back keeps that read.

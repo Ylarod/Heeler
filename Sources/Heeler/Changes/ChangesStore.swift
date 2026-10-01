@@ -103,6 +103,8 @@ final class ChangesStore {
     @ObservationIgnored private let read:
         @Sendable (ChangesReadRequest) async throws -> CheckoutChangesRead
     @ObservationIgnored private var lastDirectory: String?
+    /// The directory whose read the loaded document is.
+    @ObservationIgnored private var readDirectory: String?
     @ObservationIgnored private var hasRead = false
 
     let fileDiff: FileDiffPresenter
@@ -214,6 +216,7 @@ final class ChangesStore {
             let hadRead = hasRead
             untrackedDirectories.collapseAll()
             phase = .loaded(result.changes)
+            readDirectory = directory
             directoryPrefix = result.directoryPrefix
             timedOutKeepingContent = false
             hasRead = true
@@ -288,12 +291,19 @@ final class ChangesStore {
         activeRead != nil && dispatchedReadID == readID
     }
 
-    /// Whether this store's next read lands inside `checkout`: for a store
-    /// following an Agent, whether the Agent is in that Checkout now rather
-    /// than when this store last read.
-    func readsInside(_ checkout: CheckoutLocation) -> Bool {
-        guard let directory = directory() ?? lastDirectory else { return false }
-        return checkout.contains(directory: directory)
+    /// Whether this store's next read lands in the Checkout `other` shows:
+    /// for a store following an Agent, the Checkout the Agent is in now
+    /// rather than when this store last read. Only git's answer counts, as
+    /// a path inside a Checkout's top level can belong to a repository
+    /// nested in it: `other` read the very directory this store reads, or
+    /// this store's own read of it found the same Checkout. Otherwise this
+    /// store reads for itself.
+    func readsSameCheckout(as other: ChangesStore) -> Bool {
+        guard let checkout = other.checkout, let directory = directory() ?? lastDirectory
+        else { return false }
+        if other.readDirectory == directory { return true }
+        guard case .loaded(let own) = phase, readDirectory == directory else { return false }
+        return own.checkout.topLevel == checkout.topLevel
     }
 
     /// Closing Changes hands their read to the list row's store. When it is
@@ -302,10 +312,11 @@ final class ChangesStore {
     /// own directory prefix: the totals are the whole Checkout's either way.
     func adoptNewerRead(of other: ChangesStore) {
         guard case .loaded(let changes) = other.phase, let otherReadAt = other.readAt,
-            otherReadAt > readAt ?? .distantPast, readsInside(changes.checkout)
+            otherReadAt > readAt ?? .distantPast, readsSameCheckout(as: other)
         else { return }
         untrackedDirectories.collapseAll()
         phase = .loaded(changes)
+        readDirectory = other.readDirectory
         readAt = otherReadAt
         timedOutKeepingContent = false
         autoRefresh.readWasWhileWorking = other.autoRefresh.readWasWhileWorking
@@ -318,9 +329,10 @@ final class ChangesStore {
     func seed(from other: ChangesStore) {
         guard phase == .loading, activeRead == nil, !other.timedOutKeepingContent,
             case .loaded(let changes) = other.phase, let otherReadAt = other.readAt,
-            let otherDirectory = other.lastDirectory, otherDirectory == directory()
+            let otherDirectory = other.readDirectory, otherDirectory == directory()
         else { return }
         phase = .loaded(changes)
+        readDirectory = otherDirectory
         directoryPrefix = other.directoryPrefix
         readAt = otherReadAt
         autoRefresh.readWasWhileWorking = other.autoRefresh.readWasWhileWorking

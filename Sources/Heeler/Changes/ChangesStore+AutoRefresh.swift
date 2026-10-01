@@ -134,7 +134,7 @@ extension ChangesStore {
     func resumeAutomaticRefresh(after other: ChangesStore) {
         guard autoRefresh.pending else { return }
         if other.hasAnsweredEveryWorkingExit, readAt != nil, readAt == other.readAt,
-            let checkout = other.checkout, readsInside(checkout)
+            readsSameCheckout(as: other)
         {
             autoRefresh.pending = false
         } else {

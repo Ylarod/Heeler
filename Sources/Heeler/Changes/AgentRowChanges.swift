@@ -23,8 +23,8 @@ final class AgentRowChanges {
         /// Open Changes read the Checkout this store would read now.
         var isStoodInFor: Bool {
             shown.contains { box in
-                guard let other = box.store, let checkout = other.checkout else { return false }
-                return store.readsInside(checkout)
+                guard let other = box.store else { return false }
+                return store.readsSameCheckout(as: other)
             }
         }
     }
