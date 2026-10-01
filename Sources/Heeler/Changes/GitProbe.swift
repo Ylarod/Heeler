@@ -76,6 +76,8 @@ enum GitProbe {
         "-c", "color.ui=false",
         "-c", "diff.autoRefreshIndex=false",
         "-c", "diff.relative=false",
+        // A blank context line keeps its leading space, as the parser reads it.
+        "-c", "diff.suppressBlankEmpty=false",
         "-c", "log.showSignature=false",
         "-c", "status.renames=true",
     ]

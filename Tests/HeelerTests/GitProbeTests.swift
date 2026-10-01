@@ -85,6 +85,7 @@ struct GitProbeScriptTests {
         #expect(hasOption("core.quotePath", "false"))
         #expect(hasOption("color.ui", "false"))
         #expect(hasOption("diff.relative", "false"))
+        #expect(hasOption("diff.suppressBlankEmpty", "false"))
         #expect(hasOption("log.showSignature", "false"))
         #expect(words.contains("--no-optional-locks"))
         #expect(words.contains("--literal-pathspecs"))

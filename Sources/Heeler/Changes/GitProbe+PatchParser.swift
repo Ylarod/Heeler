@@ -182,7 +182,11 @@ private struct PatchFileBuilder {
         case UInt8(ascii: "-") where oldRemaining > 0:
             kind = .removed; oldNumber = oldLine; newNumber = nil
             oldLine += 1; oldRemaining -= 1
-        case UInt8(ascii: " ") where oldRemaining > 0 && newRemaining > 0:
+        // An empty line is a blank context line written without its
+        // space, as `diff.suppressBlankEmpty` writes it and `git apply`
+        // reads it; skipping it would shift every later line's number.
+        case UInt8(ascii: " ") where oldRemaining > 0 && newRemaining > 0,
+            nil where oldRemaining > 0 && newRemaining > 0:
             kind = .context; oldNumber = oldLine; newNumber = newLine
             oldLine += 1; oldRemaining -= 1
             newLine += 1; newRemaining -= 1

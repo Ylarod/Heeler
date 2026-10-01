@@ -126,6 +126,28 @@ struct GitProbePatchParsingTests {
         #expect(file.hunks.first?.lines.map(\.newNumber) == [1, nil, 2, 3])
     }
 
+    /// `diff.suppressBlankEmpty` writes a blank context line as an empty
+    /// one; the lines after it keep their numbers.
+    @Test func anEmptyLineIsABlankContextLine() throws {
+        let file = try #require(GitProbe.parsePatchFiles(Data("""
+            diff --git a/file.txt b/file.txt
+            --- a/file.txt
+            +++ b/file.txt
+            @@ -1,4 +1,4 @@
+             a
+
+            -b
+            +B
+             c
+
+            """.utf8), isTruncated: false).first)
+        let lines = try #require(file.hunks.first?.lines)
+        #expect(lines.map(\.text) == ["a", "", "b", "B", "c"])
+        #expect(lines.map(\.kind) == [.context, .context, .removed, .added, .context])
+        #expect(lines.map(\.oldNumber) == [1, 2, 3, nil, 4])
+        #expect(lines.map(\.newNumber) == [1, 2, nil, 3, 4])
+    }
+
     @Test func contentThatLooksLikeAFileHeaderStaysInsideItsHunk() throws {
         let file = try #require(Self.parse(GitProbeRecordings.patchHeaderText).files.first)
         #expect(file.oldPath == "header-text.txt")
