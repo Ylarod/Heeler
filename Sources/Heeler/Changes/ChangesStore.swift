@@ -234,6 +234,12 @@ final class ChangesStore {
             hasRead = true
             directoryPrefix = Data()
             timedOutKeepingContent = false
+            // The Agent's directory is in no Checkout now, so a diff left
+            // open would describe one that is gone and hide this state. Other
+            // failures say nothing about the Checkout and keep it.
+            if error == .notAGitWorkingTree || error == .directoryMissing {
+                fileDiff.close()
+            }
             if error == .notAGitWorkingTree {
                 phase = .notAGitWorkingTree
             } else if error == .gitMissing {

@@ -106,6 +106,28 @@ struct ChangesStoreFailureStateTests {
         #expect(store.directoryPrefix.isEmpty)
     }
 
+    /// A read that finds no Checkout closes the open diff, which would
+    /// otherwise cover the failure; a failure that says nothing about the
+    /// Checkout keeps it.
+    @Test func aCheckoutThatIsGoneClosesTheOpenDiff() async throws {
+        let read = try ChangesStoreTests.read(GitProbeRecordings.tracking)
+        let file = try #require(read.changes.files.first { !$0.isUntrackedDirectory })
+        let cases: [(ChangesReadError, closes: Bool)] = [
+            (.notAGitWorkingTree, true), (.directoryMissing, true),
+            (.incomplete, false), (.gitFailed("fatal: bad object"), false),
+        ]
+        for (error, closes) in cases {
+            let transport = ScriptedTransport()
+            await transport.scriptChangesReads([.success(read), .failure(error)])
+            let store = Self.store(transport)
+            await store.appear()
+            store.openDiff(file)
+            #expect(store.fileDiff.current != nil)
+            await store.refresh()
+            #expect((store.fileDiff.current == nil) == closes, "\(error)")
+        }
+    }
+
     @Test func aTruncatedReadKeepsItsPartialStateInTheStore() async throws {
         let transport = ScriptedTransport()
         let partial = try ChangesStoreTests.read(
