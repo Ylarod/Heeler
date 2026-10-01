@@ -887,9 +887,10 @@ struct AgentTerminalView: View {
             latency: console.hostLatencies[agent.hostID])
     }
 
-    /// The Agent's list store, so the status line shows the row's totals.
+    /// The Agent's list store, so the status line shows the row's totals
+    /// and opens Changes when tapped.
     private var statusChanges: AgentDetailChanges {
-        AgentDetailChanges(rows: console.rowChanges, agent: agent)
+        AgentDetailChanges(rows: console.rowChanges, agent: agent, open: showChanges)
     }
 
     private var directInputPresentation: AgentDirectInputPresentation {

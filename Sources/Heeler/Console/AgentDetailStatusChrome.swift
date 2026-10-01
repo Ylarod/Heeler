@@ -21,6 +21,8 @@ struct AgentDetailStatusChrome: View {
         let showsTotals = store.map {
             ChangesBadge(phase: $0.phase, timedOutKeepingContent: $0.timedOutKeepingContent) != nil
         } ?? false
+        // Only a line that shows the Checkout opens it.
+        let open = showsGit || showsTotals ? changes?.open : nil
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             // Each side keeps its own spacing, so a divider sits closer to
             // its neighbours than the line's spacing would put it: the rule
@@ -32,6 +34,7 @@ struct AgentDetailStatusChrome: View {
                     if showsGit { StatusLineDivider() }
                     // Gives way first: only its branch shortens.
                     TideGitPrompt(store: store)
+                        .modifier(OpensChanges(open: open))
                         .layoutPriority(-1)
                 }
             }
@@ -45,6 +48,7 @@ struct AgentDetailStatusChrome: View {
                     ChangesRowTotals(
                         store: store, font: .caption2,
                         identifier: "agent-status-changes")
+                    .modifier(OpensChanges(open: open))
                 }
                 if let hostTelemetry {
                     if showsTotals { StatusLineDivider() }
@@ -54,6 +58,7 @@ struct AgentDetailStatusChrome: View {
             }
         }
         .padding(.horizontal, 16)
+        .modifier(OpensChangesOnTap(open: open))
         .environment(\.colorScheme, chromeColorScheme)
         .modifier(AgentDetailChangesVisibility(changes: changes))
     }
@@ -112,6 +117,37 @@ private struct StatusLineDivider: View {
             // Its bottom would sit on the baseline; lower it to the text's middle.
             .alignmentGuide(.firstTextBaseline) { $0.height * 0.85 }
             .accessibilityHidden(true)
+    }
+}
+
+/// The whole line is the touch target, a few points taller than its text
+/// without taking more room: the Tide git item and the totals alone are
+/// too small to hit. Unconditional, so the line keeps its identity when a
+/// read lands and the line starts opening Changes.
+private struct OpensChangesOnTap: ViewModifier {
+    let open: (() -> Void)?
+    private static let slop: CGFloat = 6
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.vertical, Self.slop)
+            .contentShape(.rect)
+            .onTapGesture { open?() }
+            .allowsHitTesting(open != nil)
+            .padding(.vertical, -Self.slop)
+    }
+}
+
+/// VoiceOver reaches Changes from the git item and the totals, each its
+/// own element, rather than from one button that would swallow them.
+private struct OpensChanges: ViewModifier {
+    let open: (() -> Void)?
+
+    func body(content: Content) -> some View {
+        content
+            .accessibilityAddTraits(open == nil ? [] : .isButton)
+            .accessibilityHint(open == nil ? "" : "Opens Changes")
+            .accessibilityAction { open?() }
     }
 }
 

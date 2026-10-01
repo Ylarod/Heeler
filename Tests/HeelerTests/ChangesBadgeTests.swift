@@ -672,6 +672,49 @@ struct AgentRowChangesTests {
         #expect(AgentCardChangesTotalsTests.identifier(of: element) == "agent-status-changes.exact")
     }
 
+    /// The git item and the totals open Changes, each as its own button.
+    @Test func theStatusLineOpensChanges() async throws {
+        var changes = TideGitItemTests.changes(
+            branch: .named("main"),
+            files: [TideGitItemTests.file("a.swift", staging: .unstaged)],
+            untracked: 0, upstream: nil)
+        changes.totals.added = 12
+        changes.totals.removed = 7
+        let read = CheckoutChangesRead(changes: changes, directoryPrefix: Data())
+        let clock = ChangesManualSleeper()
+        let store = ChangesStore(
+            directory: { Self.trackingDirectory }, read: { _ in read },
+            sleep: { try await clock.sleep($0) })
+        await store.refresh()
+        let rows = AgentRowChanges { _ in store }
+        defer { rows.retain { _ in false } }
+        var opened = 0
+        let controller = UIHostingController(
+            rootView: AnyView(
+                AgentDetailStatusChrome(
+                    status: .idle,
+                    hostTelemetry: nil,
+                    changes: AgentDetailChanges(
+                        rows: rows, agent: Self.agent(directory: Self.trackingDirectory),
+                        open: { opened += 1 }),
+                    chromeColorScheme: .dark)
+                    .environment(\.locale, Locale(identifier: "en_US"))))
+        controller.safeAreaRegions = []
+        let window = try await makeTestWindow(
+            frame: CGRect(x: 0, y: 0, width: 402, height: 80), rootViewController: controller)
+        defer { window.isHidden = true }
+
+        let root: UIView = controller.view
+        _ = try #require(await Self.frame(
+            labeled: "Changes: 12 lines added, 7 lines removed", in: root))
+        for label in ["Git", "Changes: 12 lines added, 7 lines removed"] {
+            let element = try #require(AccessibilityProbe.elements(labeled: label, in: root).first)
+            #expect(element.accessibilityTraits.contains(.button), "\(label) is not a button")
+            #expect(element.accessibilityActivate(), "\(label) did not activate")
+        }
+        #expect(opened == 2)
+    }
+
     /// The totals publish after the read settles; the hosted line lays
     /// them out on its next pass.
     private static func frame(labeled label: String, in root: UIView) async -> CGRect? {

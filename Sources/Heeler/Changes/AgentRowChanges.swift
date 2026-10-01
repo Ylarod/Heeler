@@ -140,6 +140,9 @@ final class AgentRowChanges {
 struct AgentDetailChanges {
     let rows: AgentRowChanges
     let agent: ConsoleAgent
+    /// Opens the Agent's Changes, as the Agent menu's entry does; nil when
+    /// that entry is hidden.
+    var open: (() -> Void)? = nil
 
     var store: ChangesStore? { rows.store(for: agent) }
 }
