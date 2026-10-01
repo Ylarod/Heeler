@@ -1,6 +1,6 @@
 # Heeler iPad App Store mockups
 
-Five landscape exports for the 13-inch iPad screenshot slot. Each export is an
+Seven landscape exports for the 13-inch iPad screenshot slot. Each export is an
 opaque RGB PNG at 2752 × 2064 pixels. The numbered filenames define the proposed
 upload order, with the floating-window presentation first.
 
@@ -13,17 +13,20 @@ upload order, with the floating-window presentation first.
 | 3 | `exports/03-type-directly-stay-in-flow.png` | Direct Input with its shortcut row and the iOS keyboard |
 | 4 | `exports/04-skills-within-reach.png` | Skills in the Direct Input tools keyboard |
 | 5 | `exports/05-a-shell-when-you-need-one.png` | Terminals sidebar and a Shell Terminal in Keys mode |
+| 6 | `exports/06-see-what-changed.png` | Changes for an Agent's Checkout beside the Agent sidebar |
+| 7 | `exports/07-every-change-line-by-line.png` | A file's side-by-side diff with edited words marked |
 
-`contact-sheet.jpg` provides an overview; `index.html` links the five full-size
+`contact-sheet.jpg` provides an overview; `index.html` links the seven full-size
 exports. Neither the contact sheet nor the source captures belong in the upload
-set. The locally generated `../ipad-13-app-store.zip` contains only the five
+set. The locally generated `../ipad-13-app-store.zip` contains only the seven
 exports and is excluded from Git, together with the earlier HTML draft.
 
 ## Source preservation
 
 - The sources are real captures from the iPad Pro 13-inch (M5) (16GB) simulator
   on iOS 27.0, UDID `A993BBE0-BD87-4807-8541-34A23C15C6A9`, taken on 2026-09-28
-  against a live herdr on this Mac. They show the iPad sidebar console.
+  against a live herdr on this Mac. They show the iPad sidebar console. The
+  console, windowed, and Changes captures were retaken on 2026-10-02.
 - The same captures are copied to `docs/images/*-ipad.png` for the README and to
   `landing/src/assets/screens/*-ipad.png` for the landing page.
 - The session titles in the captures remain in Chinese, as captured.
@@ -41,7 +44,7 @@ localized variants have not been produced.
 
 ## Scope and verification
 
-All five rendered PNGs and the contact sheet were visually inspected. The
+All seven rendered PNGs and the contact sheet were visually inspected. The
 renderer checks source dimensions, equal scale on both axes, headline and
 subhead safe areas, and output dimensions/color mode. An independent `sips`
 check confirmed 2752 × 2064 and `hasAlpha: no` for every export. No App Store

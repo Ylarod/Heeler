@@ -10,8 +10,8 @@
       255
     ],
     "export": "exports/01-fits-your-workspace.png",
-    "source_sha256": "741f337b01bbe9129c1b5948395f63666bf33ac50e420c6ecdc42756dc64d0c0",
-    "export_sha256": "2e67b31f0cb93a91af6a68a457a95dd394b41f3c76e811578e7c9dc1b0e1ee93",
+    "source_sha256": "023e7a7f135f728395cff283477832b4025a0e6b9abe1f8d2066cd7c6a99c3eb",
+    "export_sha256": "b7295a7d3271ebba5480f2d816a97a6f64b369b30afdaa23fbfa5d835229415b",
     "pixels": [
       2752,
       2064
@@ -38,8 +38,8 @@
       255
     ],
     "export": "exports/02-every-agent-one-console.png",
-    "source_sha256": "258eb8156dc178035d2b93160f21ea401097ce6e4926d3213088e76778e15fda",
-    "export_sha256": "0df4e1c3a96b0e9911ba63180e228a20b62103ca979bf0b291784e4e134ba33a",
+    "source_sha256": "83ab10183e0e8711c7156fddb4621ebe19e556393a526c948beee3c9c12d142d",
+    "export_sha256": "dd3c9d56f2ee988289681cdcfcdcb5bd7e4b139a8c06b1bbcb00c8e762ed044e",
     "pixels": [
       2752,
       2064
@@ -124,6 +124,62 @@
     "export": "exports/05-a-shell-when-you-need-one.png",
     "source_sha256": "2f2ac4cb48aa7d47321fe59524beaeeecb3b84b92813e7a019c2a56202f686c6",
     "export_sha256": "c3eb7f8fe6c4dfa9466606f5049b102c07421e58e1cc53eb0f2f5a4bfa6686c5",
+    "pixels": [
+      2752,
+      2064
+    ],
+    "color_mode": "RGB",
+    "has_alpha": false,
+    "screenshot_origin": [
+      320,
+      428
+    ],
+    "screenshot_pixels": [
+      2112,
+      1584
+    ]
+  },
+  {
+    "slug": "06-see-what-changed",
+    "source": "06-changes.png",
+    "headline": "See What Changed.",
+    "subhead": "Every uncommitted file in the Agent's Checkout, beside your agents.",
+    "accent": [
+      110,
+      207,
+      132
+    ],
+    "export": "exports/06-see-what-changed.png",
+    "source_sha256": "269b06e1c2cc034bdcca9ba914ee056f88d0674ba163338c30943398011055e9",
+    "export_sha256": "a38262f5cb277ecefd5ac28bcc332e1f185c067b7e85ce594ada60b8a3fbe932",
+    "pixels": [
+      2752,
+      2064
+    ],
+    "color_mode": "RGB",
+    "has_alpha": false,
+    "screenshot_origin": [
+      320,
+      428
+    ],
+    "screenshot_pixels": [
+      2112,
+      1584
+    ]
+  },
+  {
+    "slug": "07-every-change-line-by-line",
+    "source": "07-diff.png",
+    "headline": "Every Change. Line by Line.",
+    "subhead": "Read any file side by side or unified, with word changes marked.",
+    "accent": [
+      255,
+      159,
+      90
+    ],
+    "export": "exports/07-every-change-line-by-line.png",
+    "source_sha256": "e1ca61baba90f415955a8fb06216646f6ee10a95f5c4517275e1a935536b073a",
+    "export_sha256": "c04415164dd992a0882209c13a4d92c6529d601e6200522455d2b7c28b962401",
     "pixels": [
       2752,
       2064

@@ -1,4 +1,6 @@
+import changesShot from '../assets/screens/changes-ipad.png';
 import consoleShot from '../assets/screens/console-ipad.png';
+import diffShot from '../assets/screens/diff-ipad.png';
 import terminalKeyboardShot from '../assets/screens/terminal-keyboard-ipad.png';
 import skillsShot from '../assets/screens/skills-ipad.png';
 import terminalShot from '../assets/screens/terminal-ipad.png';
@@ -34,5 +36,17 @@ export const ipadScreens = [
     alt: 'Terminals sidebar and a Shell Terminal in Keys mode on iPad',
     title: 'A shell when you need one',
     caption: 'Open a plain terminal in any Workspace, with Text and Keys modes.',
+  },
+  {
+    image: changesShot,
+    alt: "Changes listing a Checkout's staged, unstaged, and untracked files beside the Agent sidebar on iPad",
+    title: 'See what changed',
+    caption: "Everything uncommitted in the Agent's Checkout, beside your Agents.",
+  },
+  {
+    image: diffShot,
+    alt: 'A Swift file compared side by side with its edited words highlighted on iPad',
+    title: 'Every change, line by line',
+    caption: 'Read any changed file side by side or unified.',
   },
 ];

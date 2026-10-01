@@ -74,6 +74,20 @@ MOCKUPS = (
         subhead="See live Agent activity from the Lock Screen.",
         accent=(241, 204, 118),
     ),
+    Mockup(
+        output_name="07-see-what-changed.png",
+        source_name="changes-iphone.png",
+        headline="See What\nChanged.",
+        subhead="Every uncommitted file in the Agent's Checkout.",
+        accent=(110, 207, 132),
+    ),
+    Mockup(
+        output_name="08-every-change-line-by-line.png",
+        source_name="diff-iphone.png",
+        headline="Every Change.\nLine by Line.",
+        subhead="Open any file for its diff, word changes marked.",
+        accent=(255, 159, 90),
+    ),
 )
 
 
