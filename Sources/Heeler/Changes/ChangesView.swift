@@ -72,21 +72,19 @@ struct ChangesView: View {
                 Section {
                     ChangesHeader(changes: changes, freshness: store.freshness)
                 }
-                Section("Files") {
-                    if changes.isClean {
+                if changes.isClean {
+                    Section {
                         Text(ChangesStore.cleanMessage)
                             .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(changes.listedFiles) { file in
-                            if file.isUntrackedDirectory {
-                                ChangesUntrackedDirectoryRows(directory: file, store: store)
-                            } else {
-                                Button { store.openDiff(file) } label: {
-                                    ChangesFileRow(file: file)
-                                }
-                                .buttonStyle(.plain)
-                                .changedFileReferenceMenu(file, store: store)
+                    }
+                } else {
+                    ForEach(changes.listedSections) { section in
+                        Section {
+                            ForEach(section.files) { file in
+                                fileRow(file)
                             }
+                        } header: {
+                            ChangesSectionHeader(section: section)
                         }
                     }
                 }
@@ -98,6 +96,8 @@ struct ChangesView: View {
             }
         }
         .listStyle(.insetGrouped)
+        // The groups read as one list, as Source Control's do.
+        .listSectionSpacing(.compact)
         // One ground for every state, so the first read lands without a flash.
         .scrollContentBackground(.hidden)
         .background(Color(uiColor: .systemGroupedBackground))
@@ -107,6 +107,19 @@ struct ChangesView: View {
             await store.refresh()
         }
         .overlay { stateOverlay }
+    }
+
+    @ViewBuilder
+    private func fileRow(_ file: ChangedFile) -> some View {
+        if file.isUntrackedDirectory {
+            ChangesUntrackedDirectoryRows(directory: file, store: store)
+        } else {
+            Button { store.openDiff(file) } label: {
+                ChangesFileRow(file: file)
+            }
+            .buttonStyle(.plain)
+            .changedFileReferenceMenu(file, store: store)
+        }
     }
 
     @ViewBuilder
@@ -130,9 +143,10 @@ struct ChangesView: View {
     }
 }
 
-/// The Checkout by name and path, its branch with its upstream, the latest
-/// commit, and its totals. One VoiceOver element whose summary names the
-/// Checkout and never an Agent.
+/// The Checkout by name, with its line totals, its branch and how far it
+/// has moved from its upstream, and the latest commit, in three lines; the
+/// groups below count the files. One VoiceOver element whose summary names
+/// the Checkout, its path included, and never an Agent.
 private struct ChangesHeader: View {
     let changes: CheckoutChanges
     let freshness: ChangesFreshness?
@@ -141,46 +155,36 @@ private struct ChangesHeader: View {
     var body: some View {
         // The latest commit's age is relative, so it moves on by itself.
         TimelineView(.periodic(from: .now, by: 60)) { context in
-            VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 6) {
+                // The totals move under the name rather than cut it short.
+                ViewThatFits(in: .horizontal) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(verbatim: changes.checkout.name)
-                            .font(.title3.weight(.semibold))
-                        if changes.checkout.isLinkedWorktree {
-                            Text("Worktree")
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Capsule().fill(.quaternary))
-                        }
+                        name
+                        Spacer(minLength: 8)
+                        if !changes.isClean { totals }
                     }
-                    Text(verbatim: changes.checkout.displayPath)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        name
+                        if !changes.isClean { totals }
+                    }
                 }
-                .fixedSize(horizontal: false, vertical: true)
                 ChangesBranchRow(head: changes.head)
                 if let latest = changes.head.latestCommit {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         ChangesHeaderIcon(systemName: "smallcircle.circle")
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(latest.subject)
-                                .font(.subheadline)
-                                .lineLimit(3)
-                            Text(latest.age(relativeTo: context.date, locale: locale))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        Text(latest.subject)
+                            .lineLimit(1)
+                        Text(verbatim: "· " + latest.age(relativeTo: context.date, locale: locale))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .fixedSize()
                     }
+                    .font(.subheadline)
                 }
                 if changes.head.isUnborn {
                     Text("No commits yet")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                }
-                if !changes.isClean {
-                    Divider()
-                    ChangesTotalsRow(changes: changes)
                 }
                 if let freshness {
                     Text(freshness.text(relativeTo: context.date, locale: locale))
@@ -189,7 +193,7 @@ private struct ChangesHeader: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 2)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(
                 changes.accessibilitySummary(relativeTo: context.date, locale: locale)
@@ -198,29 +202,98 @@ private struct ChangesHeader: View {
                     } ?? ""))
         }
     }
-}
 
-/// One file, as VS Code lists it: its name, with its directory, rename, and
-/// staging beneath, then its line counts and its change letter. VoiceOver
-/// reads its path, kind, staging, and counts.
-struct ChangesFileRow: View {
-    let file: ChangedFile
+    private var name: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(verbatim: changes.checkout.name)
+                .font(.headline)
+                .lineLimit(2)
+                .truncationMode(.middle)
+            if changes.checkout.isLinkedWorktree {
+                Text("Worktree")
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(.quaternary))
+                    .fixedSize()
+            }
+        }
+    }
 
-    var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(verbatim: file.fileName)
-                    .font(.callout)
-                    .strikethrough(file.kind == .deleted, color: .secondary)
-                if let subtitle = file.rowSubtitle {
-                    Text(verbatim: subtitle)
+    /// The line totals, a side with no lines left out as in the rows;
+    /// "At least" when git could not count every file. Nothing when git
+    /// produced no line counts or no line changed.
+    @ViewBuilder
+    private var totals: some View {
+        let totals = changes.totals
+        if totals.linesAreAvailable {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                if !totals.linesAreComplete, totals.added + totals.removed > 0 {
+                    Text("At least")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                ChangesLineCounts(
+                    counts: .lines(added: totals.added, removed: totals.removed),
+                    font: .subheadline.weight(.semibold))
             }
-            .fixedSize(horizontal: false, vertical: true)
+            .fixedSize()
+        }
+    }
+}
+
+/// A group's title and how many of the listed files it holds.
+private struct ChangesSectionHeader: View {
+    let section: ChangesFileSection
+
+    var body: some View {
+        HStack {
+            Text(section.group.title)
+                .textCase(.uppercase)
+            Spacer()
+            Text(section.files.count.formatted())
+                .monospacedDigit()
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(section.group.title)
+        .accessibilityValue(
+            "\(section.files.count.formatted()) \(section.files.count == 1 ? "file" : "files")")
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// One file, as VS Code lists it: its name with its directory beside it,
+/// then its line counts and its change letter, on one line; at
+/// accessibility sizes the directory moves beneath. A partly staged file
+/// carries a half-filled circle. VoiceOver reads its path, kind, staging,
+/// and counts.
+struct ChangesFileRow: View {
+    let file: ChangedFile
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 1) {
+                        name
+                        detail
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        name
+                            .layoutPriority(1)
+                        detail
+                    }
+                }
+            }
             .frame(maxWidth: .infinity, alignment: .leading)
-            trailing
+            if file.kind != .untracked, let lineCounts = file.lineCounts {
+                ChangesLineCounts(counts: lineCounts, font: .footnote.weight(.medium))
+            }
             Text(verbatim: file.kind.symbol)
                 .font(.subheadline.monospaced().weight(.bold))
                 .foregroundStyle(Color(uiColor: ChangeKindPalette.color(for: file.kind)))
@@ -230,16 +303,31 @@ struct ChangesFileRow: View {
         .accessibilityLabel(file.rowAccessibilityLabel)
     }
 
-    @ViewBuilder
-    private var trailing: some View {
-        if file.kind == .untracked {
-            if !file.isUntrackedDirectory {
-                Text("New")
-                    .font(.footnote)
+    private var name: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(verbatim: file.fileName)
+                .font(.callout)
+                .strikethrough(file.kind == .deleted, color: .secondary)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                .truncationMode(.middle)
+            if file.isPartlyStaged {
+                Image(systemName: "circle.lefthalf.filled")
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-        } else if let lineCounts = file.lineCounts {
-            ChangesLineCounts(counts: lineCounts, font: .footnote.weight(.medium))
+        }
+    }
+
+    @ViewBuilder
+    private var detail: some View {
+        if let detail = file.rowDetail {
+            // The end of a directory names it best, so it keeps that end;
+            // a rename leads with its source and keeps that instead.
+            Text(verbatim: detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                .truncationMode(file.originalPath == nil ? .head : .tail)
         }
     }
 }

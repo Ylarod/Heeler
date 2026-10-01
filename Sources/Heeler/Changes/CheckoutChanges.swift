@@ -35,6 +35,42 @@ struct CheckoutChanges: Sendable, Equatable {
     var isMetadataTruncated = false
 }
 
+/// Where the Changes list puts a file, as VS Code's Source Control groups
+/// them: conflicts first, then staged, then the working tree's changes, a
+/// partly staged file among them, then untracked files.
+enum ChangesFileGroup: CaseIterable, Sendable {
+    case conflicts
+    case staged
+    case changes
+    case untracked
+
+    init(_ file: ChangedFile) {
+        switch (file.kind, file.staging) {
+        case (.conflicted, _): self = .conflicts
+        case (.untracked, _): self = .untracked
+        case (_, .staged?): self = .staged
+        default: self = .changes
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .conflicts: "Conflicts"
+        case .staged: "Staged"
+        case .changes: "Changes"
+        case .untracked: "Untracked"
+        }
+    }
+}
+
+/// One group of the Changes list and its files, in list order.
+struct ChangesFileSection: Sendable, Equatable, Identifiable {
+    let group: ChangesFileGroup
+    let files: [ChangedFile]
+
+    var id: ChangesFileGroup { group }
+}
+
 /// A git working tree as git resolved it on the Host.
 struct CheckoutLocation: Sendable, Equatable, Hashable {
     /// `--show-toplevel`: the working tree's real path, as raw bytes.
@@ -212,43 +248,23 @@ struct ChangedFile: Sendable, Equatable, Identifiable {
     /// The path's directory, empty at the top level.
     var directory: String { Self.split(displayPath).directory }
 
-    /// The row's second line: the directory, where a rename came from, an
-    /// untracked folder, and staging, as "Sources/Checkout · staged". The
-    /// change letter carries the kind, and unstaged is the unmarked case.
-    /// Nil for an unstaged file at the top level.
-    var rowSubtitle: String? {
-        var parts: [String] = []
-        var startsWithPhrase = false
-        func phrase(_ text: String) {
-            if parts.isEmpty { startsWithPhrase = true }
-            parts.append(text)
+    /// Beside the row's name: where a rename came from, then the directory,
+    /// as "From CartError.swift · Sources/Checkout", so a short row keeps
+    /// the rename. The list's group carries staging and the change letter
+    /// the kind. Nil for a file at the top level that was not renamed.
+    var rowDetail: String? {
+        guard let displayOriginalPath else { return directory.isEmpty ? nil : directory }
+        let original = Self.split(displayOriginalPath)
+        if original.name == fileName, !original.directory.isEmpty, !directory.isEmpty {
+            return "\(original.directory) → \(directory)"
         }
-        if let displayOriginalPath {
-            let original = Self.split(displayOriginalPath)
-            if original.name == fileName, !original.directory.isEmpty, !directory.isEmpty {
-                parts.append("\(original.directory) → \(directory)")
-            } else if original.directory == directory {
-                if !directory.isEmpty { parts.append(directory) }
-                phrase("from \(original.name)")
-            } else {
-                if !directory.isEmpty { parts.append(directory) }
-                phrase("from \(displayOriginalPath)")
-            }
-        } else if !directory.isEmpty {
-            parts.append(directory)
-        }
-        if isUntrackedDirectory { phrase("untracked folder") }
-        switch staging {
-        case .staged: phrase("staged")
-        case .both: phrase("staged and unstaged")
-        case .unstaged, nil: break
-        }
-        guard !parts.isEmpty else { return nil }
-        if startsWithPhrase {
-            parts[0] = parts[0].prefix(1).uppercased() + parts[0].dropFirst()
-        }
-        return parts.joined(separator: " · ")
+        let source = original.directory == directory ? original.name : displayOriginalPath
+        return (["From \(source)"] + (directory.isEmpty ? [] : [directory]))
+            .joined(separator: " · ")
     }
+
+    /// Staged with further unstaged changes on top; listed under Changes.
+    var isPartlyStaged: Bool { staging == .both }
 
     private static func split(_ path: String) -> (directory: String, name: String) {
         let trimmed = path.hasSuffix("/") ? String(path.dropLast()) : path
@@ -314,23 +330,9 @@ enum ChangesReadError: Error, Sendable, Equatable {
 }
 
 extension CheckoutChanges {
-    /// The header's file counts and its VoiceOver summary both start with
-    /// the files-changed count, which is only a lower bound when the Host
-    /// capped its status output.
+    /// The header's VoiceOver summary starts with the files-changed count,
+    /// which is only a lower bound when the Host capped its status output.
     private var fileCountQualifier: String { isStatusTruncated ? "more than " : "" }
-
-    /// The header's file counts, as "11 changed · 3 untracked". Line
-    /// totals show beside it on their own.
-    var filesSummary: String {
-        var parts: [String] = []
-        if totals.trackedFiles > 0 || isStatusTruncated {
-            parts.append(fileCountQualifier + "\(totals.trackedFiles.formatted()) changed")
-        }
-        if totals.untrackedItems > 0 {
-            parts.append("\(totals.untrackedItems.formatted()) untracked")
-        }
-        return parts.joined(separator: " · ")
-    }
 
     /// What VoiceOver reads for the header, as one element: the Checkout,
     /// its linked Worktree marker, the branch or detached commit, and the

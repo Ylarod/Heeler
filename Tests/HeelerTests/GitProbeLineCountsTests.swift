@@ -122,14 +122,14 @@ struct GitProbeLineCountsTests {
         #expect(changes.totals.trackedFiles == 1)
         #expect(changes.totals.added == 3)
         #expect(changes.totals.removed == 1)
-        #expect(changes.filesSummary == "more than 1 changed")
         #expect(changes.accessibilitySummary(
             relativeTo: Date(timeIntervalSince1970: 1_790_600_000), locale: Locale(identifier: "en_US"))
             .contains("more than 1 file changed. 3 lines added, 1 line removed in tracked files."))
 
         let complete = try read(recording)
         #expect(!complete.isStatusTruncated)
-        #expect(complete.filesSummary == "2 changed · 1 untracked")
+        #expect(complete.totals.trackedFiles == 2)
+        #expect(complete.totals.untrackedItems == 1)
     }
 
     @Test func aFailedCountCommandReportsTheGitFailure() {

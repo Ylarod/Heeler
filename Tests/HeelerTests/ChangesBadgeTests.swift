@@ -26,10 +26,10 @@ struct ChangesBadgeTests {
         ChangesBadge(phase: .loaded(changes), timedOutKeepingContent: false)
     }
 
-    /// The Changes header writes the same exact counts, zeroes included.
+    /// The Changes header writes the same exact counts.
     private static func expectHeaderMatches(_ badge: ChangesBadge, _ changes: CheckoutChanges) {
         let header = ChangesLineCounts.texts(
-            added: changes.totals.added, removed: changes.totals.removed, showsZeroes: true)
+            added: changes.totals.added, removed: changes.totals.removed)
         #expect(header.added == badge.addedText())
         #expect(header.removed == badge.removedText())
     }

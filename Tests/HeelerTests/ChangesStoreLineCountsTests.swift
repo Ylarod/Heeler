@@ -22,7 +22,6 @@ struct ChangesStoreLineCountsTests {
         #expect(changes.totals.untrackedItems == 1)
         #expect(changes.totals.added == 3)
         #expect(changes.totals.removed == 1)
-        #expect(changes.filesSummary == "2 changed · 1 untracked")
         #expect(changes.totals.accessibilitySummary
             == "2 files changed. 3 lines added, 1 line removed in tracked files. 1 untracked item")
     }
@@ -57,7 +56,7 @@ struct ChangesStoreLineCountsTests {
         #expect(!summary(changes).contains("No commits yet"))
         #expect(changes.totals.added == 1)
         #expect(changes.totals.removed == 0)
-        #expect(changes.filesSummary == "1 changed")
+        #expect(changes.totals.trackedFiles == 1)
     }
 
     @Test func anUnbornCheckoutSaysNoCommitsYetOnBothObjectFormats() async throws {
@@ -186,18 +185,51 @@ struct ChangesRowTextTests {
         let file = Self.file("Sources/Checkout/CartStore.swift", staging: .unstaged)
         #expect(file.fileName == "CartStore.swift")
         #expect(file.directory == "Sources/Checkout")
-        #expect(file.rowSubtitle == "Sources/Checkout")
+        #expect(file.rowDetail == "Sources/Checkout")
         let topLevel = Self.file("README.md", staging: .unstaged)
         #expect(topLevel.fileName == "README.md")
         #expect(topLevel.directory == "")
-        #expect(topLevel.rowSubtitle == nil)
+        #expect(topLevel.rowDetail == nil)
     }
 
-    @Test func stagingIsMarkedAndUnstagedIsNot() {
-        #expect(Self.file("a/b.swift", staging: .staged).rowSubtitle == "a · staged")
-        #expect(Self.file("a/b.swift", staging: .both).rowSubtitle == "a · staged and unstaged")
-        #expect(Self.file("b.swift", staging: .staged).rowSubtitle == "Staged")
-        #expect(Self.file("a/b.swift", kind: .conflicted, staging: nil).rowSubtitle == "a")
+    /// The group carries staging, so the row's text never does.
+    @Test func stagingIsLeftToTheGroup() {
+        #expect(Self.file("a/b.swift", staging: .staged).rowDetail == "a")
+        #expect(Self.file("a/b.swift", staging: .both).rowDetail == "a")
+        #expect(Self.file("b.swift", staging: .staged).rowDetail == nil)
+        #expect(Self.file("a/b.swift", staging: .both).isPartlyStaged)
+        #expect(!Self.file("a/b.swift", staging: .staged).isPartlyStaged)
+    }
+
+    @Test func eachFileFallsInItsSourceControlGroup() {
+        #expect(ChangesFileGroup(Self.file("a", kind: .conflicted, staging: nil)) == .conflicts)
+        #expect(ChangesFileGroup(Self.file("a", kind: .added, staging: .staged)) == .staged)
+        #expect(ChangesFileGroup(Self.file("a", staging: .unstaged)) == .changes)
+        #expect(ChangesFileGroup(Self.file("a", staging: .both)) == .changes)
+        #expect(ChangesFileGroup(Self.file("a/", kind: .untracked, staging: nil)) == .untracked)
+    }
+
+    /// Groups follow VS Code's order, keep the files' order, and leave out
+    /// a group with nothing in it.
+    @Test func theListGroupsItsFilesInOrder() {
+        let changes = CheckoutChanges(
+            checkout: Self.location("~/src/app"),
+            head: CheckoutHead(branch: .named("main"), commit: nil, latestCommit: nil),
+            files: [
+                Self.file("c.swift", kind: .conflicted, staging: nil),
+                Self.file("a.swift", staging: .unstaged),
+                Self.file("b.swift", staging: .staged),
+                Self.file("d.swift", staging: .both),
+                Self.file("new.txt", kind: .untracked, staging: nil),
+            ])
+        #expect(changes.listedSections.map(\.group) == [.conflicts, .staged, .changes, .untracked])
+        #expect(changes.listedSections.map { $0.files.map(\.displayPath) }
+            == [["c.swift"], ["b.swift"], ["a.swift", "d.swift"], ["new.txt"]])
+        let unstagedOnly = CheckoutChanges(
+            checkout: Self.location("~/src/app"),
+            head: CheckoutHead(branch: .named("main"), commit: nil, latestCommit: nil),
+            files: [Self.file("a.swift", staging: .unstaged)])
+        #expect(unstagedOnly.listedSections.map(\.group) == [.changes])
     }
 
     @Test func aRenameShowsWhereItCameFrom() {
@@ -206,40 +238,31 @@ struct ChangesRowTextTests {
             Self.file(
                 "Sources/Shipping/ShippingRates.swift",
                 from: "Sources/Checkout/ShippingRates.swift", kind: .renamed, staging: .staged
-            ).rowSubtitle == "Sources/Checkout → Sources/Shipping · staged")
+            ).rowDetail == "Sources/Checkout → Sources/Shipping")
         // Renamed in place.
         #expect(
             Self.file(
                 "Sources/Checkout/PaymentSheet.swift",
                 from: "Sources/Checkout/LegacyPaymentSheet.swift", kind: .renamed, staging: .staged
-            ).rowSubtitle == "Sources/Checkout · from LegacyPaymentSheet.swift · staged")
+            ).rowDetail == "From LegacyPaymentSheet.swift · Sources/Checkout")
         // Renamed and moved, or moved to or from the top level.
         #expect(
             Self.file("New/b.swift", from: "Old/a.swift", kind: .renamed, staging: .staged)
-                .rowSubtitle == "New · from Old/a.swift · staged")
+                .rowDetail == "From Old/a.swift · New")
         #expect(
             Self.file("b.swift", from: "Old/b.swift", kind: .renamed, staging: .staged)
-                .rowSubtitle == "From Old/b.swift · staged")
+                .rowDetail == "From Old/b.swift")
     }
 
-    @Test func anUntrackedFolderKeepsItsSlashAndSaysSo() {
+    @Test func anUntrackedFolderKeepsItsSlash() {
         let nested = Self.file("Fixtures/receipts/", kind: .untracked, staging: nil)
         #expect(nested.fileName == "receipts/")
         #expect(nested.directory == "Fixtures")
-        #expect(nested.rowSubtitle == "Fixtures · untracked folder")
+        #expect(nested.rowDetail == "Fixtures")
         let topLevel = Self.file("Fixtures/", kind: .untracked, staging: nil)
         #expect(topLevel.fileName == "Fixtures/")
-        #expect(topLevel.rowSubtitle == "Untracked folder")
-        #expect(Self.file("notes.txt", kind: .untracked, staging: nil).rowSubtitle == nil)
-    }
-
-    @Test func theHeaderCountsChangedAndUntrackedFilesApart() {
-        #expect(Self.changes(tracked: 11, untracked: 3).filesSummary == "11 changed · 3 untracked")
-        #expect(Self.changes(tracked: 2, untracked: 0).filesSummary == "2 changed")
-        #expect(Self.changes(tracked: 0, untracked: 1).filesSummary == "1 untracked")
-        #expect(
-            Self.changes(tracked: 500, untracked: 0, truncated: true).filesSummary
-                == "more than 500 changed")
+        #expect(topLevel.rowDetail == nil)
+        #expect(Self.file("notes.txt", kind: .untracked, staging: nil).rowDetail == nil)
     }
 
     @Test func aCheckoutIsNamedByItsLastComponent() {

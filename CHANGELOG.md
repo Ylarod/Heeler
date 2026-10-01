@@ -13,14 +13,16 @@ Entries reference the issue that motivated them.
   without opening a terminal. Open it from the Agent's More menu, in
   Composer or Direct Input, whenever the Agent has a working directory; it
   takes the place of Agent detail, and Back returns to the Agent with its
-  draft and input mode as they were. A header names the Checkout by its folder
-  over its Host path, marks a linked Worktree, and shows the branch or
-  detached commit with how far it is ahead of and behind its upstream, the
-  latest commit's subject and age, and the Checkout's line totals and file
-  counts. Below it, each changed file is listed by name over its folder,
-  with its line counts, whether it is staged, and a letter for
-  modified, added, deleted, renamed, untracked, or conflicted (M, A, D, R, ?,
-  or ~, the last two as Tide writes them), with conflicts first. Pull down to read it
+  draft and input mode as they were. A compact header names the Checkout by
+  its folder with its line totals, marks a linked Worktree, and shows the
+  branch or detached commit with how far it is behind and ahead of its
+  upstream, as ⇣1 ⇡2, and the latest commit's subject and age. Below it, the
+  changed files are grouped as VS Code's Source Control groups them, into
+  Conflicts, Staged, Changes, and Untracked, each with its count; a partly
+  staged file is listed under Changes with a half-filled circle. Each file
+  takes one line: its name with its folder beside it, its line counts, and a
+  letter for modified, added, deleted, renamed, untracked, or conflicted (M,
+  A, D, R, ?, or ~, the last two as Tide writes them). Pull down to read it
   again. Each Agent's row in the Agents list ends its last line with the
   Checkout's line totals, such as +12 −7 in green and red, matching the
   Changes header but leaving out a side with no lines, and the Agent List Fields preview shows them there with

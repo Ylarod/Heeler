@@ -7,6 +7,15 @@ extension CheckoutChanges {
     /// Only the displayed list is limited; its raw path identities are intact.
     var listedFiles: ArraySlice<ChangedFile> { files.prefix(Self.displayLimit) }
 
+    /// The listed files in VS Code's Source Control groups, each keeping
+    /// the files' order; a group with no files is left out.
+    var listedSections: [ChangesFileSection] {
+        let grouped = Dictionary(grouping: listedFiles, by: ChangesFileGroup.init)
+        return ChangesFileGroup.allCases.compactMap { group in
+            grouped[group].map { ChangesFileSection(group: group, files: $0) }
+        }
+    }
+
     var listLimitNotice: String? {
         Self.limitNotice(
             shown: listedFiles.count, total: files.count,
