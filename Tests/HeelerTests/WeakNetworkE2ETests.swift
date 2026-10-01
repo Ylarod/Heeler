@@ -490,4 +490,9 @@ struct WeakNetworkFixture: Sendable {
     func settings() -> SSHTransportSettings {
         environment.weakNetworkSettings(port: port)
     }
+
+    /// The Jump Host fixture reached over the same impaired link.
+    func jumpSettings() -> SSHTransportSettings {
+        environment.weakNetworkJumpSettings(port: port)
+    }
 }

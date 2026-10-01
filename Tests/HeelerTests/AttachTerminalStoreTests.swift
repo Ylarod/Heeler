@@ -519,6 +519,60 @@ struct AgentAttachStoreTests {
         #expect(await !transport.hasLiveAttachSession)
     }
 
+    /// A screen rebuilt over a retained store, as on the way back from
+    /// Changes, reports the latest activation again. Only a newer one may
+    /// replace the terminal.
+    @Test func eachActivationIsAnsweredOnce() async throws {
+        let transport = ScriptedTransport()
+        let generation = TerminalGenerationSource(1)
+        let runner: TerminalSessionRunner = { request, handler in
+            let readyGeneration = await generation.acquire()
+            await handler.transportDidBecomeReady(readyGeneration)
+            let session = try await transport.attachTerminal(request)
+            try await handler.runEndingSession(session)
+        }
+        let store = makeStore(
+            transport: transport,
+            generation: 1,
+            runTerminal: runner)
+
+        let initialSessionGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: initialSessionGate)
+        store.viewDidResize(cols: 80, rows: 24)
+        await initialSessionGate.waitForEntry()
+        let initialStatusChanges = observeStatusChanges(of: store)
+        #expect(await transport.emitAttachOutput(Data("initial".utf8)))
+        await initialSessionGate.open()
+        await initialStatusChanges.next()
+        #expect(store.terminalStatus == .live)
+
+        let recoveryChanges = observeTerminalChanges(of: store)
+        store.didBecomeActive(activation: 1, afterPossibleSuspension: true)
+        #expect(store.terminalStatus == .connecting)
+        await recoveryChanges.next()
+        let recoveryID = store.terminalID
+
+        let recoveryGate = ScriptedTransportCallGate()
+        await transport.gateNextAttachSession(using: recoveryGate)
+        store.viewDidResize(cols: 80, rows: 24)
+        await recoveryGate.waitForEntry()
+        let recoveryStatusChanges = observeStatusChanges(of: store)
+        #expect(await transport.emitAttachOutput(Data("recovered".utf8)))
+        await recoveryGate.open()
+        await recoveryStatusChanges.next()
+        #expect(store.terminalStatus == .live)
+
+        store.didBecomeActive(activation: 1, afterPossibleSuspension: true)
+        #expect(store.terminalStatus == .live)
+        #expect(store.terminalID == recoveryID)
+
+        store.didBecomeActive(activation: 2, afterPossibleSuspension: true)
+        #expect(store.terminalStatus == .connecting)
+
+        await store.leave().value
+        #expect(await transport.attachRequests.count == 2)
+    }
+
     @Test func foregroundRecoveryDoesNotAbsorbANewerTransportGeneration() async throws {
         let transport = ScriptedTransport()
         let generation = TerminalGenerationSource(1)

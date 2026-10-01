@@ -29,6 +29,14 @@ struct WorktreeDetailView: View {
                     }
                 }
 
+                if store.canShowChanges {
+                    Section {
+                        Button("Show Changes", systemImage: "plus.forwardslash.minus") {
+                            store.showChanges()
+                        }
+                    }
+                }
+
                 Section {
                     Button("Remove Worktree", role: .destructive) {
                         store.prepareConfirmation()
@@ -73,6 +81,9 @@ struct WorktreeDetailView: View {
                 feedbackTitle,
                 isPresented: feedbackPresented
             ) {
+                if store.refusalOffersChanges {
+                    Button("Show Changes") { store.showChanges() }
+                }
                 Button("OK", role: .cancel) { store.dismissFeedback() }
             } message: {
                 Text(feedbackMessage)

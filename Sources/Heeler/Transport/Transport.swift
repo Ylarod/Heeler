@@ -242,6 +242,28 @@ protocol Transport: Sendable {
     /// figure is then shown without its window (#325).
     func modelContextWindow(selector: String) async throws -> Int?
 
+    /// Lists the files inside one untracked directory: one git script over
+    /// one exec, using the top level from the latest Changes read. Entries
+    /// carry no line counts. Git-level outcomes throw `ChangesReadError`; a
+    /// git read past its deadline throws `TransportError.gitTimedOut`.
+    /// Transports that cannot run git on a Host throw
+    /// `ChangesReadError.unavailable` by default.
+    func listUntrackedDirectory(
+        _ request: UntrackedDirectoryRequest
+    ) async throws -> UntrackedDirectoryListing
+
+    /// Reads the Changes of the Checkout containing `request.directory`:
+    /// one git script over one exec, resolved and parsed by `GitProbe`.
+    /// Git-level outcomes throw `ChangesReadError`; a git read past its
+    /// deadline throws `TransportError.gitTimedOut`. Transports that cannot
+    /// run git on a Host throw `ChangesReadError.unavailable` by default.
+    func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead
+
+    /// Reads one file's patch in its resolved Checkout, including both paths
+    /// for a rename and an empty-file comparison for an untracked file.
+    /// Transports without Host git throw `ChangesReadError.unavailable`.
+    func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch
+
     /// Whether the underlying connection to the Host is still alive. The
     /// reconnect machinery (#18) decides "re-subscribe on this connection or
     /// re-establish it" from this flag.
@@ -294,6 +316,24 @@ extension Transport {
 
     /// A transport without Host commands knows no model windows.
     func modelContextWindow(selector: String) async throws -> Int? { nil }
+
+    /// A transport without Host commands cannot list an untracked directory.
+    func listUntrackedDirectory(
+        _ request: UntrackedDirectoryRequest
+    ) async throws -> UntrackedDirectoryListing {
+        throw ChangesReadError.unavailable
+    }
+
+    /// A transport without Host commands cannot run git, and says so
+    /// rather than reporting an empty Checkout.
+    func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead {
+        throw ChangesReadError.unavailable
+    }
+
+    /// A transport without Host commands cannot read a file's patch.
+    func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch {
+        throw ChangesReadError.unavailable
+    }
 
     /// Non-SSH test doubles and alternative transports can state that SFTP is
     /// unavailable without importing or emulating an SSH library.
@@ -685,6 +725,9 @@ struct Agent: Sendable, Equatable {
     /// The Pane address used for per-pane subscriptions and attach.
     let paneID: String
     let cwd: String
+    /// The Agent process's directory in the last snapshot, separate from
+    /// the launch directory used by Open Terminal, Skills and Agent rows.
+    let foregroundCwd: String?
     let revision: Int
 
     /// The card's primary label (#41): the server-reported name when present,
@@ -698,7 +741,8 @@ struct Agent: Sendable, Equatable {
         terminalTitle: String? = nil, terminalTitleStripped: String? = nil,
         paneTitle: String? = nil, agentSession: AgentSessionInfo? = nil,
         tokens: [String: String] = [:],
-        stateLabels: [String: String] = [:], stateChangeSeq: Int? = nil
+        stateLabels: [String: String] = [:], stateChangeSeq: Int? = nil,
+        foregroundCwd: String? = nil
     ) {
         self.terminalID = terminalID
         self.kind = kind
@@ -717,6 +761,7 @@ struct Agent: Sendable, Equatable {
         self.tabID = tabID
         self.paneID = paneID
         self.cwd = cwd
+        self.foregroundCwd = foregroundCwd
         self.revision = revision
     }
 
@@ -742,7 +787,8 @@ struct Agent: Sendable, Equatable {
             agentSession: info.agentSession,
             tokens: info.tokens ?? [:],
             stateLabels: info.stateLabels ?? [:],
-            stateChangeSeq: info.stateChangeSeq
+            stateChangeSeq: info.stateChangeSeq,
+            foregroundCwd: info.foregroundCwd
         )
     }
 
@@ -861,8 +907,13 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// The request exceeded its per-request deadline; the channel it held was
     /// closed.
     case timedOut
-    /// The request's task was cancelled before completing; any channel it
-    /// held was closed.
+    /// A Changes script exceeded its own deadline. This says nothing about
+    /// link health and must not trigger a redial or an automatic retry: the
+    /// exec can remain alive until its remote watchdog ends the process group.
+    case gitTimedOut
+    /// The request's task was cancelled before completing. Resource cleanup
+    /// may outlive the caller; a dispatched git exec waits for its bounded
+    /// remote exit instead of abandoning the channel.
     case cancelled
     /// The channel produced bytes that do not decode as a herdr response.
     case malformedResponse(String)
@@ -890,7 +941,7 @@ indirect enum TransportError: Error, Sendable, Equatable {
             .deviceKeyCorrupt, .rsaKeyCorrupt, .rsaSignatureUnsupported,
             .hostKeyRejected, .hostKeyMismatch,
             .socketNotFound, .herdrBinaryNotFound, .protocolVersionMismatch,
-            .streamLocalOpenFailed,
+            .streamLocalOpenFailed, .gitTimedOut,
             .homeDirectoryUnresolvable, .invalidDirectoryPath,
             .eventsChannelAlreadyOpen,
             .terminalChannelAlreadyOpen, .malformedResponse:

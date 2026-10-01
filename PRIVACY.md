@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: August 22, 2026._
+_Last updated: September 29, 2026._
 
 Heeler is a native iOS console for [herdr](https://herdr.dev). It connects to
 machines you control ("Hosts") over SSH. Heeler has no user accounts,
@@ -28,6 +28,16 @@ Agent Notifications use the limited-purpose Push Relay described below.
 - **Live agent activity.** Terminal output, prompts, and pane contents travel
   only over the direct SSH connection between your device and your Host. The
   limited notification data described below takes a separate route.
+- **Changes.** For each Agent with a working directory whose row the
+  Agents list shows, Heeler asks git on your Host for the Checkout's branch
+  or detached commit, its upstream branch and how many commits it is ahead
+  of and behind that branch, its latest commit's subject and time, and its
+  changed file names and line counts: when the row first shows, when the
+  Agent stops working while a row shows it (or when a row next shows it),
+  and when you open Changes. Changes also asks for file contents and diffs
+  as you open them. They travel only over the direct SSH connection between
+  your device and your Host, and Heeler keeps them in memory while the
+  Agent stays in the list and does not save them.
 
 ## Agent Notifications and the Push Relay
 

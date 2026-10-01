@@ -10,6 +10,9 @@ final class ConsoleStore {
     struct AgentStatusUpdate: Sendable, Equatable {
         let status: AgentStatus?
         let liveUpdatesAvailable: Bool
+        /// The Host connection the status came over; a new one may follow
+        /// turns that ran while no connection could see them.
+        var connectionGeneration: UInt64? = nil
     }
 
     private(set) var agents: [ConsoleAgent] = []
@@ -47,6 +50,13 @@ final class ConsoleStore {
     @ObservationIgnored private var agentStatusObservers: [
         ConsoleAgent.ID: [UUID: AsyncStream<AgentStatusUpdate>.Continuation]
     ] = [:]
+    @ObservationIgnored private var gitExecGates: [Host.ID: GitExecGate] = [:]
+    /// The Agents list's Changes totals, one store per Agent, shared by
+    /// every window's rows and by nothing else.
+    @ObservationIgnored private(set) lazy var rowChanges = AgentRowChanges { [unowned self] agent in
+        makeChangesStore(
+            agentID: agent.id, hostID: agent.hostID, openingDirectory: agent.directory)
+    }
     /// Composer ownership sits above the detail branch so a transient
     /// missing-Agent placeholder during reconnect cannot destroy a draft.
     @ObservationIgnored private var composerStores: [
@@ -382,6 +392,45 @@ final class ConsoleStore {
     func readSkillFile(path: String, on hostID: Host.ID) async throws -> String {
         try await projection(for: hostID).session.withTransport { transport in
             try await transport.readSkillFile(atPath: path)
+        }
+    }
+
+    /// Shared across Changes presentations and the Agents list's row reads
+    /// for the same Host, including ones for different Agents or windows.
+    func gitExecGate(for hostID: Host.ID) -> GitExecGate {
+        if let gate = gitExecGates[hostID] { return gate }
+        let gate = GitExecGate()
+        gitExecGates[hostID] = gate
+        return gate
+    }
+
+    /// The Changes view's listing for one untracked directory. Uncached, like
+    /// the document itself: the expansion lives only in the view's store.
+    func listUntrackedDirectory(
+        _ request: UntrackedDirectoryRequest, on hostID: Host.ID
+    ) async throws -> UntrackedDirectoryListing {
+        try await projection(for: hostID).session.withTransport { transport in
+            try await transport.listUntrackedDirectory(request)
+        }
+    }
+
+    /// The Changes view's and the Agents list's data source: one git read
+    /// over the Host's live Console connection. Uncached: each document
+    /// lives only in the store that asked for it.
+    func readChanges(
+        _ request: ChangesReadRequest, on hostID: Host.ID
+    ) async throws -> CheckoutChangesRead {
+        try await projection(for: hostID).session.withTransport { transport in
+            try await transport.readChanges(request)
+        }
+    }
+
+    /// Reads only the open file through the Host's existing connection.
+    func readFilePatch(
+        _ request: FilePatchRequest, on hostID: Host.ID
+    ) async throws -> FilePatch {
+        try await projection(for: hostID).session.withTransport { transport in
+            try await transport.readFilePatch(request)
         }
     }
 
@@ -761,6 +810,11 @@ final class ConsoleStore {
         if terminals != nextTerminals { terminals = nextTerminals }
         rebuildAgentOrder()
         publishAgentStatuses()
+        // A reconnecting Host's empty projection is not proof its Agents
+        // exited, so their row totals stay until its snapshot says so.
+        let liveAgents = Set(agents.map(\.id))
+        let awaiting = hostsAwaitingSnapshot
+        rowChanges.retain { liveAgents.contains($0) || awaiting.contains($0.hostID) }
     }
 
     private func reconcileTerminalConnections(_ current: [HostConsoleProjection]) {
@@ -866,7 +920,8 @@ final class ConsoleStore {
             status: status,
             liveUpdatesAvailable: status != nil
                 && hostStatuses[id.hostID] == .connected
-                && !hostsAwaitingSnapshot.contains(id.hostID))
+                && !hostsAwaitingSnapshot.contains(id.hostID),
+            connectionGeneration: hostConnectionGenerations[id.hostID])
     }
 
     private func removeAgentStatusObserver(_ observerID: UUID, for id: ConsoleAgent.ID) {

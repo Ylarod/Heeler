@@ -63,6 +63,8 @@ struct PreflightReportTests {
         (.hostKeyRejected(
             presented: HostKeyFingerprint(publicKeyBlob: Data("blob-a".utf8))), .connection),
         (.timedOut, .connection),
+        // Not reachable from connect+ping; keep the closed taxonomy total.
+        (.gitTimedOut, .connection),
         (.cancelled, .connection),
         (.channelFailed(detail: "boom"), .connection),
         (.eventsChannelAlreadyOpen, .connection),

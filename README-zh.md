@@ -28,13 +28,17 @@ Heeler 是一个 **agent 控制台**：把所有机器上正在运行的 coding 
 
 ## 截图
 
-| Agent Console + 搜索 | 实时终端 | Direct Input + Terminal 键盘 |
+| Agent Console + 搜索 | Direct Input + Terminal 键盘 | 实时终端 |
 | --- | --- | --- |
-| <img src="docs/images/console-iphone.png" width="240" alt="iPhone 上支持置顶、状态显示和搜索的 Agent Console" /> | <img src="docs/images/live-terminal-iphone.png" width="240" alt="iPhone 上使用 Direct Input 的 Agent 实时终端" /> | <img src="docs/images/agent-iphone.png" width="240" alt="iPhone 上使用 Direct Input、快捷键和完整 Terminal 键盘的 Agent 终端" /> |
+| <img src="docs/images/console-iphone.png" width="240" alt="iPhone 上支持置顶、状态显示和搜索的 Agent Console" /> | <img src="docs/images/agent-iphone.png" width="240" alt="iPhone 上使用 Direct Input、快捷键和完整 Terminal 键盘的 Agent 终端" /> | <img src="docs/images/live-terminal-iphone.png" width="240" alt="iPhone 上使用 Direct Input 的 Agent 实时终端" /> |
 
-| Shell + Terminal 键盘 | Skills | 实时活动 |
+| Changes | 文件 diff | Shell + Terminal 键盘 |
 | --- | --- | --- |
-| <img src="docs/images/terminal-iphone.png" width="240" alt="iPhone 上使用 Keys 模式和完整 Terminal 键盘的 Shell 终端" /> | <img src="docs/images/skills-iphone.png" width="240" alt="iPhone 上 Composer 的 Skills 建议" /> | <img src="docs/images/live-activity-iphone.png" width="240" alt="iPhone 锁屏上实时跟踪 Agent 的实时活动" /> |
+| <img src="docs/images/changes-iphone.png" width="240" alt="iPhone 上列出 Checkout 已暂存和未暂存文件的 Changes" /> | <img src="docs/images/diff-iphone.png" width="240" alt="iPhone 上高亮改动词的 JSON 文件 diff" /> | <img src="docs/images/terminal-iphone.png" width="240" alt="iPhone 上使用 Keys 模式和完整 Terminal 键盘的 Shell 终端" /> |
+
+| Skills | Hosts | 实时活动 |
+| --- | --- | --- |
+| <img src="docs/images/skills-iphone.png" width="240" alt="iPhone 上 Composer 的 Skills 建议" /> | <img src="docs/images/hosts-iphone.png" width="240" alt="iPhone 上按连接状态分组并显示延迟的 Hosts 列表" /> | <img src="docs/images/live-activity-iphone.png" width="240" alt="iPhone 锁屏上实时跟踪 Agent 的实时活动" /> |
 
 <a href="docs/ipad-screenshots.md"><img src="docs/images/windowed-ipad.png" width="760" alt="Heeler in a floating iPad window" /></a>
 

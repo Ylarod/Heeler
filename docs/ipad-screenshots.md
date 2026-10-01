@@ -1,6 +1,6 @@
 # Heeler on iPad
 
-Agent Console, Direct Input, Skills, Terminals, and windowed presentation on iPad.
+Agent Console, Direct Input, Skills, Terminals, Changes, and windowed presentation on iPad.
 
 [Back to README](../README.md)
 
@@ -27,6 +27,18 @@ Browse Agent Skills from the tools keyboard.
 Open a plain shell in any Workspace, with Text and Keys modes.
 
 ![Terminals sidebar and a Shell Terminal in Keys mode on iPad](images/terminal-ipad.png)
+
+## Changes
+
+See everything uncommitted in the Agent's Checkout, beside the Agent list.
+
+![Changes listing a Checkout's staged, unstaged, and untracked files beside the Agent sidebar on iPad](images/changes-ipad.png)
+
+## File diff
+
+Read any changed file side by side or unified, with edited words marked.
+
+![A Swift file compared side by side with its edited words highlighted on iPad](images/diff-ipad.png)
 
 ## Windowed presentation
 

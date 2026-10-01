@@ -190,6 +190,10 @@ struct AgentTerminalView: View {
     private let canOpenTerminal: Bool
     private let isOpeningTerminal: Bool
     private let openTerminal: () -> Void
+    /// Opens Changes in place of this screen; nil hides the menu entry.
+    private let showChanges: (() -> Void)?
+    /// Opens Changes for a Worktree directory after its sheet has dismissed.
+    private let showWorktreeChanges: ((String) -> Void)?
     private let composer: AgentComposerStore
     private let interactionProbe: WeakAgentTerminalInteractionProbe?
     private let retainedSurface: TerminalSurfaceRetention?
@@ -248,6 +252,8 @@ struct AgentTerminalView: View {
     @State private var isRenamingWorkspace = false
     @State private var isShowingWorktree = false
     @State private var worktreeStore: WorktreeDetailStore?
+    /// Remembers a Worktree directory until the sheet's dismissal finishes.
+    @State private var worktreeChangesHandoff = WorktreeChangesHandoff()
     /// The control that opened Attach Links, which its popover anchors to.
     @State private var attachLinksOrigin: AttachLinksOrigin?
     @State private var closeErrorMessage: String?
@@ -295,6 +301,8 @@ struct AgentTerminalView: View {
         canOpenTerminal: Bool = false,
         isOpeningTerminal: Bool = false,
         openTerminal: @escaping () -> Void = {},
+        showChanges: (() -> Void)? = nil,
+        showWorktreeChanges: ((String) -> Void)? = nil,
         composer: AgentComposerStore,
         attachStore: AgentAttachStore? = nil,
         retainedSurface: TerminalSurfaceRetention? = nil,
@@ -321,6 +329,8 @@ struct AgentTerminalView: View {
         self.canOpenTerminal = canOpenTerminal
         self.isOpeningTerminal = isOpeningTerminal
         self.openTerminal = openTerminal
+        self.showChanges = showChanges
+        self.showWorktreeChanges = showWorktreeChanges
         self.composer = composer
         self.interactionProbe = interactionProbe.map(WeakAgentTerminalInteractionProbe.init)
         self.retainedSurface = retainedSurface
@@ -614,7 +624,11 @@ struct AgentTerminalView: View {
                 presentation: ConsoleSheetPresentation(
                     horizontalSizeClass: horizontalSizeClass)))
         }
-        .sheet(isPresented: $isShowingWorktree) {
+        .sheet(isPresented: $isShowingWorktree, onDismiss: {
+            worktreeChangesHandoff.openChangesAfterDismissal { directory in
+                showWorktreeChanges?(directory)
+            }
+        }) {
             if let worktreeStore {
                 WorktreeDetailView(store: worktreeStore) { _ in
                     isShowingWorktree = false
@@ -873,6 +887,12 @@ struct AgentTerminalView: View {
             latency: console.hostLatencies[agent.hostID])
     }
 
+    /// The Agent's list store, so the status line shows the row's totals
+    /// and opens Changes when tapped.
+    private var statusChanges: AgentDetailChanges {
+        AgentDetailChanges(rows: console.rowChanges, agent: agent, open: showChanges)
+    }
+
     private var directInputPresentation: AgentDirectInputPresentation {
         AgentDirectInputPresentation.resolve(
             usesToolsKeyboard: usesDirectToolsKeyboard,
@@ -913,6 +933,7 @@ struct AgentTerminalView: View {
                     openTerminal()
                 } : nil,
             isOpeningTerminal: isOpeningTerminal,
+            showChanges: showChanges,
             startAgent: { isStartingAgent = true },
             manageSnippets: { isManagingSnippets = true },
             showSkills: skills != nil ? { isShowingSkillsPicker = true } : nil,
@@ -934,6 +955,12 @@ struct AgentTerminalView: View {
         let request = WorktreeRemovalRequest(
             identity: WorktreeIdentity(
                 hostID: hostID, workspaceID: workspaceID, checkout: checkout))
+        let handoff = worktreeChangesHandoff
+        let openWorktreeChanges: ((String) -> Void)? = showWorktreeChanges.map { _ in
+            { directory in
+                isShowingWorktree = handoff.stage(directory)
+            }
+        }
         return WorktreeDetailStore(
             request: request,
             workspaceLabel: agent.workspaceLabel ?? checkout.repoName,
@@ -951,7 +978,8 @@ struct AgentTerminalView: View {
                         && $0.agent.workspaceID == workspaceID
                         && $0.agent.status == .working
                 }
-            })
+            },
+            showChanges: openWorktreeChanges)
     }
 
     private var terminalSurface: some View {
@@ -1106,6 +1134,7 @@ struct AgentTerminalView: View {
                 presentation: .init(
                     status: agent.agent.status,
                     hostTelemetry: hostTelemetry,
+                    changes: statusChanges,
                     chromeColorScheme: terminal.themes.selection(for: colorScheme)
                         .chromeColorScheme(for: colorScheme),
                     isKeyboardUp: directSwitcherKeyboardIsUp,
@@ -1142,6 +1171,7 @@ struct AgentTerminalView: View {
             store: composer,
             status: agent.agent.status,
             hostTelemetry: hostTelemetry,
+            changes: statusChanges,
             chromeColorScheme: terminal.themes.selection(for: colorScheme)
                 .chromeColorScheme(for: colorScheme),
             switcher: agentSwitcher,
@@ -1483,7 +1513,9 @@ struct AgentTerminalView: View {
         if afterPossibleSuspension {
             armDirectKeyboardClaimIfNeeded()
         }
-        attach.didBecomeActive(afterPossibleSuspension: afterPossibleSuspension)
+        attach.didBecomeActive(
+            activation: activity.activationCount,
+            afterPossibleSuspension: afterPossibleSuspension)
     }
 
     private func openAttachLink(_ link: AttachLink) {

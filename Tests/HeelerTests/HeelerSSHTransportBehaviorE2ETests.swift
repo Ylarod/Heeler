@@ -430,6 +430,218 @@ struct HeelerSSHTransportBehaviorE2ETests {
             homePath: environment.homePath)
     }
 
+    @Test("git stdin scripts preserve bytes and use only the fixed shell on direct and Jump paths")
+    func gitScriptRoundTripsBytesOnBothPaths() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let hostileNames = [
+            "--", "-dash.txt", "sp ace.txt", "quo\"te.txt", "sq'uote.txt",
+            #"two\\bs.txt"#, #"trail\"#, "bang!.txt", "$HOME.txt", "*.txt",
+            "[ab].txt", "ünï.txt", "中文.txt", "line\nbreak.txt", "tab\tname.txt",
+        ]
+        var payload = Data(hostileNames.joined(separator: "\n").utf8)
+        payload.append(contentsOf: [0x80, 0xFE, 0xFF])
+        // Quote opaque bytes inside the stdin script, including a literal
+        // apostrophe. Nothing from this payload may reach the exec command.
+        var quotedPayload = Data([0x27])
+        for byte in payload {
+            if byte == 0x27 {
+                quotedPayload.append(Data("'\\''".utf8))
+            } else {
+                quotedPayload.append(byte)
+            }
+        }
+        quotedPayload.append(0x27)
+
+        // A brace group redirects children away from the shell's script
+        // input. The padding also exercises input larger than a write chunk.
+        var script = Data("{\n#".utf8)
+        script.append(Data(repeating: 0x78, count: 70_000))
+        script.append(Data("\ncat\nprintf '%s\\n' \"$SSH_ORIGINAL_COMMAND\"\nprintf '%s' ".utf8))
+        script.append(quotedPayload)
+        script.append(Data("\nprintf '\\000\\377\\r\\n'\nprintf 'stderr:' >&2\nprintf '%s' ".utf8))
+        script.append(quotedPayload)
+        script.append(Data(" >&2\nprintf '\\000\\376' >&2\nexit 37\n} </dev/null\n".utf8))
+
+        var expectedStdout = Data("/bin/sh -s\n".utf8)
+        expectedStdout.append(payload)
+        expectedStdout.append(contentsOf: [0x00, 0xFF, 0x0D, 0x0A])
+        var expectedStderr = Data("stderr:".utf8)
+        expectedStderr.append(payload)
+        expectedStderr.append(contentsOf: [0x00, 0xFE])
+
+        for settings in [environment.directSettings(), environment.jumpSettings()] {
+            let transport = try await HeelerSSHTransport.connect(settings: settings)
+            defer { Task { try? await transport.close() } }
+            let result = try await transport.runGitScript(script)
+            #expect(result.stdout == expectedStdout)
+            #expect(result.stderr == expectedStderr)
+            #expect(result.exitStatus == 37)
+            #expect(try await transport.ping().protocolVersion == 17)
+        }
+    }
+
+    @Test("a git deadline surfaces its own error and preserves the SSH connection")
+    func gitDeadlinePreservesConnectionReuse() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        var settings = environment.directSettings()
+        settings.gitExecTimeout = .seconds(2)
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+
+        let started = ContinuousClock.now
+        await #expect(throws: TransportError.gitTimedOut) {
+            _ = try await transport.runGitScript(Data("{ sleep 30; } </dev/null\n".utf8))
+        }
+        #expect(started.duration(to: .now) < settings.requestTimeout)
+        // Do not send traffic or close the transport during this window.
+        // The package's abandoned-exec cleanup can invalidate it two seconds
+        // AFTER the caller sees the timeout; an immediate ping hid that race.
+        try await Task.sleep(for: .seconds(3))
+        try #require(await transport.ordinarySessionChannelCountForTesting() == 0)
+        #expect(await transport.isConnected)
+        #expect(try await transport.ping().protocolVersion == 17)
+        let result = try await transport.runGitScript(Data("printf 'still usable'\n".utf8))
+        #expect(result.stdout == Data("still usable".utf8))
+        #expect(result.stderr.isEmpty)
+        #expect(result.exitStatus == 0)
+        #expect(await transport.isConnected)
+    }
+
+    @Test("cancelling a running git script preserves SSH after the remote bound and cleanup window")
+    func cancelledGitScriptPreservesConnectionReuse() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        var settings = environment.directSettings()
+        settings.gitExecTimeout = .seconds(6)
+        let transport = try await HeelerSSHTransport.connect(settings: settings)
+        defer { Task { try? await transport.close() } }
+        let observer = try await HeelerSSHTransport.connect(settings: environment.directSettings())
+        defer { Task { try? await observer.close() } }
+        let marker = try #require(RemoteShellPath.quotedAbsolute(
+            environment.countFilePath + ".git-cancel-" + UUID().uuidString))
+
+        let request = Task {
+            try await transport.runGitScript(
+                Data("{ : > \(marker); sleep 30; } </dev/null\n".utf8))
+        }
+        defer { request.cancel() }
+        // Observe dispatch on an independent SSH connection. Cancellation
+        // must hit a running script, not merely cancel channel admission.
+        let ready = try await observer.runGitScript(Data(
+            "{ while [ ! -f \(marker) ]; do sleep 1; done; rm -f \(marker); } </dev/null\n".utf8))
+        try #require(ready.exitStatus == 0)
+        let cancelledAt = ContinuousClock.now
+        request.cancel()
+        await #expect(throws: TransportError.cancelled) { _ = try await request.value }
+        #expect(cancelledAt.duration(to: .now) < settings.gitExecTimeout)
+
+        // Stay idle beyond BOTH the remote watchdog and the package's old
+        // two-second cleanup window. Early RPCs can accidentally let the old
+        // close handshake succeed, and an early defer-close hides invalidation.
+        try await Task.sleep(for: settings.gitExecTimeout + .seconds(3))
+        // The retained exec must have finished, not merely deferred its
+        // cleanup until after this test closes the connection again.
+        try #require(await transport.ordinarySessionChannelCountForTesting() == 0)
+        #expect(await transport.isConnected)
+        #expect(try await transport.ping().protocolVersion == 17)
+        let result = try await transport.runGitScript(Data("printf 'still usable'\n".utf8))
+        #expect(result.stdout == Data("still usable".utf8))
+        #expect(result.stderr.isEmpty)
+        #expect(result.exitStatus == 0)
+        #expect(await transport.isConnected)
+    }
+
+    @Test("a Changes read parses real git and leaves the index, fsmonitor and hooks untouched")
+    func changesReadLeavesTheCheckoutUntouched() async throws {
+        let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
+        let transport = try await HeelerSSHTransport.connect(settings: environment.directSettings())
+        defer { Task { try? await transport.close() } }
+        let root = try #require(RemoteShellPath.quotedAbsolute(
+            environment.homePath + "/changes-" + UUID().uuidString))
+        // The fixture has no git identity. Hostile configuration goes in
+        // last, so no seeding command runs it; the tracked file touched into
+        // the future is stat-dirty but unchanged, which any index refresh
+        // would write back.
+        let seeded = try await transport.runGitScript(Data("""
+            {
+            set -e
+            r=\(root)
+            mkdir -p "$r/repo/sub"
+            cd "$r/repo"
+            git init -q .
+            git symbolic-ref HEAD refs/heads/main
+            printf 'one\\n' > tracked.txt
+            printf 'two\\n' > other.txt
+            printf 'nested\\n' > sub/nested.txt
+            git add -A
+            git -c user.name=Heeler -c user.email=fixture@heeler.invalid commit -q -m 'Seed the Changes fixture'
+            printf 'one, edited\\n' > tracked.txt
+            git mv other.txt renamed.txt
+            printf 'new\\n' > untracked.txt
+            touch -t 203001010000 sub/nested.txt
+            printf '#!/bin/sh\\n: > "%s/fsmonitor-ran"\\n' "$r" > "$r/fsmonitor.sh"
+            mkdir -p .git/hooks
+            printf '#!/bin/sh\\n: > "%s/post-index-change-ran"\\n' "$r" > .git/hooks/post-index-change
+            chmod +x "$r/fsmonitor.sh" .git/hooks/post-index-change
+            git config core.fsmonitor "$r/fsmonitor.sh"
+            pwd -P
+            stat -f '%i %Fm' .git/index
+            } </dev/null
+
+            """.utf8))
+        try #require(
+            seeded.exitStatus == 0, "seed failed: \(String(decoding: seeded.stderr, as: UTF8.self))")
+        let seedLines = String(decoding: seeded.stdout, as: UTF8.self)
+            .split(separator: "\n").map(String.init)
+        try #require(seedLines.count >= 2)
+        let topLevel = seedLines[seedLines.count - 2]
+        let indexBefore = seedLines[seedLines.count - 1]
+
+        let read = try await transport.readChanges(
+            ChangesReadRequest(directory: topLevel + "/sub"))
+
+        let changes = read.changes
+        #expect(changes.checkout.topLevel == Data(topLevel.utf8))
+        #expect(!changes.checkout.isLinkedWorktree)
+        #expect(read.directoryPrefix == Data("sub/".utf8))
+        #expect(changes.head.branch == .named("main"))
+        #expect(changes.head.commit?.count == 40)
+        #expect(changes.head.latestCommit?.subject == "Seed the Changes fixture")
+        #expect(
+            changes.files.map(\.accessibilityLabel) == [
+                "renamed.txt, renamed from other.txt, staged",
+                "tracked.txt, modified, unstaged",
+                "untracked.txt, untracked",
+            ])
+
+        let markers = """
+            for m in fsmonitor-ran post-index-change-ran; do
+              if [ -e "$r/$m" ]; then echo "$m"; fi
+            done
+            """
+        let after = try await transport.runGitScript(Data("""
+            { r=\(root); cd "$r/repo"; stat -f '%i %Fm' .git/index
+            \(markers)
+            } </dev/null
+
+            """.utf8))
+        let afterLines = String(decoding: after.stdout, as: UTF8.self)
+            .split(separator: "\n").map(String.init)
+        // Same inode and modification time: nothing rewrote the index.
+        #expect(afterLines == [indexBefore])
+
+        // The traps were armed: plain git runs both and rewrites the index.
+        let control = try await transport.runGitScript(Data("""
+            { r=\(root); cd "$r/repo"; git status --porcelain >/dev/null 2>&1
+            \(markers)
+            rm -rf "$r"
+            } </dev/null
+
+            """.utf8))
+        #expect(
+            String(decoding: control.stdout, as: UTF8.self)
+                == "fsmonitor-ran\npost-index-change-ran\n")
+    }
+
     @Test("concurrent first-use home probes share work and cache only success")
     func firstUseHomeProbeIsSingleFlight() async throws {
         let environment = try #require(HeelerSSHTransportBehaviorEnvironment.current)
@@ -1947,6 +2159,23 @@ struct HeelerSSHTransportBehaviorEnvironment: Sendable {
             credentials: credentials,
             jump: nil,
             socket: socket)
+    }
+
+    /// The Jump Host route with its first hop through the impairment proxy.
+    /// The weak link is the phone's own, to the Jump Host; the hop from there
+    /// to the target stays on the Host side, as it does behind a real VPS.
+    func weakNetworkJumpSettings(port: UInt16) -> SSHTransportSettings {
+        let credentials = self.credentials
+        return settings(
+            host: targetHost,
+            port: targetPort,
+            credentials: credentials,
+            jump: SSHJumpSettings(
+                host: host,
+                port: Int(port),
+                username: username,
+                credentials: credentials),
+            socket: nil)
     }
 
     /// A catalog Host for the direct fixture, exactly as onboarding would save

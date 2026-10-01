@@ -48,7 +48,8 @@ import Testing
             cwd: "/Users/u/GoDrop",
             revision: 5,
             terminalTitle: "✳ GoDrop",
-            terminalTitleStripped: "GoDrop"
+            terminalTitleStripped: "GoDrop",
+            foregroundCwd: "/Users/u/GoDrop"
         )
         #expect(result.agents.map(Agent.init) == [expected])
     }
@@ -67,8 +68,18 @@ import Testing
         #expect(agent.terminalTitle == nil && agent.terminalTitleStripped == nil && agent.paneTitle == nil)
         #expect(agent.tokens.isEmpty && agent.stateLabels.isEmpty && agent.stateChangeSeq == nil)
         #expect(agent.cwd == "")
+        #expect(agent.foregroundCwd == nil)
         // An unrecognized status survives with its raw value intact.
         #expect(agent.status == AgentStatus(rawValue: "haunted"))
+    }
+
+    @Test func agentMappingPreservesForegroundDirectorySeparatelyFromLaunchDirectory() throws {
+        let json = #"{"terminal_id":"t","agent_status":"idle","workspace_id":"w","tab_id":"w:t","pane_id":"w:p","focused":false,"revision":1,"cwd":"/launch","foreground_cwd":"/current"}"#
+
+        let agent = Agent(try JSONDecoder().decode(AgentInfo.self, from: Data(json.utf8)))
+
+        #expect(agent.cwd == "/launch")
+        #expect(agent.foregroundCwd == "/current")
     }
 
     @Test func agentMappingResolvesNameWithDisplayAgentPrecedence() throws {

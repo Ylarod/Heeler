@@ -2,13 +2,24 @@ import SwiftUI
 import UIKit
 
 /// The shared Agent Row Layout leads each card; status and Heeler Pin end
-/// Row 1, and the Host name ends the last additional row (or its own line
-/// when Row 1 is the only row). Fields retain their emphasis using accessible
-/// semantic colors; plugin colors and weights do not replace app typography.
+/// Row 1, the Host name ends the first additional row, and the Checkout's
+/// Changes totals end the last one, after the Host when that is the same
+/// row (both share a line of their own when Row 1 is the only row). Fields
+/// retain their emphasis using accessible semantic colors; plugin colors
+/// and weights do not replace app typography.
 struct AgentCardView: View {
     let agent: ConsoleAgent
     var layout: AgentRowLayout = .heelerDefault
     var isPinned: Bool = false
+    /// The Agents list's read of this Agent's Checkout; nil where the card
+    /// is only a preview.
+    var changes: ChangesStore? = nil
+    /// Totals shown in place of a read, for the Agent List Fields preview.
+    var sampleChanges: ChangesBadge? = nil
+
+    private var totalsSource: ChangesRowTotals.Source? {
+        if let changes { .store(changes) } else { sampleChanges.map { .sample($0) } }
+    }
 
     private var presentation: AgentCardPresentation {
         AgentCardPresentation(agent: agent, layout: layout)
@@ -34,21 +45,33 @@ struct AgentCardView: View {
             }
             let additionalRows = Array(presentation.rows.dropFirst())
             ForEach(Array(additionalRows.enumerated()), id: \.offset) { index, row in
+                let isLast = index == additionalRows.count - 1
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     AgentRowText(tokens: row, isSecondary: true)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    // The Host shares the last row's line and keeps its width;
-                    // the row's fields truncate first.
-                    if index == additionalRows.count - 1 {
+                    // The Host and the totals keep their width; the row's
+                    // fields truncate first.
+                    if index == 0 || isLast {
                         Spacer(minLength: 8)
+                    }
+                    if index == 0 {
                         hostText.layoutPriority(1)
+                    }
+                    if isLast, let totalsSource {
+                        ChangesRowTotals(source: totalsSource).layoutPriority(1)
                     }
                 }
             }
             if additionalRows.isEmpty {
-                hostText.frame(maxWidth: .infinity, alignment: .trailing)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Spacer(minLength: 0)
+                    hostText
+                    if let totalsSource {
+                        ChangesRowTotals(source: totalsSource).layoutPriority(1)
+                    }
+                }
             }
         }
         .padding(.vertical, 4)

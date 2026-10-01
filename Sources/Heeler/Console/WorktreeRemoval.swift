@@ -117,6 +117,20 @@ struct WorktreeRemovalConfirmation: Equatable, Sendable {
 }
 
 enum WorktreeRemovalRefusal {
+    /// herdr refuses removal while the Worktree still has uncommitted changes.
+    static let dirtyCode = "dirty_worktree_requires_force"
+
+    static func isDirty(_ error: any Error) -> Bool {
+        switch error {
+        case let api as HerdrAPIError:
+            api.code == dirtyCode
+        case let TransportError.apiRejected(code, _):
+            code == dirtyCode
+        default:
+            false
+        }
+    }
+
     static func message(for error: any Error) -> String {
         switch error {
         case let removal as WorktreeRemovalError:
@@ -138,7 +152,7 @@ enum WorktreeRemovalRefusal {
 
     private static func apiMessage(code: String, serverMessage: String) -> String {
         switch code {
-        case "dirty_worktree_requires_force":
+        case dirtyCode:
             "herdr couldn't remove this worktree because it has modified or untracked files. Commit or discard those changes on the Host, then retry."
         case "not_linked_worktree":
             "herdr couldn't remove this worktree because the workspace is not a linked worktree."
@@ -149,5 +163,29 @@ enum WorktreeRemovalRefusal {
         default:
             "herdr couldn't remove this worktree: \(serverMessage)"
         }
+    }
+}
+
+/// Sequences Show Changes so the Worktree sheet finishes dismissing before
+/// Changes opens. Back builds a new handoff with nothing pending, and the
+/// sheet state is created with Agent detail, so the sheet stays closed.
+final class WorktreeChangesHandoff {
+    /// The Worktree directory waiting for the sheet to finish dismissing.
+    private(set) var pendingDirectory: String?
+
+    /// Remembers `directory` and reports that the sheet is no longer
+    /// presented. Does not open Changes; the sheet's `onDismiss` does.
+    func stage(_ directory: String) -> Bool {
+        pendingDirectory = directory
+        return false
+    }
+
+    /// The sheet's `onDismiss`. Opens Changes only for a directory staged
+    /// by Show Changes, then forgets it. Done, a swipe, or a completed
+    /// removal opens nothing.
+    func openChangesAfterDismissal(open: (String) -> Void) {
+        guard let directory = pendingDirectory else { return }
+        pendingDirectory = nil
+        open(directory)
     }
 }

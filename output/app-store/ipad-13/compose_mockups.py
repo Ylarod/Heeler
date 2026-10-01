@@ -49,13 +49,24 @@ MOCKUPS = (
         (236, 113, 177),
     ),
     Mockup(
-        "04-skills-within-reach", "03-skills.png",
+        "04-see-what-changed", "06-changes.png",
+        "See What Changed.",
+        "Every uncommitted file in the Agent's Checkout, beside your agents.",
+        (110, 207, 132),
+    ),
+    Mockup(
+        "05-every-change-line-by-line", "07-diff.png",
+        "Every Change. Line by Line.",
+        "Read any file side by side or unified, with word changes marked.",
+        (255, 159, 90),
+    ),    Mockup(
+        "06-skills-within-reach", "03-skills.png",
         "Your Skills. Within Reach.",
         "Find and add skills without leaving your conversation.",
         (184, 137, 255),
     ),
     Mockup(
-        "05-a-shell-when-you-need-one", "04-terminal.png",
+        "07-a-shell-when-you-need-one", "04-terminal.png",
         "A Shell When You Need One.",
         "Open a plain terminal in any workspace, with Text and Keys modes.",
         (88, 214, 198),
@@ -150,12 +161,13 @@ def main() -> None:
         'h1{font-size:28px}p,figcaption{color:#b8b8c0}a{color:#c4b2ff}'
         'figure{margin:40px 0}img{display:block;width:100%;height:auto;border-radius:10px}'
         'figcaption{margin-top:10px}</style><h1>Heeler for iPad</h1>'
-        '<p>Five landscape App Store mockups · 2752 × 2064 · opaque RGB PNG.<br>'
+        '<p>Seven landscape App Store mockups · 2752 × 2064 · opaque RGB PNG.<br>'
         'Real simulator captures with English marketing copy. The captured '
         'session titles remain in Chinese.</p>' + cards + '</html>'
     )
-    # A review contact sheet is separate from the five upload-ready exports.
-    sheet = Image.new("RGB", (1376, 1640), (20, 20, 24))
+    # A review contact sheet is separate from the upload-ready exports.
+    rows = (len(records) + 1) // 2
+    sheet = Image.new("RGB", (1376, 14 + rows * 546), (20, 20, 24))
     for index, record in enumerate(records):
         preview = Image.open(ROOT / record["export"]).resize((660, 495), Image.Resampling.LANCZOS)
         px, py = 14 + (index % 2) * 688, 14 + (index // 2) * 546

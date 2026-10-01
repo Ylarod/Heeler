@@ -209,8 +209,11 @@ Constraints the git feature must design around:
 
 Cost, live over OpenSSH on localhost with a fresh connection each time:
 `ssh true` 0.12 to 0.13 s, porcelain v2 status of this repository 0.18 to 0.19 s.
-Heeler's libssh2 exec throughput for multi-megabyte output over cellular or a
-Jump Host was not measured.
+Heeler's libssh2 exec throughput was measured later (#395) through the weak
+network fixture's cellular-like profile (256 KiB/s, 40 ms latency, 15 ms
+jitter, 512-byte segments): the exec kept the link full at about 260 KiB/s,
+directly and behind the Jump Host alike, so a megabyte takes about four
+seconds.
 
 ## Git command set
 
@@ -489,6 +492,13 @@ Agent 512 KiB, herdr-mobile-relay 1 MiB per diff and 8 MiB for status, GitHub
 path with SHA-1 ids and about 160 plus its path with SHA-256 ids (live), so
 the 2 MiB status cap holds roughly 10,000 to 14,000 records with 40-byte paths
 (inference).
+
+Measurement later lowered two of them (#395). Over the cellular-like profile, a
+Changes read of 14,001 modified files printed 2.84 MB (a full 2 MiB status plus
+0.7 MB of counts) and took 10.4 to 10.5 s in five runs on each route, past the
+10 s git deadline. With a 1 MiB status and 512 KiB of counts it printed 1.57 MB
+and took 5.5 to 5.6 s; the status still held 6,472 records, and a 1 MiB Load
+More patch took 4.0 s. The per-file caps are unchanged.
 
 ## Rendering on iPhone and iPad
 
@@ -798,9 +808,10 @@ Limits:
   everything. HeelerSSH needs no change, so
   `scripts/run-heelerssh-package-tests.sh` is not involved.
 - **Gaps CI cannot cover.** CI never runs fish, nushell or csh, and never runs
-  Linux git. Shell coverage rests on the unit tests and the stdin design, plus a
-  manual run against a Linux Host. Rendering cost needs the on-device
-  Instruments spike in Phase 1.
+  Linux git. Shell coverage rests on the unit tests and the stdin design, plus
+  `scripts/verify-changes-linux-host.sh`, which reads a seeded Checkout on a
+  Debian container (git 2.39.5) as a fish and as a POSIX sh login account.
+  Rendering cost needs the on-device Instruments spike in Phase 1.
 
 ## Risks
 
@@ -825,8 +836,8 @@ Limits:
   absent (FreeBSD untested), and a repository may belong to another user.
 - **Staleness.** herdr emits no file-change events, so a view refreshed on
   status edges lags a Working Agent.
-- **Unmeasured costs.** Device rendering and exec throughput are unmeasured,
-  and all rendering numbers are desktop proxies.
+- **Unmeasured costs.** Device rendering is unmeasured, and all rendering
+  numbers are desktop proxies.
 - **Scope drift.** Building #220 verbatim reintroduces the withdrawn fork's
   Files direction.
 
@@ -841,14 +852,13 @@ Limits:
   baseline leaves loose objects that `git gc` prunes after two weeks; a ref
   keeps them visibly. Or should it use a shadow git dir outside the project?
 - **Not measured:**
-  - libssh2 exec throughput for megabyte output over cellular or a Jump Host;
   - `LazyVStack` with 2,000 to 5,000 wrapped rows on the oldest iOS 18 iPhone;
   - status beyond 30k tracked files, where monorepos rely on fsmonitor;
   - `head -c` on FreeBSD;
-  - the complete script on git 2.17.1 or 2.25.1, on Alpine/BusyBox, or
-    against a real Linux Host over SSH. The individual flags ran on the older
-    git versions, and BusyBox `head -c` and ash were tested, but the whole
-    script did not run there;
+  - the complete script on git 2.17.1 or 2.25.1, or on Alpine/BusyBox. The
+    individual flags ran on the older git versions, and BusyBox `head -c` and
+    ash were tested, but the whole script did not run there. It has since run
+    against Debian git 2.39.5 over SSH (#395);
   - split-index or sparse-index repositories with a temp index;
   - real cross-user ownership (only simulated);
   - `foreground_cwd` across Agent kinds on Linux;

@@ -44,6 +44,7 @@
         @State private var bannerStore: AgentNotificationBannerStore
         @State private var liveActivities: HostLiveActivityCoordinator
         @State private var activity: AppActivityCoordinator
+        @State private var diffLayout = DiffLayoutSettings(defaults: DemoScreenshotFixture.makeDefaults(), offersSideBySide: UIDevice.current.userInterfaceIdiom == .pad)
 
         init() {
             let composition = DemoScreenshotComposition.make()
@@ -86,6 +87,7 @@
                 activity: activity
             )
             .preferredColorScheme(appearance.preferredColorScheme)
+            .environment(\.diffLayoutSettings, diffLayout)
             .task {
                 console.setHosts(hosts.hosts)
                 notificationPreferences.setHosts(hosts.hosts)
@@ -490,6 +492,541 @@
         var snapshotFailure: TransportError?
     }
 
+    /// Invented Changes for screenshot mode, one Checkout per demo Agent
+    /// directory. Each patch is git-diff text parsed by `GitProbe`. Counts
+    /// and header totals are counted from those parsed lines, so the list
+    /// and the diff stay in step.
+    enum DemoChangesSample {
+        private static let missingFileMessage = "No sample diff for this file."
+        private static let missingDirectoryMessage = "No sample listing for this directory."
+        private static let longReceiptLine =
+            "let receiptFooter = \"A declined payment keeps the cart, the chosen "
+            + "shipping method, and any applied store credit so the customer can "
+            + "retry without starting over.\""
+
+        private static let checkouts: [String: SampleCheckout] = {
+            var samples: [String: SampleCheckout] = [:]
+            for sample in [storefront(), paymentsAPI(), linkedWorktree(), productDocs()] {
+                samples[sample.topLevel] = sample
+            }
+            return samples
+        }()
+
+        static func read(_ request: ChangesReadRequest) throws -> CheckoutChangesRead {
+            guard let checkout = checkouts[request.directory] else {
+                throw ChangesReadError.notAGitWorkingTree
+            }
+            return makeRead(checkout)
+        }
+
+        static func patch(_ request: FilePatchRequest) throws -> FilePatch {
+            guard let checkout = checkout(topLevel: request.topLevel),
+                let file = sampleFile(in: checkout, path: request.path)
+            else {
+                throw ChangesReadError.gitFailed(missingFileMessage)
+            }
+            return parsedPatch(for: file)
+        }
+
+        static func listUntrackedDirectory(
+            _ request: UntrackedDirectoryRequest
+        ) throws -> UntrackedDirectoryListing {
+            guard let checkout = checkout(topLevel: request.topLevel),
+                let directory = checkout.directories.first(where: {
+                    Data($0.path.utf8) == request.directory
+                })
+            else {
+                throw ChangesReadError.gitFailed(missingDirectoryMessage)
+            }
+            let entries = directory.children.map { child in
+                ChangedFile(
+                    path: Data(child.path.utf8), originalPath: nil, kind: .untracked, staging: nil)
+            }.sorted { $0.path.lexicographicallyPrecedes($1.path) }
+            return UntrackedDirectoryListing(
+                directory: request.directory,
+                entries: entries,
+                total: entries.count,
+                isTruncated: false,
+                isSeparateRepository: false,
+                limitNotice: nil)
+        }
+
+        /// The blocked reviewer Agent. One modified file carries the
+        /// side-by-side screenshot shape.
+        private static func storefront() -> SampleCheckout {
+            SampleCheckout(
+                topLevel: "/workspace/storefront",
+                branch: "checkout-retry",
+                commit: "4f1a9c2e8b7d6a5031e4f8c9b2a7d6e5f0c1b3a4",
+                upstream: "origin/checkout-retry",
+                ahead: 2,
+                behind: 0,
+                subject: "Keep the cart when a payment retry fails",
+                committedAgo: 40 * 60,
+                files: [
+                    SampleFile(
+                        path: "Resources/checkout-hero.png",
+                        kind: .modified,
+                        staging: .unstaged,
+                        body: .binary),
+                    SampleFile(
+                        path: "Sources/Checkout/CartStore.swift",
+                        kind: .modified,
+                        staging: .unstaged,
+                        body: .hunks([
+                            hunk(9, 9, "func applyRetry()",
+                                context("guard let saved = savedCart else { return }"),
+                                removed("saved.clear()"),
+                                added("items = saved.items"),
+                                context("shipping = saved.shipping")),
+                        ])),
+                    SampleFile(
+                        path: "Sources/Checkout/CheckoutView.swift",
+                        kind: .modified,
+                        staging: .both,
+                        body: .hunks([
+                            hunk(18, 18, "struct CheckoutView",
+                                context("var cart: Cart"),
+                                removed("Text(cart.totalText)"),
+                                added("CartTotal(cart)"),
+                                context("RetryBanner(cart: cart)")),
+                        ])),
+                    SampleFile(
+                        path: "Sources/Checkout/PaymentCoordinator.swift",
+                        kind: .modified,
+                        staging: .unstaged,
+                        body: .hunks([
+                            hunk(12, 12, "func retryPayment()",
+                                context("let cart = loadSavedCart()"),
+                                removed("discardCart()"),
+                                removed("clearShippingMethod()"),
+                                removed("resetStoreCredit()"),
+                                added("keepCartForRetry()"),
+                                context("return cart")),
+                            hunk(40, 38, "func showRetryBanner()",
+                                added("showBanner(beside: cart.total)"),
+                                added("rememberShippingMethod()"),
+                                added(longReceiptLine, missingNewline: true)),
+                        ])),
+                    SampleFile(
+                        path: "Sources/Checkout/PaymentSheet.swift",
+                        originalPath: "Sources/Checkout/LegacyPaymentSheet.swift",
+                        kind: .renamed,
+                        staging: .staged,
+                        body: .hunks([
+                            hunk(8, 8, "struct PaymentSheet",
+                                context("let title: String"),
+                                removed("var showsLegacyTotal: Bool"),
+                                added("var showsCartTotal: Bool"),
+                                context("let currencyCode: String")),
+                        ])),
+                    SampleFile(
+                        path: "Sources/Checkout/RetryBanner.swift",
+                        kind: .added,
+                        staging: .staged,
+                        body: .hunks([
+                            hunk(0, 1, "struct RetryBanner",
+                                added("struct RetryBanner {"),
+                                added("    let message: String"),
+                                added("    var canRetry: Bool { !message.isEmpty }"),
+                                added("}")),
+                        ])),
+                    SampleFile(
+                        path: "Tests/CheckoutTests/CheckoutFlowTests.swift",
+                        kind: .modified,
+                        staging: .unstaged,
+                        body: .hunks([
+                            hunk(14, 14, "func testRetryKeepsItems()",
+                                context("let cart = CartStore()"),
+                                removed("cart.apply(.decline)"),
+                                added("cart.apply(.retry)"),
+                                context("check(cart.items.count == 2)")),
+                        ])),
+                    SampleFile(
+                        path: "Tests/CheckoutTests/PaymentRetryTests.swift",
+                        kind: .untracked,
+                        body: .hunks([
+                            hunk(0, 1, "func testDeclinedPaymentKeepsTheCart()",
+                                added("func testDeclinedPaymentKeepsTheCart() {"),
+                                added("    let cart = CartStore()"),
+                                added("    cart.apply(.retry)"),
+                                added("    check(cart.items.isEmpty == false)"),
+                                added("}")),
+                        ])),
+                ],
+                directories: [
+                    SampleDirectory(
+                        path: "Fixtures/receipts/",
+                        children: [
+                            SampleFile(
+                                path: "Fixtures/receipts/sample-approved.txt",
+                                kind: .untracked,
+                                body: .hunks([
+                                    hunk(0, 1, "approved receipt",
+                                        added("status: approved"),
+                                        added("cart: kept"),
+                                        added("retry: allowed")),
+                                ])),
+                            SampleFile(
+                                path: "Fixtures/receipts/sample-declined.txt",
+                                kind: .untracked,
+                                body: .hunks([
+                                    hunk(0, 1, "declined receipt",
+                                        added("status: declined"),
+                                        added("cart: kept"),
+                                        added("retry: offered")),
+                                ])),
+                        ]),
+                ])
+        }
+
+        private static func paymentsAPI() -> SampleCheckout {
+            SampleCheckout(
+                topLevel: "/workspace/payments-api",
+                branch: "webhook-retries",
+                commit: "91ab34cd78ef12a0b6c5d4e3f2019abc8def7654",
+                upstream: "origin/webhook-retries",
+                ahead: 1,
+                behind: 0,
+                subject: "Retry a declined webhook without dropping the event",
+                committedAgo: 2 * 60 * 60,
+                files: [
+                    SampleFile(
+                        path: "Sources/Webhooks/EventLedger.swift",
+                        kind: .added,
+                        staging: .staged,
+                        body: .hunks([
+                            hunk(0, 1, "struct EventLedger",
+                                added("struct EventLedger {"),
+                                added("    var pending: [String] = []"),
+                                added("    mutating func keep(_ event: String) { pending.append(event) }"),
+                                added("}")),
+                        ])),
+                    SampleFile(
+                        path: "Sources/Webhooks/RetryPolicy.swift",
+                        kind: .modified,
+                        staging: .unstaged,
+                        body: .hunks([
+                            hunk(6, 6, "func nextDelay(after attempt: Int)",
+                                context("if attempt > 4 { return nil }"),
+                                removed("return 1"),
+                                added("return min(30, attempt * 2)"),
+                                context("return nil")),
+                        ])),
+                    SampleFile(
+                        path: "Tests/WebhookTests/RetryPolicyTests.swift",
+                        kind: .untracked,
+                        body: .hunks([
+                            hunk(0, 1, "func testSecondAttemptWaitsLonger()",
+                                added("func testSecondAttemptWaitsLonger() {"),
+                                added("    check(RetryPolicy().nextDelay(after: 2) == 4)"),
+                                added("}")),
+                        ])),
+                ])
+        }
+
+        /// Linked Worktree. The path is the one the demo fixture already uses.
+        private static func linkedWorktree() -> SampleCheckout {
+            SampleCheckout(
+                topLevel: "/workspace/heeler",
+                isLinkedWorktree: true,
+                branch: "attach-polish",
+                commit: "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567",
+                upstream: "origin/attach-polish",
+                ahead: 3,
+                behind: 1,
+                subject: "Name the attach controls for spoken review",
+                committedAgo: 3 * 60 * 60,
+                files: [
+                    SampleFile(
+                        path: "Sources/Attach/AttachChrome.swift",
+                        kind: .modified,
+                        staging: .unstaged,
+                        body: .hunks([
+                            hunk(4, 4, "struct AttachChrome",
+                                context("var title: String"),
+                                removed("var subtitle: String"),
+                                added("var spokenTitle: String"),
+                                context("var isLive: Bool")),
+                        ])),
+                    SampleFile(
+                        path: "Sources/Attach/SpokenLabels.swift",
+                        kind: .modified,
+                        staging: .unstaged,
+                        body: .hunks([
+                            hunk(2, 2, "func label(for control: AttachControl)",
+                                context("switch control {"),
+                                removed("case .send: return \"Send\""),
+                                added("case .send: return \"Send message\""),
+                                context("}")),
+                        ])),
+                ])
+        }
+
+        private static func productDocs() -> SampleCheckout {
+            SampleCheckout(
+                topLevel: "/workspace/product-docs",
+                branch: "setup-guide",
+                commit: "aabbccddeeff00112233445566778899abcdef01",
+                upstream: "origin/setup-guide",
+                ahead: 1,
+                behind: 2,
+                subject: "Rewrite the first-run setup steps",
+                committedAgo: 26 * 60 * 60,
+                files: [
+                    SampleFile(
+                        path: "guide/first-run.md",
+                        kind: .modified,
+                        staging: .unstaged,
+                        body: .hunks([
+                            hunk(3, 3, "First run",
+                                context("Open the app and add a machine."),
+                                removed("Paste a key into the terminal."),
+                                added("Create a key on the device, then confirm the fingerprint."),
+                                context("The machine stays reachable after the app closes.")),
+                        ])),
+                    SampleFile(
+                        path: "guide/troubleshooting.md",
+                        kind: .untracked,
+                        body: .hunks([
+                            hunk(0, 1, "When a connection stops",
+                                added("# When a connection stops"),
+                                added("Check the address, then try again."),
+                                added("A refused connection leaves the previous notes on screen.")),
+                        ])),
+                ])
+        }
+
+        private static func makeRead(_ checkout: SampleCheckout) -> CheckoutChangesRead {
+            let files = sortedForList(
+                checkout.files.map(changedFile)
+                    + checkout.directories.map { directory in
+                        ChangedFile(
+                            path: Data(directory.path.utf8), originalPath: nil,
+                            kind: .untracked, staging: nil)
+                    })
+            return CheckoutChangesRead(
+                changes: CheckoutChanges(
+                    checkout: CheckoutLocation(
+                        topLevel: Data(checkout.topLevel.utf8),
+                        isLinkedWorktree: checkout.isLinkedWorktree,
+                        displayPath: checkout.topLevel),
+                    head: CheckoutHead(
+                        branch: .named(checkout.branch),
+                        commit: checkout.commit,
+                        latestCommit: LatestCommit(
+                            subject: checkout.subject,
+                            committedAt: Date().addingTimeInterval(-checkout.committedAgo)),
+                        upstream: CheckoutUpstream(
+                            name: checkout.upstream,
+                            state: .tracking(ahead: checkout.ahead, behind: checkout.behind))),
+                    files: files,
+                    totals: totals(for: files)),
+                directoryPrefix: Data())
+        }
+
+        private static func changedFile(_ file: SampleFile) -> ChangedFile {
+            ChangedFile(
+                path: Data(file.path.utf8),
+                originalPath: file.originalPath.map { Data($0.utf8) },
+                kind: file.kind,
+                staging: file.staging,
+                lineCounts: lineCounts(kind: file.kind, patch: parsedPatch(for: file)))
+        }
+
+        private static func lineCounts(kind: ChangedFile.Kind, patch: FilePatch) -> LineCounts? {
+            guard kind != .untracked else { return nil }
+            if patch.files.contains(where: \.isBinary) { return .binary }
+            var added = 0
+            var removed = 0
+            for diff in patch.files {
+                for hunk in diff.hunks {
+                    for line in hunk.lines {
+                        switch line.kind {
+                        case .added: added += 1
+                        case .removed: removed += 1
+                        case .context: break
+                        }
+                    }
+                }
+            }
+            return .lines(added: added, removed: removed)
+        }
+
+        private static func totals(for files: [ChangedFile]) -> ChangesTotals {
+            var totals = ChangesTotals()
+            for file in files {
+                if file.kind == .untracked {
+                    totals.untrackedItems += 1
+                } else {
+                    totals.trackedFiles += 1
+                }
+                if case .lines(let added, let removed) = file.lineCounts {
+                    totals.added += added
+                    totals.removed += removed
+                }
+            }
+            return totals
+        }
+
+        private static func sortedForList(_ files: [ChangedFile]) -> [ChangedFile] {
+            files.sorted { lhs, rhs in
+                let lhsConflicted = lhs.kind == .conflicted
+                let rhsConflicted = rhs.kind == .conflicted
+                if lhsConflicted != rhsConflicted { return lhsConflicted }
+                return lhs.path.lexicographicallyPrecedes(rhs.path)
+            }
+        }
+
+        private static func parsedPatch(for file: SampleFile) -> FilePatch {
+            let text = patchLines(for: file).joined(separator: "\n") + "\n"
+            return FilePatch(
+                files: GitProbe.parsePatchFiles(Data(text.utf8), isTruncated: false),
+                isTruncated: false)
+        }
+
+        private static func patchLines(for file: SampleFile) -> [String] {
+            let oldHeader = file.originalPath ?? file.path
+            var lines = ["diff --git a/\(oldHeader) b/\(file.path)"]
+            switch file.body {
+            case .binary:
+                lines.append("index a1b2c3d..e4f5a6b 100644")
+                lines.append("Binary files a/\(file.path) and b/\(file.path) differ")
+            case .hunks(let hunks):
+                if file.kind == .renamed, let original = file.originalPath {
+                    lines.append("similarity index 86%")
+                    lines.append("rename from \(original)")
+                    lines.append("rename to \(file.path)")
+                }
+                if file.kind == .added || file.kind == .untracked {
+                    lines.append("new file mode 100644")
+                }
+                lines.append("index a1b2c3d..e4f5a6b 100644")
+                let oldBody: String? =
+                    (file.kind == .added || file.kind == .untracked)
+                    ? nil : (file.originalPath ?? file.path)
+                let newBody: String? = file.kind == .deleted ? nil : file.path
+                lines.append("--- \(prefixed(oldBody, prefix: "a"))")
+                lines.append("+++ \(prefixed(newBody, prefix: "b"))")
+                for hunk in hunks {
+                    lines.append(contentsOf: hunkLines(hunk))
+                }
+            }
+            return lines
+        }
+
+        private static func prefixed(_ path: String?, prefix: String) -> String {
+            guard let path else { return "/dev/null" }
+            return "\(prefix)/\(path)"
+        }
+
+        private static func hunkLines(_ hunk: SampleHunk) -> [String] {
+            let oldCount = hunk.lines.filter { $0.kind != .added }.count
+            let newCount = hunk.lines.filter { $0.kind != .removed }.count
+            var lines = [
+                "@@ -\(hunk.oldStart),\(oldCount) +\(hunk.newStart),\(newCount) @@ \(hunk.section)"
+            ]
+            for line in hunk.lines {
+                let prefix =
+                    switch line.kind {
+                    case .context: " "
+                    case .added: "+"
+                    case .removed: "-"
+                    }
+                lines.append(prefix + line.text)
+                if line.missingNewline {
+                    lines.append("\\ No newline at end of file")
+                }
+            }
+            return lines
+        }
+
+        private static func hunk(
+            _ oldStart: Int, _ newStart: Int, _ section: String, _ lines: SampleLine...
+        ) -> SampleHunk {
+            SampleHunk(oldStart: oldStart, newStart: newStart, section: section, lines: lines)
+        }
+
+        private static func context(_ text: String) -> SampleLine {
+            SampleLine(kind: .context, text: text)
+        }
+
+        private static func added(_ text: String, missingNewline: Bool = false) -> SampleLine {
+            SampleLine(kind: .added, text: text, missingNewline: missingNewline)
+        }
+
+        private static func removed(_ text: String) -> SampleLine {
+            SampleLine(kind: .removed, text: text)
+        }
+
+        private static func checkout(topLevel: Data) -> SampleCheckout? {
+            checkouts.values.first { Data($0.topLevel.utf8) == topLevel }
+        }
+
+        private static func sampleFile(in checkout: SampleCheckout, path: Data) -> SampleFile? {
+            if let file = checkout.files.first(where: { Data($0.path.utf8) == path }) {
+                return file
+            }
+            for directory in checkout.directories {
+                if let child = directory.children.first(where: { Data($0.path.utf8) == path }) {
+                    return child
+                }
+            }
+            return nil
+        }
+
+        private struct SampleCheckout: Sendable {
+            var topLevel: String
+            var isLinkedWorktree = false
+            var branch: String
+            var commit: String
+            var upstream: String
+            var ahead: Int
+            var behind: Int
+            var subject: String
+            var committedAgo: TimeInterval
+            var files: [SampleFile]
+            var directories: [SampleDirectory] = []
+        }
+
+        private struct SampleDirectory: Sendable {
+            var path: String
+            var children: [SampleFile]
+        }
+
+        private struct SampleFile: Sendable {
+            var path: String
+            var originalPath: String? = nil
+            var kind: ChangedFile.Kind
+            var staging: ChangedFile.Staging? = nil
+            var body: SampleBody
+        }
+
+        private enum SampleBody: Sendable {
+            case hunks([SampleHunk])
+            case binary
+        }
+
+        private struct SampleHunk: Sendable {
+            var oldStart: Int
+            var newStart: Int
+            var section: String
+            var lines: [SampleLine]
+        }
+
+        private struct SampleLine: Sendable {
+            enum Kind: Equatable, Sendable {
+                case context
+                case added
+                case removed
+            }
+
+            var kind: Kind
+            var text: String
+            var missingNewline = false
+        }
+    }
+
     private actor DemoScreenshotTransport: Transport {
         private let profile: DemoHostProfile
         private var isClosed = false
@@ -585,6 +1122,21 @@
         func focusAgent(_ target: AgentTarget) async throws {}
         func renameAgent(_ params: AgentRenameParams) async throws {}
         func renameWorkspace(_ params: WorkspaceRenameParams) async throws {}
+
+        /// Screenshot Changes. Served in-process: no Host and no SSH.
+        func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead {
+            try DemoChangesSample.read(request)
+        }
+
+        func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch {
+            try DemoChangesSample.patch(request)
+        }
+
+        func listUntrackedDirectory(
+            _ request: UntrackedDirectoryRequest
+        ) async throws -> UntrackedDirectoryListing {
+            try DemoChangesSample.listUntrackedDirectory(request)
+        }
 
         func subscribeToEvents(
             _ subscriptions: [EventSubscription]

@@ -760,7 +760,7 @@ final class HostConsoleProjection {
             let tab = tabByID[agent.tabID].flatMap {
                 $0.workspaceID == agent.workspaceID ? $0 : nil
             }
-            nextAgents[agent.paneID] = ConsoleAgent(
+            var row = ConsoleAgent(
                 hostID: host.id,
                 hostName: host.displayName,
                 agent: agent,
@@ -776,6 +776,15 @@ final class HostConsoleProjection {
                 paneLabel: paneByID[agent.paneID].flatMap {
                     $0.tabID == agent.tabID && $0.workspaceID == agent.workspaceID ? $0.label : nil
                 })
+            if let pane = paneByID[agent.paneID] {
+                row.updateDirectory(from: pane)
+            }
+            // A live directory observed during this request is newer than
+            // its response, even when the snapshot has no terminal entry.
+            if let change = latestPaneChanges[agent.paneID], change.revision > paneStartRevision {
+                row.updateDirectory(from: change.pane)
+            }
+            nextAgents[agent.paneID] = row
         }
         for (paneID, change) in latestStatusChanges
         where change.revision > snapshotStartRevision {
@@ -881,15 +890,26 @@ final class HostConsoleProjection {
         if resyncTask != nil {
             latestPaneChanges[pane.paneID] = (paneChangeRevision, pane)
         }
-        guard var terminal = terminalsByPane[pane.paneID],
+        var changed = false
+        if var row = agentsByPane[pane.paneID] {
+            row.updateDirectory(from: pane)
+            if row != agentsByPane[pane.paneID] {
+                agentsByPane[pane.paneID] = row
+                changed = true
+            }
+        }
+        if var terminal = terminalsByPane[pane.paneID],
             terminal.terminalID == pane.terminalID,
             terminal.workspaceID == pane.workspaceID,
             terminal.tabID == pane.tabID
-        else { return }
-        terminal.pane = pane
-        guard terminal != terminalsByPane[pane.paneID] else { return }
-        terminalsByPane[pane.paneID] = terminal
-        publish()
+        {
+            terminal.pane = pane
+            if terminal != terminalsByPane[pane.paneID] {
+                terminalsByPane[pane.paneID] = terminal
+                changed = true
+            }
+        }
+        if changed { publish() }
     }
 
     private func applyStatusChange(_ data: JSONValue) -> AgentStatus? {

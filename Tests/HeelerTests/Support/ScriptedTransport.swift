@@ -125,6 +125,23 @@ final actor ScriptedTransport: Transport {
     private(set) var sidebarLayoutReads = 0
     private var nextSidebarLayoutGate: ScriptedTransportCallGate?
     private var sidebarLayoutReadFailure: (any Error)?
+    /// Every untracked-directory listing received, in order.
+    private(set) var untrackedDirectoryRequests: [UntrackedDirectoryRequest] = []
+    /// Consumed one per listing; an unscripted listing reports Changes as
+    /// unavailable, like a Transport without git.
+    private var untrackedDirectoryOutcomes: [Result<UntrackedDirectoryListing, any Error>] = []
+    private var nextUntrackedDirectoryGate: ScriptedTransportCallGate?
+    /// Every Changes read received, in order.
+    private(set) var changesReadRequests: [ChangesReadRequest] = []
+    /// Consumed one per read; an unscripted read reports Changes as
+    /// unavailable, like a Transport without git.
+    private var changesReadOutcomes: [Result<CheckoutChangesRead, any Error>] = []
+    private var nextChangesReadGate: ScriptedTransportCallGate?
+
+    /// Every lazy file-patch read received, in order.
+    private(set) var filePatchRequests: [FilePatchRequest] = []
+    private var filePatchReadOutcomes: [Result<FilePatch, any Error>] = []
+    private var nextFilePatchReadGate: ScriptedTransportCallGate?
 
     init(
         snapshot: SessionSnapshot = .fixture(),
@@ -706,6 +723,73 @@ final actor ScriptedTransport: Transport {
         if let failure = notificationRegistrationWriteFailure { throw failure }
         notificationConfig = contents
         replacedNotificationConfigs.append(contents)
+    }
+
+    /// Queues the outcomes of the next untracked-directory listings, in order.
+    func scriptUntrackedDirectoryListings(
+        _ outcomes: [Result<UntrackedDirectoryListing, any Error>]
+    ) {
+        untrackedDirectoryOutcomes.append(contentsOf: outcomes)
+    }
+
+    /// Holds the next listing, after it is recorded, until `gate` opens.
+    func gateNextUntrackedDirectoryListing(using gate: ScriptedTransportCallGate) {
+        nextUntrackedDirectoryGate = gate
+    }
+
+    func listUntrackedDirectory(
+        _ request: UntrackedDirectoryRequest
+    ) async throws -> UntrackedDirectoryListing {
+        untrackedDirectoryRequests.append(request)
+        let outcome: Result<UntrackedDirectoryListing, any Error> =
+            untrackedDirectoryOutcomes.isEmpty
+            ? .failure(ChangesReadError.unavailable) : untrackedDirectoryOutcomes.removeFirst()
+        let gate = nextUntrackedDirectoryGate
+        nextUntrackedDirectoryGate = nil
+        if let gate { await gate.waitUntilOpen() }
+        return try outcome.get()
+    }
+
+    /// Queues the outcomes of the next Changes reads, in order.
+    func scriptChangesReads(_ outcomes: [Result<CheckoutChangesRead, any Error>]) {
+        changesReadOutcomes.append(contentsOf: outcomes)
+    }
+
+    /// Holds the next Changes read, after it is recorded, until `gate` opens.
+    func gateNextChangesRead(using gate: ScriptedTransportCallGate) {
+        nextChangesReadGate = gate
+    }
+
+    func readChanges(_ request: ChangesReadRequest) async throws -> CheckoutChangesRead {
+        changesReadRequests.append(request)
+        let outcome: Result<CheckoutChangesRead, any Error> =
+            changesReadOutcomes.isEmpty
+            ? .failure(ChangesReadError.unavailable) : changesReadOutcomes.removeFirst()
+        let gate = nextChangesReadGate
+        nextChangesReadGate = nil
+        if let gate { await gate.waitUntilOpen() }
+        return try outcome.get()
+    }
+
+    /// Queues the outcomes of the next file-patch reads, in order.
+    func scriptFilePatchReads(_ outcomes: [Result<FilePatch, any Error>]) {
+        filePatchReadOutcomes.append(contentsOf: outcomes)
+    }
+
+    /// Holds the next file-patch read until `gate` opens, even if cancelled.
+    func gateNextFilePatchRead(using gate: ScriptedTransportCallGate) {
+        nextFilePatchReadGate = gate
+    }
+
+    func readFilePatch(_ request: FilePatchRequest) async throws -> FilePatch {
+        filePatchRequests.append(request)
+        let outcome: Result<FilePatch, any Error> =
+            filePatchReadOutcomes.isEmpty
+            ? .failure(ChangesReadError.unavailable) : filePatchReadOutcomes.removeFirst()
+        let gate = nextFilePatchReadGate
+        nextFilePatchReadGate = nil
+        if let gate { await gate.waitUntilOpen() }
+        return try outcome.get()
     }
 
     func gateNextSidebarLayoutRead(_ gate: ScriptedTransportCallGate) {

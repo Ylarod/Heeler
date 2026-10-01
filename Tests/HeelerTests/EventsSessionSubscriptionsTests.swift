@@ -81,6 +81,56 @@ struct EventsSessionSubscriptionsTests {
         await session.end()
     }
 
+    @Test(arguments: [TransportError.gitTimedOut, .cancelled])
+    func gitOverrunAndCancellationPreserveTheSessionWithoutRetrying(
+        failure: TransportError
+    ) async throws {
+        let transport = ScriptedTransport()
+        let replacement = ScriptedTransport()
+        let connector = SequencedTransportConnector([transport, replacement])
+        let session = EventsSession(
+            subscriptions: initial,
+            connect: { try await connector.connect() },
+            keepalive: nil)
+        var updates = session.updates.makeAsyncIterator()
+        await session.resume()
+        #expect(await updates.next() == .status(.connecting))
+        #expect(await updates.next() == .status(.connected))
+
+        let terminal = try await session.withTransport { transport in
+            try await transport.attachTerminal(
+                TerminalAttachRequest(target: "w1:p1", cols: 80, rows: 24))
+        }
+        var output = terminal.output.makeAsyncIterator()
+        let pingCount = await transport.pingCount
+        await transport.failPing(atCall: pingCount + 1, with: failure)
+        let attempts = Mutex(0)
+        await #expect(throws: failure) {
+            _ = try await session.withTransport { transport in
+                attempts.withLock { $0 += 1 }
+                return try await transport.ping()
+            }
+        }
+
+        #expect(attempts.withLock { $0 } == 1)
+        #expect(await connector.connectCount == 1)
+        #expect(await session.transportGeneration == 0)
+        #expect(await transport.capturedSubscriptions == [initial])
+        #expect(await !transport.isClosed)
+        #expect(await transport.attachRequests.count == 1)
+        #expect(await replacement.attachRequests.isEmpty)
+        // The existing terminal still delivers bytes; there is no generation
+        // change for AgentAttachStore to use to rebuild its terminal.
+        let bytes = Data("terminal survives".utf8)
+        let emitted = await transport.emitAttachOutput(bytes)
+        #expect(emitted)
+        if emitted { #expect(try await output.next() == bytes) }
+        let info = try await session.withTransport { try await $0.ping() }
+        #expect(info.protocolVersion == 17)
+        await terminal.end()
+        await session.end()
+    }
+
     @Test func liveUpdateResubscribesOnTheSameConnectionWithoutReconnecting() async throws {
         let transport = ScriptedTransport()
         let session = makeSession(transport: transport)

@@ -443,6 +443,7 @@ final class AttachTerminalStore {
                 // the bytes on screen.
                 if status == .connecting {
                     status = .live
+                    input.sessionDidBecomeLive(inputGeneration)
                 }
                 #if DEBUG
                 restorationTrace.emit(.firstOutputBytes, generation: acquiredTransportGeneration)

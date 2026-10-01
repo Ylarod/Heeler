@@ -1976,10 +1976,11 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
     HeelerSSHDirectStreamLocalE2ETests
-run_suite SharedFixtureE2ETests 104 6 0 \
+run_suite SharedFixtureE2ETests 115 7 0 \
     HeelerSSHPTYE2ETests \
     HeelerSSHJumpHostGateE2ETests \
     HeelerSSHTransportBehaviorE2ETests \
+    ChangesFieldHostE2ETests \
     ImageStagingE2ETests \
     WeakNetworkE2ETests \
     PairingCeremonyE2ETests
@@ -1990,6 +1991,7 @@ for suite in \
     HeelerSSHPTYE2ETests \
     HeelerSSHJumpHostGateE2ETests \
     HeelerSSHTransportBehaviorE2ETests \
+    ChangesFieldHostE2ETests \
     ImageStagingE2ETests \
     WeakNetworkE2ETests \
     PairingCeremonyE2ETests; do
@@ -2017,6 +2019,32 @@ assert_behavior "Jump Host product path" HeelerSSHJumpHostGateE2ETests \
     '"protocol 17 ping traverses independent SSH hops"'
 assert_behavior "Events" HeelerSSHTransportBehaviorE2ETests \
     '"direct Host Events preserve framing, concurrency, and slot reuse"'
+assert_behavior "git stdin bytes and fixed command" HeelerSSHTransportBehaviorE2ETests \
+    '"git stdin scripts preserve bytes and use only the fixed shell on direct and Jump paths"'
+assert_behavior "git deadline isolation" HeelerSSHTransportBehaviorE2ETests \
+    '"a git deadline surfaces its own error and preserves the SSH connection"'
+assert_behavior "git cancellation isolation" HeelerSSHTransportBehaviorE2ETests \
+    '"cancelling a running git script preserves SSH after the remote bound and cleanup window"'
+assert_behavior "Changes read leaves the Checkout untouched" \
+    HeelerSSHTransportBehaviorE2ETests \
+    '"a Changes read parses real git and leaves the index, fsmonitor and hooks untouched"'
+assert_behavior "Changes file patch: tracked and untracked files" \
+    HeelerSSHTransportBehaviorE2ETests \
+    '"file patches read tracked and untracked content through real SSH without changing the Checkout"'
+assert_behavior "Changes line counts: counted in the one exec" \
+    HeelerSSHTransportBehaviorE2ETests \
+    '"a Changes read counts lines from the seeded repository in its one exec"'
+assert_behavior "Changes failure states: outside a repository and a missing directory" \
+    HeelerSSHTransportBehaviorE2ETests \
+    '"a Changes read distinguishes an outside directory from a missing directory"'
+assert_behavior "Changes untracked directory: lists its files" \
+    HeelerSSHTransportBehaviorE2ETests \
+    '"an untracked directory lists its files over one exec"'
+# The same reads, patches and listing over hostile names, on the direct and
+# the Jump Host route. scripts/verify-changes-linux-host.sh runs this test
+# against a Linux Host with fish and POSIX sh login shells (#395).
+assert_behavior "Changes field reads: direct and Jump Host" ChangesFieldHostE2ETests \
+    '"Changes, file patches and an untracked directory read correctly on every configured field Host"'
 assert_behavior "PTY" HeelerSSHPTYE2ETests \
     '"PTY exec preserves raw IO, merged output, geometry, and exit status"'
 assert_behavior "resize" HeelerSSHTransportBehaviorE2ETests \
@@ -2115,6 +2143,16 @@ assert_behavior "weak-network descriptor reclamation" WeakNetworkE2ETests \
 # notice it sticking true on a dead connection.
 assert_behavior "disconnect is reported" WeakNetworkE2ETests \
     '"a severed link makes the transport report itself disconnected"'
+# The opposite case: a git read that overruns its deadline is a Changes
+# failure, never a link failure, so the Host keeps its connection, its
+# transport generation and its attached terminal (#395).
+assert_behavior "git overrun keeps the Host connection" WeakNetworkE2ETests \
+    '"a git overrun shows timed out without redialing the Host or rebuilding its terminal"'
+# The Host-side caps are sized so the largest Changes read and the Load More
+# patch cross the cellular-like profile inside the git deadline (#395).
+assert_behavior "Changes caps fit the git deadline on a cellular link" \
+    WeakNetworkE2ETests \
+    '"a status past its cap and a 1 MiB patch read inside the git deadline over the cellular-like profile"'
 
 fi
 

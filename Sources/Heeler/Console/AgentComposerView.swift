@@ -63,6 +63,10 @@ struct AgentComposerActions {
     let showAttachLinks: () -> Void
     let openTerminal: (() -> Void)?
     let isOpeningTerminal: Bool
+    /// Opens the Changes of the Checkout containing the Agent's directory.
+    /// Nil when the Agent has no directory, which hides the entry; it is
+    /// never gated on the Agent's worktree metadata.
+    let showChanges: (() -> Void)?
     let startAgent: () -> Void
     let manageSnippets: () -> Void
     /// Opens the explicit Skill picker. Nil for agent kinds without a skills
@@ -99,6 +103,8 @@ struct AgentComposerView: View {
     /// Read-only projection of the Host's own connection telemetry; nil
     /// whenever there is nothing proven to show.
     let hostTelemetry: HostTelemetryPresentation?
+    /// The Agent's Checkout totals for the status row.
+    var changes: AgentDetailChanges? = nil
     /// The terminal theme's luminance, not the system appearance. The status
     /// row sits directly on the themed terminal surface, so hierarchical
     /// styles and the status inks must resolve against that background — a
@@ -151,6 +157,7 @@ struct AgentComposerView: View {
                 AgentDetailStatusChrome(
                     status: status,
                     hostTelemetry: hostTelemetry,
+                    changes: changes,
                     chromeColorScheme: chromeColorScheme)
 
                 VStack(spacing: 0) {

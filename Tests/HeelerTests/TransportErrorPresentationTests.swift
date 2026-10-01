@@ -3,7 +3,17 @@ import Testing
 
 @testable import Heeler
 
+@Suite("Transport error presentation")
 struct TransportErrorPresentationTests {
+    @Test func gitDeadlineIsNotRetryableOrPresentedAsAConnectionFailure() {
+        let failure = TransportError.gitTimedOut
+        #expect(!failure.isRetryable)
+        #expect(!TransportError.jumpHostFailed(failure).isRetryable)
+        #expect(failure.presentation.summary == "Reading Changes timed out")
+        #expect(failure.presentation.detail == nil)
+        #expect(failure.presentation.recoverySuggestion == nil)
+    }
+
     private static let homebrewPATH =
         "Homebrew installs are often at /opt/homebrew/bin or /home/linuxbrew/.linuxbrew/bin — "
         + "put that directory on the account's non-interactive PATH, "

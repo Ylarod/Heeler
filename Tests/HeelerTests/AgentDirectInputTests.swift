@@ -107,7 +107,7 @@ struct AgentDirectInputTests {
                 == [.addImage, .addFile])
         #expect(
             AgentActionMenuSection.sessionTools.items
-                == [.openTerminal, .newAgent, .skills, .snippets])
+                == [.openTerminal, .changes, .newAgent, .skills, .snippets])
         #expect(
             AgentActionMenuSection.agentLifecycle.items
                 == [.worktreeDetails, .renameAgent, .renameWorkspace, .closeAgent])
@@ -119,6 +119,7 @@ struct AgentDirectInputTests {
             (.addImage, "Add Image", "photo", false, true),
             (.addFile, "Add File", "doc", false, true),
             (.openTerminal, "Open Terminal", "apple.terminal", false, false),
+            (.changes, "Changes", "plus.forwardslash.minus", false, false),
             (.newAgent, "New Agent", "plus", false, false),
             (.skills, "Skills", "sparkles", false, true),
             (.snippets, "Snippets", "quote.bubble", false, true),
@@ -137,7 +138,7 @@ struct AgentDirectInputTests {
 
     @Test func sharedActionMenuAvailabilityAndDispatchCoverAllGates() {
         enum Event: Equatable {
-            case addImage, addFile, openTerminal, startAgent, skills, snippets
+            case addImage, addFile, openTerminal, changes, startAgent, skills, snippets
             case worktree, renameAgent, renameWorkspace, closeAgent
         }
         var events: [Event] = []
@@ -149,6 +150,7 @@ struct AgentDirectInputTests {
             showAttachLinks: {},
             openTerminal: nil,
             isOpeningTerminal: false,
+            showChanges: nil,
             startAgent: { events.append(.startAgent) },
             manageSnippets: { events.append(.snippets) },
             showSkills: nil,
@@ -164,6 +166,7 @@ struct AgentDirectInputTests {
             showAttachLinks: {},
             openTerminal: { events.append(.openTerminal) },
             isOpeningTerminal: true,
+            showChanges: { events.append(.changes) },
             startAgent: { events.append(.startAgent) },
             manageSnippets: { events.append(.snippets) },
             showSkills: { events.append(.skills) },
@@ -179,6 +182,7 @@ struct AgentDirectInputTests {
             showAttachLinks: {},
             openTerminal: { events.append(.openTerminal) },
             isOpeningTerminal: false,
+            showChanges: { events.append(.changes) },
             startAgent: { events.append(.startAgent) },
             manageSnippets: { events.append(.snippets) },
             showSkills: { events.append(.skills) },
@@ -193,6 +197,11 @@ struct AgentDirectInputTests {
             (.openTerminal, gated, true, false),
             (.openTerminal, busy, true, false),
             (.openTerminal, ready, true, true),
+            // Visible whenever the Agent has a directory, whatever its
+            // worktree metadata says.
+            (.changes, gated, false, true),
+            (.changes, busy, true, true),
+            (.changes, ready, true, true),
             (.newAgent, ready, true, true),
             (.skills, gated, false, true),
             (.skills, ready, true, true),
@@ -213,7 +222,7 @@ struct AgentDirectInputTests {
         }
         #expect(
             events == [
-                .addImage, .addFile, .openTerminal, .startAgent, .skills, .snippets,
+                .addImage, .addFile, .openTerminal, .changes, .startAgent, .skills, .snippets,
                 .worktree, .renameAgent, .renameWorkspace, .closeAgent,
             ])
     }
@@ -232,6 +241,7 @@ struct AgentDirectInputTests {
             showAttachLinks: {},
             openTerminal: { steps.append(.action(.openTerminal)) },
             isOpeningTerminal: false,
+            showChanges: { steps.append(.action(.changes)) },
             startAgent: { steps.append(.action(.newAgent)) },
             manageSnippets: { steps.append(.action(.snippets)) },
             showSkills: { steps.append(.action(.skills)) },
@@ -256,6 +266,7 @@ struct AgentDirectInputTests {
                 .restore, .action(.addImage),
                 .restore, .action(.addFile),
                 .action(.openTerminal),
+                .action(.changes),
                 .action(.newAgent),
                 .restore, .action(.skills),
                 .restore, .action(.snippets),

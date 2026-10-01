@@ -1,8 +1,11 @@
 ---
 import { Picture } from 'astro:assets';
 import agentShot from '../assets/screens/agent-iphone.png';
+import changesShot from '../assets/screens/changes-iphone.png';
 import composerShot from '../assets/screens/composer-iphone.png';
 import consoleShot from '../assets/screens/console-iphone.png';
+import diffShot from '../assets/screens/diff-iphone.png';
+import hostsShot from '../assets/screens/hosts-iphone.png';
 import liveActivityShot from '../assets/screens/live-activity-iphone.png';
 import skillsShot from '../assets/screens/skills-iphone.png';
 import terminalShot from '../assets/screens/terminal-iphone.png';
@@ -31,6 +34,18 @@ const screens = [
     caption: 'The session rendered above the draft',
   },
   {
+    image: changesShot,
+    alt: "Changes listing a Checkout's staged and unstaged files on iPhone",
+    label: 'Changes',
+    caption: "What is uncommitted in the Agent's Checkout",
+  },
+  {
+    image: diffShot,
+    alt: 'A changed JSON file with its edited words highlighted on iPhone',
+    label: 'File diff',
+    caption: 'Every changed line, with edited words marked',
+  },
+  {
     image: terminalShot,
     alt: 'Terminals tab listing shell panes by Host and Workspace on iPhone',
     label: 'Terminals',
@@ -41,6 +56,12 @@ const screens = [
     alt: 'Composer Skills suggestions on iPhone',
     label: 'Skills',
     caption: 'Inline Skills while you type a prefix',
+  },
+  {
+    image: hostsShot,
+    alt: 'Hosts tab grouping Hosts by connection status with their latency on iPhone',
+    label: 'Hosts',
+    caption: 'Every Host with its connection and latency',
   },
   {
     image: liveActivityShot,
@@ -216,11 +237,12 @@ const screens = [
   }
 
   .screens {
-    display: grid;
-    grid-template-columns: repeat(3, 300px);
+    display: flex;
+    flex-wrap: wrap;
     justify-content: center;
     gap: 48px;
-    margin: 88px 0 0;
+    max-width: calc(3 * 300px + 2 * 48px);
+    margin: 88px auto 0;
     padding: 0;
     list-style: none;
   }
@@ -228,6 +250,7 @@ const screens = [
   .screen {
     display: flex;
     flex-direction: column;
+    width: 300px;
     align-items: center;
     gap: var(--sp-4);
   }
@@ -256,10 +279,10 @@ const screens = [
    * rail rather than two stacked rows of full-height phones. */
   @media (max-width: 1060px) {
     .screens {
-      display: flex;
-      grid-template-columns: none;
+      flex-wrap: nowrap;
       justify-content: flex-start;
       gap: var(--sp-6);
+      max-width: none;
       margin-inline: calc(var(--gutter-x) * -1);
       padding-inline: var(--gutter-x);
       overflow-x: auto;
@@ -273,6 +296,7 @@ const screens = [
 
     .screen {
       flex: none;
+      width: auto;
       scroll-snap-align: center;
     }
   }

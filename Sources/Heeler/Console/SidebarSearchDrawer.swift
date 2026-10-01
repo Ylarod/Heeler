@@ -9,8 +9,9 @@ extension View {
     /// and a bar follows the first scroll view it finds: without this,
     /// scrolling the Terminals list would neither put the field away nor
     /// pull it back into view. The field shows while the followed list
-    /// rests at its top, so each list is scrolled past it the first time it
-    /// shows there, as `searchDrawerStartsTucked()` does on an iPhone.
+    /// rests at its top, so each list that can scroll is scrolled past it
+    /// the first time it shows there, as `searchDrawerStartsTucked()` does
+    /// on an iPhone.
     /// `shownList` only prompts a new look once the switch has changed.
     func sidebarSearchDrawer(following shownList: ConsoleTab) -> some View {
         background { SidebarSearchDrawerBridge(shownList: shownList) }
@@ -93,6 +94,11 @@ private struct SidebarSearchDrawerBridge: UIViewRepresentable {
             let top = -list.adjustedContentInset.top
             // Only from the top: a list already scrolled has hidden it.
             guard list.contentOffset.y <= top + 1 else { return true }
+            // Rows that fit leave no room to scroll the field away: it stays
+            // in view, and the scroll would only park the first row under it.
+            let bottom = list.contentSize.height + list.adjustedContentInset.bottom
+                - list.bounds.height
+            guard bottom >= top + field else { return true }
             // Animated, so the bar follows the scroll; see
             // `searchDrawerStartsTucked()`.
             list.setContentOffset(
