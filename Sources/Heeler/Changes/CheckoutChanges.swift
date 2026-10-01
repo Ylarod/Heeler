@@ -330,10 +330,6 @@ enum ChangesReadError: Error, Sendable, Equatable {
 }
 
 extension CheckoutChanges {
-    /// The header's VoiceOver summary starts with the files-changed count,
-    /// which is only a lower bound when the Host capped its status output.
-    private var fileCountQualifier: String { isStatusTruncated ? "more than " : "" }
-
     /// What VoiceOver reads for the header, as one element: the Checkout,
     /// its linked Worktree marker, the branch or detached commit, and the
     /// latest commit with its age. It names the Checkout and never an
@@ -356,7 +352,7 @@ extension CheckoutChanges {
         }
         if head.isUnborn { sentences.append("No commits yet") }
         if let upstream = head.upstream { sentences.append(upstream.accessibilitySummary) }
-        sentences.append(fileCountQualifier + totals.accessibilitySummary)
+        sentences.append(totals.accessibilitySummary(statusTruncated: isStatusTruncated))
         return sentences.map { "\($0)." }.joined(separator: " ")
     }
 }
@@ -401,12 +397,30 @@ struct ChangesTotals: Sendable, Equatable {
         "\(untrackedItems.formatted()) untracked \(untrackedItems == 1 ? "item" : "items")"
     }
 
-    var accessibilitySummary: String {
+    var accessibilitySummary: String { accessibilitySummary(statusTruncated: false) }
+
+    /// `statusTruncated`: the Host capped its status output.
+    func accessibilitySummary(statusTruncated: Bool) -> String {
         let lines = linesAreAvailable
             ? (linesAreComplete ? "" : "At least ")
                 + LineCounts.lines(added: added, removed: removed).accessibilityLabel + " in tracked files"
             : "Line counts unavailable"
-        return "\(filesSummary). \(lines). \(untrackedSummary)"
+        return "\(spokenFiles(statusTruncated: statusTruncated)). \(lines). "
+            + spokenUntracked(statusTruncated: statusTruncated)
+    }
+
+    /// Git lists every tracked entry before the untracked ones, so a capped
+    /// status loses untracked items first. Once one untracked item is
+    /// listed, the tracked count is whole and the untracked count a lower
+    /// bound; with none listed, the tracked count is the lower bound and the
+    /// untracked items were never reached.
+    func spokenFiles(statusTruncated: Bool) -> String {
+        (statusTruncated && untrackedItems == 0 ? "more than " : "") + filesSummary
+    }
+
+    func spokenUntracked(statusTruncated: Bool) -> String {
+        guard statusTruncated else { return untrackedSummary }
+        return untrackedItems > 0 ? "more than " + untrackedSummary : "untracked items not counted"
     }
 }
 

@@ -106,6 +106,17 @@ struct GitProbeLineCountsTests {
         #expect(changes.totals.accessibilitySummary.contains("At least 2 lines added"))
     }
 
+    /// Git lists untracked items after every tracked entry, so a status
+    /// capped among them leaves the tracked count whole.
+    @Test func aStatusCappedAmongUntrackedItemsBoundsOnlyThoseItems() {
+        let totals = ChangesTotals(trackedFiles: 0, untrackedItems: 2_788)
+        #expect(totals.accessibilitySummary(statusTruncated: true)
+            == "0 files changed. 0 lines added, 0 lines removed in tracked files. "
+            + "more than \(2_788.formatted()) untracked items")
+        let badge = ChangesBadge(totals: totals, isStatusTruncated: true)
+        #expect(badge.accessibilityValue == "more than \(2_788.formatted()) untracked items")
+    }
+
     @Test func aCappedStatusMakesTheVisibleAndVoiceOverHeaderFileCountALowerBound() throws {
         let recording = GitProbeRecordings.tracking
         let frames = GitProbe.Frames(
@@ -124,7 +135,8 @@ struct GitProbeLineCountsTests {
         #expect(changes.totals.removed == 1)
         #expect(changes.accessibilitySummary(
             relativeTo: Date(timeIntervalSince1970: 1_790_600_000), locale: Locale(identifier: "en_US"))
-            .contains("more than 1 file changed. 3 lines added, 1 line removed in tracked files."))
+            .contains("more than 1 file changed. 3 lines added, 1 line removed in tracked files. "
+                + "untracked items not counted."))
 
         let complete = try read(recording)
         #expect(!complete.isStatusTruncated)

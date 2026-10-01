@@ -77,9 +77,11 @@ struct ChangesBadge: Equatable {
         }
         var parts: [String] = []
         if totals.trackedFiles > 0 || totals.untrackedItems == 0 {
-            parts.append((isStatusTruncated ? "more than " : "") + totals.filesSummary)
+            parts.append(totals.spokenFiles(statusTruncated: isStatusTruncated))
         }
-        if totals.untrackedItems > 0 { parts.append(totals.untrackedSummary) }
+        if totals.untrackedItems > 0 {
+            parts.append(totals.spokenUntracked(statusTruncated: isStatusTruncated))
+        }
         return parts.joined(separator: ", ")
     }
 
