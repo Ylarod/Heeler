@@ -58,6 +58,11 @@ struct ChangesBadge: Equatable {
     /// clean, so the badge shows Tide's file counts instead, as "+1 !2 ?3".
     var showsFiles: Bool { totals.added == 0 && totals.removed == 0 }
 
+    /// A side with no lines is left out, as "+48" rather than "+48 −0";
+    /// the header still writes both.
+    var showsAdded: Bool { totals.added > 0 }
+    var showsRemoved: Bool { totals.removed > 0 }
+
     func fileCountText(
         _ count: TideGitItem.FileCount, style: Style = .exact, locale: Locale = .current
     ) -> String {
@@ -185,10 +190,14 @@ struct ChangesRowTotals: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                Text(badge.addedText(style, locale: locale))
-                    .foregroundStyle(Color(uiColor: ChangesBadgePalette.addedInk))
-                Text(badge.removedText(style, locale: locale))
-                    .foregroundStyle(Color(uiColor: ChangesBadgePalette.removedInk))
+                if badge.showsAdded {
+                    Text(badge.addedText(style, locale: locale))
+                        .foregroundStyle(Color(uiColor: ChangesBadgePalette.addedInk))
+                }
+                if badge.showsRemoved {
+                    Text(badge.removedText(style, locale: locale))
+                        .foregroundStyle(Color(uiColor: ChangesBadgePalette.removedInk))
+                }
             }
         }
         .font(font)

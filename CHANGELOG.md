@@ -23,7 +23,7 @@ Entries reference the issue that motivated them.
   or ~, the last two as Tide writes them), with conflicts first. Pull down to read it
   again. Each Agent's row in the Agents list ends its last line with the
   Checkout's line totals, such as +12 −7 in green and red, matching the
-  Changes header, and the Agent List Fields preview shows them there with
+  Changes header but leaving out a side with no lines, and the Agent List Fields preview shows them there with
   sample counts. The list reads them itself: when a row first shows, and
   again when that Agent stops working, waiting while no row shows it. A
   Checkout changed without a line delta, such as one with only new files,

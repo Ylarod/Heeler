@@ -99,6 +99,10 @@ struct ChangesBadgeTests {
 
         let lines = try #require(Self.badge(try Self.read(added: 12, removed: 0).changes))
         #expect(!lines.showsFiles)
+        #expect(lines.showsAdded && !lines.showsRemoved)
+        let removals = try #require(Self.badge(try Self.read(added: 0, removed: 7).changes))
+        #expect(!removals.showsFiles)
+        #expect(!removals.showsAdded && removals.showsRemoved)
     }
 
     @Test func aTruncatedCountReadsAsALowerBound() throws {
