@@ -71,22 +71,24 @@ struct ChangesBadgeTests {
     /// Untracked, binary, and mode-only changes have no line delta, yet the
     /// Checkout is not clean: the badge says +0 −0 as the header does, and
     /// VoiceOver hears what did change.
-    @Test func showsZeroesWhenFilesChangedWithoutALineDelta() throws {
+    /// "+0 −0" would read as clean; a dirty Checkout without a line delta
+    /// counts its files instead, tracked and untracked together.
+    @Test func countsFilesWhenFilesChangedWithoutALineDelta() throws {
         var changes = try Self.read(added: 12, removed: 7).changes
         changes.totals.added = 0
         changes.totals.removed = 0
         let badge = try #require(Self.badge(changes))
-        #expect(badge.addedText(locale: Self.english) == "+0")
-        #expect(badge.removedText(locale: Self.english) == "\u{2212}0")
-        Self.expectHeaderMatches(badge, changes)
-        #expect(
-            badge.accessibilityValue
-                == "0 lines added, 0 lines removed, 2 files changed, 1 untracked item")
+        #expect(badge.showsFiles)
+        #expect(badge.filesText(locale: Self.english) == "3 files")
+        #expect(badge.accessibilityValue == "2 files changed, 1 untracked item")
 
         changes.totals.trackedFiles = 0
         let untrackedOnly = try #require(Self.badge(changes))
-        #expect(
-            untrackedOnly.accessibilityValue == "0 lines added, 0 lines removed, 1 untracked item")
+        #expect(untrackedOnly.filesText(locale: Self.english) == "1 file")
+        #expect(untrackedOnly.accessibilityValue == "1 untracked item")
+
+        let lines = try #require(Self.badge(try Self.read(added: 12, removed: 0).changes))
+        #expect(!lines.showsFiles)
     }
 
     @Test func aTruncatedCountReadsAsALowerBound() throws {
@@ -1336,6 +1338,18 @@ struct AgentCardChangesTotalsTests {
         #expect(Self.identifier(of: element) == form)
         let frame = AccessibilityProbe.frame(of: element, in: controller.view)
         #expect(frame.maxX <= width + 0.5)
+    }
+
+    /// A Checkout changed without a line delta shows its file count, not
+    /// "+0 −0".
+    @Test func aCardWithoutALineDeltaCountsFiles() async throws {
+        let store = try await Self.store(added: 0, removed: 0)
+        let (controller, window) = try await Self.host(store, width: 402)
+        defer { window.isHidden = true }
+        let labels = AccessibilityProbe.labels(in: controller.view)
+        let changes = labels.filter { $0.hasPrefix("Changes") }
+        #expect(changes.count == 1, "\(labels)")
+        #expect(changes.allSatisfy { !$0.contains("lines") }, "\(changes)")
     }
 
     /// Nothing to vouch for, nothing shown; a preview card has no store.

@@ -4,7 +4,7 @@ import UIKit
 
 /// An Agents list row's glance at its Agent's Checkout Changes: the line
 /// totals of the latest read, the same numbers the Changes header shows for
-/// it. Nil whenever that read cannot vouch for them: nothing read yet, a
+/// it, or how many files changed when no line did. Nil whenever that read cannot vouch for them: nothing read yet, a
 /// clean Checkout, a failed read, a refresh that timed out keeping older
 /// content, or line counts git could not produce.
 ///
@@ -46,20 +46,28 @@ struct ChangesBadge: Equatable {
         "\u{2212}" + Self.count(totals.removed, style: style, locale: locale)
     }
 
-    /// Always exact. Zero lines on both sides is still a dirty Checkout
-    /// (untracked, binary, or mode-only changes), so it also says which
-    /// files changed rather than sounding clean.
+    /// Zero lines on both sides is still a dirty Checkout (untracked,
+    /// binary, or mode-only changes); "+0 −0" would read as clean, so the
+    /// badge counts its files instead.
+    var showsFiles: Bool { totals.added == 0 && totals.removed == 0 }
+
+    /// Changed and untracked files together, as "3 files".
+    func filesText(_ style: Style = .exact, locale: Locale = .current) -> String {
+        let files = totals.trackedFiles + totals.untrackedItems
+        return Self.count(files, style: style, locale: locale) + (files == 1 ? " file" : " files")
+    }
+
+    /// Always exact.
     var accessibilityValue: String {
-        var parts = [
-            (totals.linesAreComplete ? "" : "At least ")
+        guard showsFiles else {
+            return (totals.linesAreComplete ? "" : "At least ")
                 + LineCounts.lines(added: totals.added, removed: totals.removed).accessibilityLabel
-        ]
-        if totals.added == 0, totals.removed == 0 {
-            if totals.trackedFiles > 0 || totals.untrackedItems == 0 {
-                parts.append((isStatusTruncated ? "more than " : "") + totals.filesSummary)
-            }
-            if totals.untrackedItems > 0 { parts.append(totals.untrackedSummary) }
         }
+        var parts: [String] = []
+        if totals.trackedFiles > 0 || totals.untrackedItems == 0 {
+            parts.append((isStatusTruncated ? "more than " : "") + totals.filesSummary)
+        }
+        if totals.untrackedItems > 0 { parts.append(totals.untrackedSummary) }
         return parts.joined(separator: ", ")
     }
 
@@ -107,9 +115,9 @@ enum ChangesBadgePalette {
     static let removedInk = DiffPalette.adaptive(light: 0xB42318, dark: 0xFFA198)
 }
 
-/// An Agent's Checkout totals, "+12 −7" in green and red, at the trailing
-/// end of its Agents list row's last detail line and of Agent detail's
-/// status line. Not a control; the row opens the Agent, and the Agent menu
+/// An Agent's Checkout totals, "+12 −7" in green and red, or "3 files" in
+/// gray when no line changed, at the trailing end of its Agents list row's
+/// last detail line and of Agent detail's status line. Not a control; the row opens the Agent, and the Agent menu
 /// opens Changes. Exact totals come first; a line without room takes the
 /// shortened form.
 struct ChangesRowTotals: View {
@@ -163,10 +171,15 @@ struct ChangesRowTotals: View {
 
     private func totals(_ badge: ChangesBadge, style: ChangesBadge.Style) -> some View {
         HStack(spacing: 4) {
-            Text(badge.addedText(style, locale: locale))
-                .foregroundStyle(Color(uiColor: ChangesBadgePalette.addedInk))
-            Text(badge.removedText(style, locale: locale))
-                .foregroundStyle(Color(uiColor: ChangesBadgePalette.removedInk))
+            if badge.showsFiles {
+                Text(badge.filesText(style, locale: locale))
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(badge.addedText(style, locale: locale))
+                    .foregroundStyle(Color(uiColor: ChangesBadgePalette.addedInk))
+                Text(badge.removedText(style, locale: locale))
+                    .foregroundStyle(Color(uiColor: ChangesBadgePalette.removedInk))
+            }
         }
         .font(font)
         .monospacedDigit()
