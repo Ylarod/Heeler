@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 
 ROOT = Path(__file__).resolve().parents[3]
-OUTPUT_DIR = Path(__file__).resolve().parent / "iphone-6.9"
+OUTPUT_DIR = Path(__file__).resolve().parent / "exports"
 BACKGROUND_PATH = Path(__file__).resolve().parent / "assets" / "background.png"
 
 CANVAS_SIZE = (1320, 2868)
@@ -54,21 +54,42 @@ MOCKUPS = (
         accent=(88, 214, 198),
     ),
     Mockup(
-        output_name="04-your-shell-within-reach.png",
+        output_name="04-see-what-changed.png",
+        source_name="changes-iphone.png",
+        headline="See What\nChanged.",
+        subhead="Every uncommitted file in the Agent's Checkout.",
+        accent=(110, 207, 132),
+    ),
+    Mockup(
+        output_name="05-every-change-line-by-line.png",
+        source_name="diff-iphone.png",
+        headline="Every Change.\nLine by Line.",
+        subhead="Open any file for its diff, word changes marked.",
+        accent=(255, 159, 90),
+    ),
+    Mockup(
+        output_name="06-your-shell-within-reach.png",
         source_name="terminal-iphone.png",
         headline="Your Shell.\nWithin Reach.",
         subhead="Every Host's shells, grouped by Workspace.",
         accent=(102, 166, 255),
     ),
     Mockup(
-        output_name="05-skills-without-breaking-flow.png",
+        output_name="07-skills-without-breaking-flow.png",
         source_name="skills-iphone.png",
         headline="Skills Without\nBreaking Flow",
         subhead="Find and insert Agent Skills without leaving the Composer.",
         accent=(184, 137, 255),
     ),
     Mockup(
-        output_name="06-your-agents-at-a-glance.png",
+        output_name="08-every-host-in-view.png",
+        source_name="hosts-iphone.png",
+        headline="Every Host.\nIn View.",
+        subhead="Connection status and latency for every machine.",
+        accent=(96, 200, 240),
+    ),
+    Mockup(
+        output_name="09-your-agents-at-a-glance.png",
         source_name="live-activity-iphone.png",
         headline="Your Agents.\nAt a Glance.",
         subhead="See live Agent activity from the Lock Screen.",

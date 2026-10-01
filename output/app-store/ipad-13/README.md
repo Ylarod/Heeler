@@ -1,8 +1,7 @@
 # Heeler iPad App Store mockups
 
-Seven landscape exports for the 13-inch iPad screenshot slot, current as of
-Heeler 0.1.12. Each export is an
-opaque RGB PNG at 2752 × 2064 pixels. The numbered filenames define the proposed
+Seven landscape exports for the 13-inch iPad screenshot slot. Each export is
+an opaque RGB PNG at 2752 × 2064 pixels. The numbered filenames define the proposed
 upload order, with the floating-window presentation first.
 
 ## Contents
@@ -20,7 +19,7 @@ upload order, with the floating-window presentation first.
 `contact-sheet.jpg` provides an overview; `index.html` links the seven full-size
 exports. Neither the contact sheet nor the source captures belong in the upload
 set. The locally generated `../ipad-13-app-store.zip` contains only the seven
-exports and is excluded from Git, together with the earlier HTML draft.
+exports and is excluded from Git.
 
 ## Source preservation
 
@@ -34,7 +33,7 @@ exports and is excluded from Git, together with the earlier HTML draft.
 - Source captures are copied unchanged. The renderer scales each 4:3 capture
   uniformly to 2112 × 1584, with a small rounded corner mask. It does not redraw,
   rearrange, stretch, or replace any application content.
-- The generated background is reused from `../0.1.7/assets/background.png`.
+- The generated background is shared with `../iphone-6.9/assets/background.png`.
   Headlines, subheads, frame, and shadow are deterministic compositions adapted
   from the existing iPhone renderer and the approved iPad HTML preview.
 - Source and export SHA-256 values, copy, geometry, and format are recorded in
