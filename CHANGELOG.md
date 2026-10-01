@@ -40,7 +40,8 @@ Entries reference the issue that motivated them.
   Tide prompt does: the branch in purple, or the commit while
   detached, then, in gray, commits behind and ahead of its upstream and
   conflicted, staged, modified, and untracked counts, as main ⇣1 ⇡2 +3 !4 ?2;
-  tap the line to open Changes. Changes opens on the row's latest read while it reads again, and
+  tap the branch or the totals to open Changes, and swipe from the leading
+  edge to go back. Changes opens on the row's latest read while it reads again, and
   hands its read back to the row. Tap a file to read its diff: green
   additions and red removals (blue and mauve with Differentiate Without
   Color), changed words outlined inside a changed line, long lines wrapping

@@ -23,24 +23,24 @@ struct AgentDetailStatusChrome: View {
         } ?? false
         // Only a line that shows the Checkout opens it.
         let open = showsGit || showsTotals ? changes?.open : nil
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            // Each side keeps its own spacing, so a divider sits closer to
-            // its neighbours than the line's spacing would put it: the rule
-            // already separates them, and the branch needs the width.
+        // No spacing of its own, so a divider sits closer to its neighbours
+        // than the line's spacing would put it: the rule already separates
+        // them, and the branch needs the width.
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            statusLabel
+                .fixedSize()
+            if showsGit { StatusLineDivider() }
+            // The Checkout's stretch, from the git item to the totals and
+            // the gap between them, is what opens Changes; the status and
+            // the latency are not.
             HStack(alignment: .firstTextBaseline, spacing: 0) {
-                statusLabel
-                    .fixedSize()
                 if let store {
-                    if showsGit { StatusLineDivider() }
                     // Gives way first: only its branch shortens.
                     TideGitPrompt(store: store)
                         .modifier(OpensChanges(open: open))
                         .layoutPriority(-1)
                 }
-            }
-            .layoutPriority(-1)
-            Spacer(minLength: 8)
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Spacer(minLength: 24)
                 if let store {
                     // Regular weight, as the latency beside it: the inks
                     // already make the totals stand out, and a heavier
@@ -50,15 +50,15 @@ struct AgentDetailStatusChrome: View {
                         identifier: "agent-status-changes")
                     .modifier(OpensChanges(open: open))
                 }
-                if let hostTelemetry {
-                    if showsTotals { StatusLineDivider() }
-                    hostTelemetryLabel(hostTelemetry)
-                        .fixedSize()
-                }
+            }
+            .modifier(OpensChangesOnTap(open: open))
+            if let hostTelemetry {
+                if showsTotals { StatusLineDivider() }
+                hostTelemetryLabel(hostTelemetry)
+                    .fixedSize()
             }
         }
         .padding(.horizontal, 16)
-        .modifier(OpensChangesOnTap(open: open))
         .environment(\.colorScheme, chromeColorScheme)
         .modifier(AgentDetailChangesVisibility(changes: changes))
     }
@@ -120,10 +120,10 @@ private struct StatusLineDivider: View {
     }
 }
 
-/// The whole line is the touch target, a few points taller than its text
-/// without taking more room: the Tide git item and the totals alone are
-/// too small to hit. Unconditional, so the line keeps its identity when a
-/// read lands and the line starts opening Changes.
+/// The Checkout's stretch of the line is one touch target, a few points
+/// taller than its text without taking more room: the Tide git item and
+/// the totals alone are too small to hit. Unconditional, so the line keeps
+/// its identity when a read lands and the line starts opening Changes.
 private struct OpensChangesOnTap: ViewModifier {
     let open: (() -> Void)?
     private static let slop: CGFloat = 6

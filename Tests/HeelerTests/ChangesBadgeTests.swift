@@ -672,7 +672,8 @@ struct AgentRowChangesTests {
         #expect(AgentCardChangesTotalsTests.identifier(of: element) == "agent-status-changes.exact")
     }
 
-    /// The git item and the totals open Changes, each as its own button.
+    /// The git item and the totals open Changes, each as its own button;
+    /// the status and the latency do not.
     @Test func theStatusLineOpensChanges() async throws {
         var changes = TideGitItemTests.changes(
             branch: .named("main"),
@@ -693,7 +694,8 @@ struct AgentRowChangesTests {
             rootView: AnyView(
                 AgentDetailStatusChrome(
                     status: .idle,
-                    hostTelemetry: nil,
+                    hostTelemetry: HostTelemetryPresentation(
+                        status: .connected, latency: .milliseconds(12)),
                     changes: AgentDetailChanges(
                         rows: rows, agent: Self.agent(directory: Self.trackingDirectory),
                         open: { opened += 1 }),
@@ -713,6 +715,10 @@ struct AgentRowChangesTests {
             #expect(element.accessibilityActivate(), "\(label) did not activate")
         }
         #expect(opened == 2)
+        for label in ["Agent status", "Host API connection latency"] {
+            let element = try #require(AccessibilityProbe.elements(labeled: label, in: root).first)
+            #expect(!element.accessibilityTraits.contains(.button), "\(label) is a button")
+        }
     }
 
     /// The totals publish after the read settles; the hosted line lays

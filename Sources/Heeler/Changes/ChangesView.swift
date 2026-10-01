@@ -27,6 +27,11 @@ struct ChangesView: View {
                     .id(ObjectIdentifier(diff))
             }
         }
+        // The bar's back button is custom, so the system's swipe is gone;
+        // this one goes back as that button does, a diff to its list first.
+        .overlay(alignment: .leading) {
+            AgentEdgeBackGesture(dismiss: goBack)
+        }
         .task { await store.appear() }
         .task { await store.followAgentStatus() }
         .onDisappear {
@@ -38,13 +43,7 @@ struct ChangesView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button("Back", systemImage: "chevron.backward") {
-                    if store.fileDiff.current != nil {
-                        store.closeDiff()
-                    } else {
-                        onBack()
-                    }
-                }
+                Button("Back", systemImage: "chevron.backward", action: goBack)
             }
             if let diff = store.fileDiff.current {
                 ToolbarItem(placement: .principal) {
@@ -59,6 +58,14 @@ struct ChangesView: View {
             }
         }
         .toolbar(.visible, for: .navigationBar)
+    }
+
+    private func goBack() {
+        if store.fileDiff.current != nil {
+            store.closeDiff()
+        } else {
+            onBack()
+        }
     }
 
     private var list: some View {
