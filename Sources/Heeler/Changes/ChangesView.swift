@@ -29,9 +29,7 @@ struct ChangesView: View {
         }
         // The bar's back button is custom, so the system's swipe is gone;
         // this one goes back as that button does, a diff to its list first.
-        .overlay(alignment: .leading) {
-            AgentEdgeBackGesture(dismiss: goBack)
-        }
+        .gesture(ChangesBackSwipe(dismiss: goBack))
         .task { await store.appear() }
         .task { await store.followAgentStatus() }
         .onDisappear {
@@ -336,6 +334,62 @@ struct ChangesFileRow: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                 .truncationMode(file.originalPath == nil ? .head : .tail)
+        }
+    }
+}
+
+/// Back on a rightward swipe that starts anywhere in Changes, as a system
+/// navigation stack offers. A strip on the leading edge would not do: beside
+/// a shown iPad sidebar that edge is the split view's resize handle, whose
+/// touches never reach the detail. A UIKit pan, so the split view's own pans
+/// around it, such as bringing the sidebar out, wait until it has failed.
+private struct ChangesBackSwipe: UIGestureRecognizerRepresentable {
+    let dismiss: @MainActor () -> Void
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let pan = UIPanGestureRecognizer()
+        pan.delegate = context.coordinator
+        return pan
+    }
+
+    func handleUIGestureRecognizerAction(
+        _ recognizer: UIPanGestureRecognizer, context: Context
+    ) {
+        guard recognizer.state == .ended else { return }
+        let translation = recognizer.translation(in: recognizer.view)
+        guard translation.x >= 72, abs(translation.y) <= translation.x * 0.75
+        else { return }
+        dismiss()
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        /// Only a mostly sideways drag to the right: scrolls and taps pass.
+        func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = recognizer as? UIPanGestureRecognizer else { return false }
+            let velocity = pan.velocity(in: pan.view)
+            return velocity.x > 0 && abs(velocity.y) <= velocity.x
+        }
+
+        /// The list scrolls under a swipe that drifts.
+        func gestureRecognizer(
+            _ recognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+        ) -> Bool {
+            other.view is UIScrollView
+        }
+
+        func gestureRecognizer(
+            _ recognizer: UIGestureRecognizer,
+            shouldBeRequiredToFailBy other: UIGestureRecognizer
+        ) -> Bool {
+            guard other is UIPanGestureRecognizer, !(other.view is UIScrollView),
+                let view = recognizer.view, let otherView = other.view, otherView !== view
+            else { return false }
+            return view.isDescendant(of: otherView)
         }
     }
 }
