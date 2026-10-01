@@ -222,7 +222,8 @@ private struct ChangesHeader: View {
 
     /// The line totals, a side with no lines left out as in the rows;
     /// "At least" when git could not count every file. Nothing when git
-    /// produced no line counts or no line changed.
+    /// produced no line counts or no line changed. At the rows' size, so
+    /// they stay quieter than the name beside them.
     @ViewBuilder
     private var totals: some View {
         let totals = changes.totals
@@ -235,7 +236,7 @@ private struct ChangesHeader: View {
                 }
                 ChangesLineCounts(
                     counts: .lines(added: totals.added, removed: totals.removed),
-                    font: .subheadline.weight(.semibold))
+                    font: .footnote.weight(.medium))
             }
             .fixedSize()
         }
