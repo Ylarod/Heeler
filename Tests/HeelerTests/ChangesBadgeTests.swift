@@ -538,7 +538,7 @@ struct AgentRowChangesTests {
     }
 
     /// Agent detail's status line shows the row's totals just before the
-    /// Host's latency, at that line's size, and counts as a row while it
+    /// Host's latency, past a hairline, at that line's size, and counts as a row while it
     /// shows: with no list row on screen, as on iPhone, an exit from Working
     /// still rereads, and stops once the line goes.
     @Test func theDetailStatusLineShowsTheTotalsAndCountsAsARow() async throws {
@@ -583,7 +583,8 @@ struct AgentRowChangesTests {
         #expect(abs(totals.midY - latency.midY) <= 1, "\(totals) and \(latency) sit on different lines")
         #expect(abs(totals.height - latency.height) <= 1, "\(totals) and \(latency) differ in size")
         #expect(totals.maxX <= latency.minX, "\(totals) overlaps \(latency)")
-        #expect(latency.minX - totals.maxX <= 8.5, "\(totals) sits apart from \(latency)")
+        // Two spacings and the hairline between them.
+        #expect(latency.minX - totals.maxX <= 11.5, "\(totals) sits apart from \(latency)")
         // Tide's git item follows the Agent status, on the same line.
         let git = try #require(AccessibilityProbe.frame(labeled: "Git", in: root))
         let status = try #require(AccessibilityProbe.frame(labeled: "Agent status", in: root))

@@ -13,25 +13,44 @@ struct AgentDetailStatusChrome: View {
 
     var body: some View {
         let store = changes?.store
+        // A divider only between two groups that both show, so a Checkout
+        // not read yet, or a clean one, leaves no stray rule behind.
+        let showsGit = store.map {
+            TideGitItem(phase: $0.phase, timedOutKeepingContent: $0.timedOutKeepingContent) != nil
+        } ?? false
+        let showsTotals = store.map {
+            ChangesBadge(phase: $0.phase, timedOutKeepingContent: $0.timedOutKeepingContent) != nil
+        } ?? false
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            statusLabel
-                .fixedSize()
-            if let store {
-                // Gives way first: only its branch shortens.
-                TideGitPrompt(store: store)
-                    .layoutPriority(-1)
-            }
-            Spacer(minLength: 8)
-            if let store {
-                // Regular weight, as the latency beside it: the inks already
-                // make the totals stand out, and a heavier weight read larger.
-                ChangesRowTotals(
-                    store: store, font: .caption2,
-                    identifier: "agent-status-changes")
-            }
-            if let hostTelemetry {
-                hostTelemetryLabel(hostTelemetry)
+            // Each side keeps its own spacing, so a divider sits closer to
+            // its neighbours than the line's spacing would put it: the rule
+            // already separates them, and the branch needs the width.
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                statusLabel
                     .fixedSize()
+                if let store {
+                    if showsGit { StatusLineDivider() }
+                    // Gives way first: only its branch shortens.
+                    TideGitPrompt(store: store)
+                        .layoutPriority(-1)
+                }
+            }
+            .layoutPriority(-1)
+            Spacer(minLength: 8)
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                if let store {
+                    // Regular weight, as the latency beside it: the inks
+                    // already make the totals stand out, and a heavier
+                    // weight read larger.
+                    ChangesRowTotals(
+                        store: store, font: .caption2,
+                        identifier: "agent-status-changes")
+                }
+                if let hostTelemetry {
+                    if showsTotals { StatusLineDivider() }
+                    hostTelemetryLabel(hostTelemetry)
+                        .fixedSize()
+                }
             }
         }
         .padding(.horizontal, 16)
@@ -76,6 +95,23 @@ struct AgentDetailStatusChrome: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(telemetry.accessibilityLabel)
             .accessibilityValue(telemetry.accessibilityValue)
+    }
+}
+
+/// A hairline between two of the status line's groups, about as tall as
+/// its capitals and centered on them, so adjacent groups read apart
+/// without spending the width a separator glyph would.
+private struct StatusLineDivider: View {
+    @ScaledMetric(relativeTo: .caption2) private var height: CGFloat = 10
+
+    var body: some View {
+        Rectangle()
+            .fill(Color(uiColor: .separator))
+            .frame(width: 1, height: height)
+            .padding(.horizontal, 5)
+            // Its bottom would sit on the baseline; lower it to the text's middle.
+            .alignmentGuide(.firstTextBaseline) { $0.height * 0.85 }
+            .accessibilityHidden(true)
     }
 }
 
