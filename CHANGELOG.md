@@ -18,17 +18,17 @@ Entries reference the issue that motivated them.
   detached commit with how far it is ahead of and behind its upstream, the
   latest commit's subject and age, and the Checkout's line totals and file
   counts. Below it, each changed file is listed by name over its folder,
-  with its line counts, whether it is staged, and VS Code's letter for
-  modified, added, deleted, renamed, untracked, or conflicted (M, A, D, R, U,
-  or !), with conflicts first. Pull down to read it
+  with its line counts, whether it is staged, and a letter for
+  modified, added, deleted, renamed, untracked, or conflicted (M, A, D, R, ?,
+  or ~, the last two as Tide writes them), with conflicts first. Pull down to read it
   again. Each Agent's row in the Agents list ends its last line with the
   Checkout's line totals, such as +12 −7 in green and red, matching the
   Changes header, and the Agent List Fields preview shows them there with
   sample counts. The list reads them itself: when a row first shows, and
   again when that Agent stops working, waiting while no row shows it. A
   Checkout changed without a line delta, such as one with only new files,
-  counts its files by kind instead, with the letters and colors of the
-  Changes list, as M1 U2. The totals
+  shows Tide's file counts instead, in gray: conflicted, staged, modified,
+  and untracked, as +1 !2 ?3. The totals
   stay hidden while the Checkout is clean, unreadable, or not yet read, and
   shorten from 1,000 lines, as in 1.2K or 12.3K, when the row is short of
   room. Agent detail's status line, just above the input and keyboard,

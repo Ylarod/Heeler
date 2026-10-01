@@ -44,6 +44,37 @@ struct TideGitItem: Equatable {
             ahead = a
             behind = b
         }
+        let files = Self.fileCounts(changes)
+
+        var counts: [String] = []
+        func add(_ value: Int, _ symbol: String, _ phrase: String) {
+            guard value > 0 else { return }
+            counts.append(symbol + value.formatted())
+            spoken.append("\(value.formatted()) \(phrase)")
+        }
+        add(behind, "⇣", behind == 1 ? "commit behind" : "commits behind")
+        add(ahead, "⇡", ahead == 1 ? "commit ahead" : "commits ahead")
+        for file in files { add(file.count, file.symbol, file.phrase) }
+        self.counts = counts
+        // The Host capped its status output, so the file counts are lower
+        // bounds; Tide has no mark for that, so only VoiceOver says so.
+        if changes.isStatusTruncated, !files.isEmpty {
+            spoken.append("file counts incomplete")
+        }
+        accessibilityValue = spoken.joined(separator: ", ")
+    }
+
+    /// One of Tide's file counts: conflicted, staged, modified, or untracked.
+    struct FileCount: Equatable {
+        let symbol: String
+        let count: Int
+        /// What VoiceOver says after the count.
+        let phrase: String
+    }
+
+    /// Tide's nonzero file counts, in its order, as "~1 +3 !4 ?2". A file
+    /// both staged and modified counts once in each, as Tide counts it.
+    static func fileCounts(_ changes: CheckoutChanges) -> [FileCount] {
         var conflicted = 0
         var staged = 0
         var dirty = 0
@@ -61,27 +92,12 @@ struct TideGitItem: Equatable {
             case nil: break
             }
         }
-        let untracked = changes.totals.untrackedItems
-
-        var counts: [String] = []
-        func add(_ value: Int, _ symbol: String, _ phrase: String) {
-            guard value > 0 else { return }
-            counts.append(symbol + value.formatted())
-            spoken.append("\(value.formatted()) \(phrase)")
-        }
-        add(behind, "⇣", behind == 1 ? "commit behind" : "commits behind")
-        add(ahead, "⇡", ahead == 1 ? "commit ahead" : "commits ahead")
-        add(conflicted, "~", "conflicted")
-        add(staged, "+", "staged")
-        add(dirty, "!", "modified")
-        add(untracked, "?", "untracked")
-        self.counts = counts
-        // The Host capped its status output, so the file counts are lower
-        // bounds; Tide has no mark for that, so only VoiceOver says so.
-        if changes.isStatusTruncated, conflicted + staged + dirty + untracked > 0 {
-            spoken.append("file counts incomplete")
-        }
-        accessibilityValue = spoken.joined(separator: ", ")
+        return [
+            FileCount(symbol: "~", count: conflicted, phrase: "conflicted"),
+            FileCount(symbol: "+", count: staged, phrase: "staged"),
+            FileCount(symbol: "!", count: dirty, phrase: "modified"),
+            FileCount(symbol: "?", count: changes.totals.untrackedItems, phrase: "untracked"),
+        ].filter { $0.count > 0 }
     }
 
     /// What the prompt reads, as "main ⇣1 ⇡2 +3".

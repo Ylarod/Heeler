@@ -129,17 +129,17 @@ struct ChangedFile: Sendable, Equatable, Identifiable {
             }
         }
 
-        /// One monospaced letter for the row's badge, as VS Code's Source
-        /// Control letters it: U for untracked and ! for a conflict, where
-        /// git's own status writes ?? and U.
+        /// One monospaced letter for the row's badge: Tide's ? and ~ for
+        /// untracked and conflicted files, as the Tide git item counts them,
+        /// and git's letter for the kinds Tide does not mark.
         var symbol: String {
             switch self {
             case .modified: "M"
             case .added: "A"
             case .deleted: "D"
             case .renamed: "R"
-            case .untracked: "U"
-            case .conflicted: "!"
+            case .untracked: "?"
+            case .conflicted: "~"
             }
         }
     }

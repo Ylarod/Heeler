@@ -72,8 +72,8 @@ struct ChangesBadgeTests {
     /// Checkout is not clean: the badge says +0 −0 as the header does, and
     /// VoiceOver hears what did change.
     /// "+0 −0" would read as clean; a dirty Checkout without a line delta
-    /// counts its files by kind instead, conflicts first, untracked last.
-    @Test func countsFilesByKindWhenFilesChangedWithoutALineDelta() throws {
+    /// shows Tide's file counts instead, as the Tide git item does.
+    @Test func showsTidesFileCountsWhenFilesChangedWithoutALineDelta() throws {
         var changes = TideGitItemTests.changes(files: [
             TideGitItemTests.file("logo.png", staging: .unstaged),
             TideGitItemTests.file("old.bin", kind: .deleted, staging: .staged),
@@ -85,15 +85,16 @@ struct ChangesBadgeTests {
         changes.totals.removed = 0
         let badge = try #require(Self.badge(changes))
         #expect(badge.showsFiles)
-        #expect(badge.kindCounts.map { "\($0.kind.symbol)\(badge.countText($0, locale: Self.english))" }
-            == ["!1", "M2", "D1", "U2"])
+        #expect(badge.fileCounts.map { badge.fileCountText($0, locale: Self.english) }
+            == ["~1", "+2", "!1", "?2"])
+        #expect(badge.fileCounts == TideGitItem.fileCounts(changes))
         #expect(badge.accessibilityValue == "4 files changed, 2 untracked items")
 
         let untrackedOnly = try #require(Self.badge(
             TideGitItemTests.changes(files: [
                 TideGitItemTests.file("new.txt", kind: .untracked, staging: nil),
             ], untracked: 1)))
-        #expect(untrackedOnly.kindCounts == [.init(kind: .untracked, count: 1)])
+        #expect(untrackedOnly.fileCounts.map { untrackedOnly.fileCountText($0) } == ["?1"])
         #expect(untrackedOnly.accessibilityValue == "1 untracked item")
 
         let lines = try #require(Self.badge(try Self.read(added: 12, removed: 0).changes))

@@ -4,7 +4,7 @@ import UIKit
 
 /// An Agents list row's glance at its Agent's Checkout Changes: the line
 /// totals of the latest read, the same numbers the Changes header shows for
-/// it, or how many files of each kind changed when no line did. Nil whenever that read cannot vouch for them: nothing read yet, a
+/// it, or Tide's file counts when no line changed. Nil whenever that read cannot vouch for them: nothing read yet, a
 /// clean Checkout, a failed read, a refresh that timed out keeping older
 /// content, or line counts git could not produce.
 ///
@@ -19,19 +19,11 @@ struct ChangesBadge: Equatable {
         case compact
     }
 
-    /// How many files changed one way, under the letter the Changes list
-    /// marks them with.
-    struct KindCount: Equatable {
-        let kind: ChangedFile.Kind
-        let count: Int
-    }
-
     let totals: ChangesTotals
     /// The Host capped its status output, so file counts are lower bounds.
     let isStatusTruncated: Bool
-    /// Each kind with files, conflicts first as the Changes list orders
-    /// them; untracked items last, counted as the header counts them.
-    let kindCounts: [KindCount]
+    /// Tide's nonzero file counts, as the Tide git item writes them.
+    let fileCounts: [TideGitItem.FileCount]
 
     init?(phase: ChangesStore.Phase, timedOutKeepingContent: Bool) {
         guard case .loaded(let changes) = phase, !timedOutKeepingContent, !changes.isClean,
@@ -39,19 +31,17 @@ struct ChangesBadge: Equatable {
         else { return nil }
         totals = changes.totals
         isStatusTruncated = changes.isStatusTruncated
-        let tracked: [ChangedFile.Kind] = [.conflicted, .modified, .added, .deleted, .renamed]
-        kindCounts = tracked.map { kind in
-            KindCount(kind: kind, count: changes.files.count { $0.kind == kind })
-        }.filter { $0.count > 0 }
-            + (totals.untrackedItems > 0
-                ? [KindCount(kind: .untracked, count: totals.untrackedItems)] : [])
+        fileCounts = TideGitItem.fileCounts(changes)
     }
 
     /// Fixed totals, for a card that stands in for an Agent.
-    init(totals: ChangesTotals, isStatusTruncated: Bool = false, kindCounts: [KindCount] = []) {
+    init(
+        totals: ChangesTotals, isStatusTruncated: Bool = false,
+        fileCounts: [TideGitItem.FileCount] = []
+    ) {
         self.totals = totals
         self.isStatusTruncated = isStatusTruncated
-        self.kindCounts = kindCounts
+        self.fileCounts = fileCounts
     }
 
     func addedText(_ style: Style = .exact, locale: Locale = .current) -> String {
@@ -65,11 +55,13 @@ struct ChangesBadge: Equatable {
 
     /// Zero lines on both sides is still a dirty Checkout (untracked,
     /// binary, mode-only, or pure rename changes); "+0 −0" would read as
-    /// clean, so the badge counts its files by kind instead, as "M1 U2".
+    /// clean, so the badge shows Tide's file counts instead, as "+1 !2 ?3".
     var showsFiles: Bool { totals.added == 0 && totals.removed == 0 }
 
-    func countText(_ count: KindCount, style: Style = .exact, locale: Locale = .current) -> String {
-        Self.count(count.count, style: style, locale: locale)
+    func fileCountText(
+        _ count: TideGitItem.FileCount, style: Style = .exact, locale: Locale = .current
+    ) -> String {
+        count.symbol + Self.count(count.count, style: style, locale: locale)
     }
 
     /// Always exact.
@@ -131,7 +123,7 @@ enum ChangesBadgePalette {
 }
 
 /// An Agent's Checkout totals, "+12 −7" in green and red, or, when no line
-/// changed, its files by kind as the Changes list letters them, "M1 U2", at the trailing end of its Agents list row's
+/// changed, Tide's file counts in gray, "+1 !2 ?3", at the trailing end of its Agents list row's
 /// last detail line and of Agent detail's status line. Not a control; the row opens the Agent, and the Agent menu
 /// opens Changes. Exact totals come first; a line without room takes the
 /// shortened form.
@@ -187,14 +179,10 @@ struct ChangesRowTotals: View {
     private func totals(_ badge: ChangesBadge, style: ChangesBadge.Style) -> some View {
         HStack(spacing: 4) {
             if badge.showsFiles {
-                ForEach(badge.kindCounts, id: \.kind) { count in
-                    HStack(spacing: 1) {
-                        Text(verbatim: count.kind.symbol)
-                            .monospaced()
-                            .bold()
-                        Text(badge.countText(count, style: style, locale: locale))
-                    }
-                    .foregroundStyle(Color(uiColor: ChangeKindPalette.color(for: count.kind)))
+                // Gray, as the Tide git item draws them on the status line.
+                ForEach(badge.fileCounts, id: \.symbol) { count in
+                    Text(badge.fileCountText(count, style: style, locale: locale))
+                        .foregroundStyle(.secondary)
                 }
             } else {
                 Text(badge.addedText(style, locale: locale))
