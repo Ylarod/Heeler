@@ -36,9 +36,9 @@ Heeler is an **agent console**: a native dashboard of every coding agent running
 | --- | --- | --- |
 | <img src="docs/images/terminal-iphone.png" width="240" alt="Terminals tab listing shell panes by Host and Workspace on iPhone" /> | <img src="docs/images/skills-iphone.png" width="240" alt="Composer Skills suggestions on iPhone" /> | <img src="docs/images/live-activity-iphone.png" width="240" alt="Lock-screen Live Activity tracking Agents on iPhone" /> |
 
-| Changes | File diff |
-| --- | --- |
-| <img src="docs/images/changes-iphone.png" width="240" alt="Changes listing a Checkout's staged and unstaged files on iPhone" /> | <img src="docs/images/diff-iphone.png" width="240" alt="A changed JSON file with its edited words highlighted on iPhone" /> |
+| Changes | File diff | Hosts |
+| --- | --- | --- |
+| <img src="docs/images/changes-iphone.png" width="240" alt="Changes listing a Checkout's staged and unstaged files on iPhone" /> | <img src="docs/images/diff-iphone.png" width="240" alt="A changed JSON file with its edited words highlighted on iPhone" /> | <img src="docs/images/hosts-iphone.png" width="240" alt="Hosts tab grouping Hosts by connection status with their latency on iPhone" /> |
 
 <a href="docs/ipad-screenshots.md"><img src="docs/images/windowed-ipad.png" width="760" alt="Heeler in a floating iPad window" /></a>
 
