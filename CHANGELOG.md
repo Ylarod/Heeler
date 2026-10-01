@@ -9,48 +9,19 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- Changes shows what is uncommitted in the Checkout an Agent is working in,
-  without opening a terminal. Open it from the Agent's More menu, in
-  Composer or Direct Input, whenever the Agent has a working directory; it
-  takes the place of Agent detail, and Back returns to the Agent with its
-  draft and input mode as they were. A compact header names the Checkout by
-  its folder with its line totals, marks a linked Worktree, and shows the
-  branch or detached commit with how far it is behind and ahead of its
-  upstream, as ⇣1 ⇡2, and the latest commit's subject and age. Below it, the
-  changed files are grouped as VS Code's Source Control groups them, into
-  Conflicts, Staged, Changes, and Untracked, each with its count; a partly
-  staged file is listed under Changes with a half-filled circle. Each file
-  takes one line: its name with its folder beside it, its line counts, and a
-  letter for modified, added, deleted, renamed, untracked, or conflicted (M,
-  A, D, R, ?, or ~, the last two as Tide writes them). Pull down to read it
-  again. Each Agent's row in the Agents list ends its last line with the
-  Checkout's line totals, such as +12 −7 in green and red, matching the
-  Changes header but leaving out a side with no lines, and the Agent List Fields preview shows them there with
-  sample counts. The list reads them itself: when a row first shows, and
-  again when that Agent stops working, waiting while no row shows it. A
-  Checkout changed without a line delta, such as one with only new files,
-  shows Tide's file counts instead, in gray: conflicted, staged, modified,
-  and untracked, as +1 !2 ?3. The totals
-  stay hidden while the Checkout is clean, unreadable, or not yet read, and
-  shorten from 1,000 lines, as in 1.2K or 12.3K, when the row is short of
-  room. Agent detail's status line, just above the input and keyboard,
-  shows the same totals beside the Host's latency and reads them as a row
-  does while it shows, so they stay current on iPhone, where the list is
-  hidden. After the Agent's status, that line shows the Checkout as fish's
-  Tide prompt does: the branch in purple, or the commit while
-  detached, then, in gray, commits behind and ahead of its upstream and
-  conflicted, staged, modified, and untracked counts, as main ⇣1 ⇡2 +3 !4 ?2;
-  tap the branch or the totals to open Changes, and swipe from the leading
-  edge to go back. Changes opens on the row's latest read while it reads again, and
-  hands its read back to the row. Tap a file to read its diff: green
-  additions and red removals (blue and mauve with Differentiate Without
-  Color), changed words outlined inside a changed line, long lines wrapping
-  under their own indentation, and each hunk marked with how many unchanged
-  lines it skips. On an iPad the diff shows side by side wherever 50 columns
-  fit on each side, including beside the sidebar. Heeler reads the Checkout
-  with git on the Host over SSH, without running its hooks or file-system
-  monitor and without rewriting its index, and keeps nothing once the Agent
-  leaves the list. (#382)
+- Changes shows what is uncommitted in the Checkout an Agent is working in.
+  Open it from the Agent's More menu, or tap the branch or totals on the
+  status line above the input; Back or a swipe from the leading edge
+  returns to the Agent. Files are grouped as in VS Code's Source Control
+  (Conflicts, Staged, Changes, Untracked), one line each with its folder,
+  line counts, and status letter. Tap a file for its diff, with changed
+  words highlighted and side by side on iPad. Git runs on the Host over SSH
+  without hooks, file-system monitors, or index writes. (#382)
+- The Agents list and Agent detail's status line show each Checkout's line
+  totals, such as +12 −7, or Tide's file counts, such as +1 !2 ?3, when no
+  line changed. The status line also shows the branch and its upstream
+  distance as Tide does, as main ⇣1 ⇡2. Both refresh when the Agent stops
+  working or its Host reconnects. (#382)
 
 ### Changed
 
