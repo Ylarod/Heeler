@@ -7,6 +7,8 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-10-02
+
 ### Added
 
 - Changes shows what is uncommitted in the Checkout an Agent is working in.

@@ -2666,14 +2666,14 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Sources/HeelerWidgets/HeelerWidgets.entitlements;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 24;
 				INFOPLIST_FILE = Sources/HeelerWidgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.11;
+				MARKETING_VERSION = 0.1.12;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.bybee.heeler.Widgets;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -2686,7 +2686,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/Heeler/Heeler.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 24;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Sources/Heeler/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Heeler;
@@ -2701,7 +2701,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.11;
+				MARKETING_VERSION = 0.1.12;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.bybee.heeler;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -2712,14 +2712,14 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Sources/HeelerWidgets/HeelerWidgets.entitlements;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 24;
 				INFOPLIST_FILE = Sources/HeelerWidgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.11;
+				MARKETING_VERSION = 0.1.12;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.bybee.heeler.Widgets;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -2730,14 +2730,14 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Sources/HeelerNotificationService/HeelerNotificationService.entitlements;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 24;
 				INFOPLIST_FILE = Sources/HeelerNotificationService/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.11;
+				MARKETING_VERSION = 0.1.12;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.bybee.heeler.NotificationService;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -2850,7 +2850,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Sources/Heeler/Heeler.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 24;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Sources/Heeler/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Heeler;
@@ -2865,7 +2865,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.11;
+				MARKETING_VERSION = 0.1.12;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.bybee.heeler;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -2876,14 +2876,14 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Sources/HeelerNotificationService/HeelerNotificationService.entitlements;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 24;
 				INFOPLIST_FILE = Sources/HeelerNotificationService/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.11;
+				MARKETING_VERSION = 0.1.12;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.bybee.heeler.NotificationService;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
