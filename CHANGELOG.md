@@ -11,8 +11,8 @@ Entries reference the issue that motivated them.
 
 - Changes shows what is uncommitted in the Checkout an Agent is working in.
   Open it from the Agent's More menu, or tap the branch or totals on the
-  status line above the input; Back or a swipe from the leading edge
-  returns to the Agent. Files are grouped as in VS Code's Source Control
+  status line above the input; Back or a swipe to the right returns to the
+  Agent. Files are grouped as in VS Code's Source Control
   (Conflicts, Staged, Changes, Untracked), one line each with its folder,
   line counts, and status letter. Tap a file for its diff, with changed
   words highlighted and side by side on iPad. Git runs on the Host over SSH
@@ -34,6 +34,11 @@ Entries reference the issue that motivated them.
 - An Agent's row in the Agents list ends its second line with the Host name
   rather than its last, making room for the Checkout's line totals there.
   (#382)
+
+### Fixed
+
+- On iPad, a short Agents list shown over the detail no longer starts with
+  its first row under the search field. (#397)
 
 ## [0.1.11] - 2026-09-28
 
