@@ -124,7 +124,7 @@ struct ChangesTotalsRow: View {
     }
 
     /// Zeroes show too: a Checkout with only untracked, binary, or
-    /// mode-only changes reads +0 −0 here; its Agents list row counts files.
+    /// mode-only changes reads +0 −0 here; its Agents list row counts files by kind.
     @ViewBuilder
     private var lines: some View {
         let totals = changes.totals

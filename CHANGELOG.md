@@ -26,7 +26,8 @@ Entries reference the issue that motivated them.
   sample counts. The list reads them itself: when a row first shows, and
   again when that Agent stops working, waiting while no row shows it. A
   Checkout changed without a line delta, such as one with only new files,
-  shows its file count instead, as 3 files in gray. The totals
+  counts its files by kind instead, with the letters and colors of the
+  Changes list, as M1 ?2. The totals
   stay hidden while the Checkout is clean, unreadable, or not yet read, and
   shorten from 1,000 lines, as in 1.2K or 12.3K, when the row is short of
   room. Agent detail's status line, just above the input and keyboard,

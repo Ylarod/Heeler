@@ -72,19 +72,28 @@ struct ChangesBadgeTests {
     /// Checkout is not clean: the badge says +0 −0 as the header does, and
     /// VoiceOver hears what did change.
     /// "+0 −0" would read as clean; a dirty Checkout without a line delta
-    /// counts its files instead, tracked and untracked together.
-    @Test func countsFilesWhenFilesChangedWithoutALineDelta() throws {
-        var changes = try Self.read(added: 12, removed: 7).changes
+    /// counts its files by kind instead, conflicts first, untracked last.
+    @Test func countsFilesByKindWhenFilesChangedWithoutALineDelta() throws {
+        var changes = TideGitItemTests.changes(files: [
+            TideGitItemTests.file("logo.png", staging: .unstaged),
+            TideGitItemTests.file("old.bin", kind: .deleted, staging: .staged),
+            TideGitItemTests.file("a.swift", kind: .conflicted, staging: nil),
+            TideGitItemTests.file("b.png", staging: .staged),
+            TideGitItemTests.file("notes/", kind: .untracked, staging: nil),
+        ], untracked: 2)
         changes.totals.added = 0
         changes.totals.removed = 0
         let badge = try #require(Self.badge(changes))
         #expect(badge.showsFiles)
-        #expect(badge.filesText(locale: Self.english) == "3 files")
-        #expect(badge.accessibilityValue == "2 files changed, 1 untracked item")
+        #expect(badge.kindCounts.map { "\($0.kind.symbol)\(badge.countText($0, locale: Self.english))" }
+            == ["U1", "M2", "D1", "?2"])
+        #expect(badge.accessibilityValue == "4 files changed, 2 untracked items")
 
-        changes.totals.trackedFiles = 0
-        let untrackedOnly = try #require(Self.badge(changes))
-        #expect(untrackedOnly.filesText(locale: Self.english) == "1 file")
+        let untrackedOnly = try #require(Self.badge(
+            TideGitItemTests.changes(files: [
+                TideGitItemTests.file("new.txt", kind: .untracked, staging: nil),
+            ], untracked: 1)))
+        #expect(untrackedOnly.kindCounts == [.init(kind: .untracked, count: 1)])
         #expect(untrackedOnly.accessibilityValue == "1 untracked item")
 
         let lines = try #require(Self.badge(try Self.read(added: 12, removed: 0).changes))
