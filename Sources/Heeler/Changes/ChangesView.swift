@@ -1,79 +1,61 @@
 import SwiftUI
 
-/// A Checkout's uncommitted files, shown in place of Agent detail. Thin: the
-/// store owns reads and states, and the document model owns every string, so
-/// nothing here knows git.
+/// A Checkout's uncommitted files, pushed over Agent detail, with each
+/// file's diff pushed over them in turn. Thin: the store owns reads and
+/// states, and the document model owns every string, so nothing here knows
+/// git.
 struct ChangesView: View {
     let store: ChangesStore
-    let onBack: () -> Void
     /// A pull shows the system's own indicator; the bar's is for the rest.
     @State private var isPulling = false
     /// Try Again's read. Like the first read's `.task`, it ends when Changes
     /// leave the screen rather than running on for a store nobody shows.
     @State private var retry: Task<Void, Never>?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.changesScreenPresence) private var presence
 
     var body: some View {
-        ZStack {
-            list
-                // A read resolving another Checkout replaces the whole view,
-                // scroll position included; a refresh of the same one keeps it.
-                .id(store.checkout)
-                .opacity(store.fileDiff.current == nil ? 1 : 0)
-                // Kept built for its scroll position, so it comes back as
-                // `backPushUncovered` would bring it: from the leading edge.
-                .visualEffect { [isShowingDiff = store.fileDiff.current != nil] content, proxy in
-                    content.offset(x: isShowingDiff ? -proxy.size.width : 0)
-                }
-                .allowsHitTesting(store.fileDiff.current == nil)
-                .accessibilityHidden(store.fileDiff.current != nil)
-            if let diff = store.fileDiff.current {
-                FileDiffView(store: diff)
+        list
+            // A read resolving another Checkout replaces the whole view,
+            // scroll position included; a refresh of the same one keeps it.
+            .id(store.checkout)
+            .navigationDestination(item: diffRoute) { route in
+                FileDiffView(store: route.store)
                     .environment(\.changesReferenceActions, ChangesReferenceActions(store: store))
-                    .id(ObjectIdentifier(diff))
-                    .transition(.backPush)
+                    .navigationTitle(route.store.file.displayPath)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .principal) {
+                            FileDiffTitle(path: route.store.file.displayPath)
+                        }
+                    }
+                    .toolbar(.visible, for: .navigationBar)
+                    // The list follows the Agent's status while its diff
+                    // covers it, as one screen.
+                    .task { await store.followAgentStatus() }
+                    .modifier(ChangesScreenAppearance(presence: presence))
             }
-        }
-        // The bar's back button is custom, so the system's swipe is gone;
-        // this one goes back as that button does, a diff to its list first.
-        .gesture(ChangesBackSwipe(dismiss: goBack))
-        .task { await store.appear() }
-        .task { await store.followAgentStatus() }
-        .onDisappear {
-            retry?.cancel()
-            store.fileDiff.current?.cancel()
-        }
-        .navigationTitle(store.fileDiff.current?.file.displayPath ?? "Changes")
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button("Back", systemImage: "chevron.backward", action: goBack)
-            }
-            if let diff = store.fileDiff.current {
-                ToolbarItem(placement: .principal) {
-                    FileDiffTitle(path: diff.file.displayPath)
+            .task { await store.appear() }
+            .task { await store.followAgentStatus() }
+            .onDisappear { retry?.cancel() }
+            .modifier(ChangesScreenAppearance(presence: presence))
+            .navigationTitle("Changes")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if store.isRefreshing, !isPulling {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        ProgressView()
+                            .accessibilityLabel("Refreshing Changes")
+                    }
                 }
             }
-            if store.fileDiff.current == nil, store.isRefreshing, !isPulling {
-                ToolbarItem(placement: .topBarTrailing) {
-                    ProgressView()
-                        .accessibilityLabel("Refreshing Changes")
-                }
-            }
-        }
-        .toolbar(.visible, for: .navigationBar)
+            .toolbar(.visible, for: .navigationBar)
     }
 
-    /// Animated, so a diff and Changes leave as a pushed screen pops.
-    private func goBack() {
-        withAnimation(reduceMotion ? nil : .default) {
-            if store.fileDiff.current != nil {
-                store.closeDiff()
-            } else {
-                onBack()
-            }
-        }
+    /// The system's Back from a diff closes it.
+    private var diffRoute: Binding<ChangesRoute<FileDiffStore>?> {
+        Binding(
+            get: { store.fileDiff.current.map(ChangesRoute.init) },
+            set: { if $0 == nil { store.closeDiff() } })
     }
 
     private var list: some View {
@@ -348,72 +330,35 @@ struct ChangesFileRow: View {
     }
 }
 
-extension AnyTransition {
-    /// A screen that leaves for the one behind it: in from the trailing edge
-    /// as a push, out toward it as a pop.
-    static var backPush: AnyTransition {
-        .asymmetric(insertion: .push(from: .trailing), removal: .push(from: .leading))
-    }
+/// A pushed Changes screen's store, the same screen while the store is.
+struct ChangesRoute<Store: AnyObject>: Hashable {
+    let store: Store
 
-    /// The screen behind, uncovered by `backPush`.
-    static var backPushUncovered: AnyTransition {
-        .asymmetric(insertion: .push(from: .leading), removal: .push(from: .trailing))
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.store === rhs.store }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(ObjectIdentifier(store))
     }
 }
 
-/// Back on a rightward swipe that starts anywhere in Changes, as a system
-/// navigation stack offers. A strip on the leading edge would not do: beside
-/// a shown iPad sidebar that edge is the split view's resize handle, whose
-/// touches never reach the detail. A UIKit pan, so the split view's own pans
-/// around it, such as bringing the sidebar out, wait until it has failed.
-private struct ChangesBackSwipe: UIGestureRecognizerRepresentable {
-    let dismiss: @MainActor () -> Void
+/// Told when a Changes screen, the list or a diff, comes or goes, so the
+/// screen that pushed them knows whether any is on show.
+struct ChangesScreenPresence {
+    let appeared: @MainActor () -> Void
+    let disappeared: @MainActor () -> Void
+}
 
-    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
-        Coordinator()
-    }
+extension EnvironmentValues {
+    @Entry var changesScreenPresence: ChangesScreenPresence? = nil
+}
 
-    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
-        let pan = UIPanGestureRecognizer()
-        pan.delegate = context.coordinator
-        return pan
-    }
+private struct ChangesScreenAppearance: ViewModifier {
+    let presence: ChangesScreenPresence?
 
-    func handleUIGestureRecognizerAction(
-        _ recognizer: UIPanGestureRecognizer, context: Context
-    ) {
-        guard recognizer.state == .ended else { return }
-        let translation = recognizer.translation(in: recognizer.view)
-        guard translation.x >= 72, abs(translation.y) <= translation.x * 0.75
-        else { return }
-        dismiss()
-    }
-
-    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        /// Only a mostly sideways drag to the right: scrolls and taps pass.
-        func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
-            guard let pan = recognizer as? UIPanGestureRecognizer else { return false }
-            let velocity = pan.velocity(in: pan.view)
-            return velocity.x > 0 && abs(velocity.y) <= velocity.x
-        }
-
-        /// The list scrolls under a swipe that drifts.
-        func gestureRecognizer(
-            _ recognizer: UIGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
-        ) -> Bool {
-            other.view is UIScrollView
-        }
-
-        func gestureRecognizer(
-            _ recognizer: UIGestureRecognizer,
-            shouldBeRequiredToFailBy other: UIGestureRecognizer
-        ) -> Bool {
-            guard other is UIPanGestureRecognizer, !(other.view is UIScrollView),
-                let view = recognizer.view, let otherView = other.view, otherView !== view
-            else { return false }
-            return view.isDescendant(of: otherView)
-        }
+    func body(content: Content) -> some View {
+        content
+            .onAppear { presence?.appeared() }
+            .onDisappear { presence?.disappeared() }
     }
 }
 

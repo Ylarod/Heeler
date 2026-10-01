@@ -32,7 +32,7 @@ struct ChangesFreshnessTests {
             directory: { "/app" }, read: { _ in read }, agentStatus: { stream },
             now: { Date(timeIntervalSince1970: 0) })
         let controller = UIHostingController(rootView: NavigationStack {
-            ChangesView(store: store, onBack: {})
+            ChangesView(store: store)
                 .environment(\.locale, Locale(identifier: "en_US_POSIX"))
         })
         let window = try await makeTestWindow(

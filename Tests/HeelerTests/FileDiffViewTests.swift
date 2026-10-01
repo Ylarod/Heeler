@@ -8,16 +8,13 @@ import UIKit
 @MainActor
 @Suite("File diff view", .timeLimit(.minutes(1)))
 struct FileDiffViewTests {
-    @Test func openingAnUntrackedFileAndGoingBackKeepsTheList() async throws {
+    @Test func openingAnUntrackedFileAndGoingBackThroughTheSystemBackKeepsTheList() async throws {
         let transport = ScriptedTransport()
         await transport.scriptChangesReads([.success(Self.changesRead())])
         await transport.scriptFilePatchReads([.success(Self.patch())])
         let store = Self.store(transport: transport)
-        let backs = ChangesViewTests.Counter()
         let controller = UIHostingController(
-            rootView: NavigationStack {
-                ChangesView(store: store) { backs.count += 1 }
-            })
+            rootView: NavigationStack { ChangesView(store: store) })
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
@@ -28,18 +25,18 @@ struct FileDiffViewTests {
         })
         try #require(await ChangesViewTests.eventually {
             ChangesViewTests.labels(in: controller).contains("Added, line 1: new content")
+                && ChangesViewTests.isSettled(controller)
         })
         #expect(!ChangesViewTests.labels(in: controller).contains("untracked.txt, untracked"))
         #expect(await transport.filePatchRequests.count == 1)
 
+        try #require(ChangesViewTests.goBack(in: controller))
         try #require(await ChangesViewTests.eventually {
-            ChangesViewTests.activate("Back", in: controller.view)
+            ChangesViewTests.isSettled(controller)
+                && !ChangesViewTests.labels(in: controller).contains("Added, line 1: new content")
         })
-        try #require(await ChangesViewTests.eventually {
-            ChangesViewTests.labels(in: controller).contains("untracked.txt, untracked")
-        })
+        #expect(ChangesViewTests.labels(in: controller).contains("untracked.txt, untracked"))
         #expect(store.fileDiff.current == nil)
-        #expect(backs.count == 0)
         #expect(await transport.changesReadRequests.count == 1)
     }
 
@@ -115,7 +112,7 @@ struct FileDiffViewTests {
         let transport = ScriptedTransport()
         await transport.scriptChangesReads([.success(Self.changesRead(files: [directory]))])
         let store = Self.store(transport: transport)
-        let controller = UIHostingController(rootView: ChangesView(store: store) {})
+        let controller = UIHostingController(rootView: ChangesView(store: store))
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)

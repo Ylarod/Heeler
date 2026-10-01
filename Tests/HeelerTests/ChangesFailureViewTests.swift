@@ -21,7 +21,7 @@ struct ChangesFailureViewTests {
         for (error, title, explanation) in cases {
             let transport = ScriptedTransport()
             await transport.scriptChangesReads([.failure(error)])
-            let (controller, window, _) = try await ChangesViewTests.host(transport: transport)
+            let (controller, window) = try await ChangesViewTests.host(transport: transport)
             defer { window.isHidden = true }
             var labels = Set<String>()
             let shown = try await ChangesViewTests.eventually {
@@ -43,7 +43,7 @@ struct ChangesFailureViewTests {
         await store.appear()
         await store.refresh()
         let controller = UIHostingController(rootView: AnyView(
-            NavigationStack { ChangesView(store: store) {} }))
+            NavigationStack { ChangesView(store: store) }))
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
         defer { window.isHidden = true }
@@ -64,7 +64,7 @@ struct ChangesFailureViewTests {
             .failure(ChangesReadError.incomplete),
             .success(try ChangesStoreTests.read(GitProbeRecordings.clean)),
         ])
-        let (controller, window, _) = try await ChangesViewTests.host(transport: transport)
+        let (controller, window) = try await ChangesViewTests.host(transport: transport)
         defer { window.isHidden = true }
         try #require(await ChangesViewTests.eventually {
             ChangesViewTests.labels(in: controller).contains("Incomplete Changes")
@@ -80,7 +80,7 @@ struct ChangesFailureViewTests {
     }
 
     @Test func aTruncatedStatusWithoutFilesExplainsTheCutReplyInsteadOfClean() async throws {
-        let (controller, window, _) = try await ChangesViewTests.host(
+        let (controller, window) = try await ChangesViewTests.host(
             GitProbeRecordings.failureStatusWithFiles(0, truncated: true))
         defer { window.isHidden = true }
         var labels = Set<String>()
@@ -96,7 +96,7 @@ struct ChangesFailureViewTests {
         let recording = GitProbeRecordings.failureReplacingSection(
             "head", in: GitProbeRecordings.clean,
             body: Data(repeating: 0x78, count: GitProbe.Cap.head + 1))
-        let (controller, window, _) = try await ChangesViewTests.host(recording)
+        let (controller, window) = try await ChangesViewTests.host(recording)
         defer { window.isHidden = true }
         let shown = try await ChangesViewTests.eventually {
             ChangesViewTests.labels(in: controller).contains(

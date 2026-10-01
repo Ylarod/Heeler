@@ -127,7 +127,7 @@ struct AgentChangesPresentationTests {
 @Suite("Changes view", .timeLimit(.minutes(1)))
 struct ChangesViewTests {
     @Test func theHeaderIsOneSummaryAndEachRowReadsItsPathAndKind() async throws {
-        let (controller, window, _) = try await Self.host(GitProbeRecordings.hostile)
+        let (controller, window) = try await Self.host(GitProbeRecordings.hostile)
         defer { window.isHidden = true }
 
         var labels = Set<String>()
@@ -154,7 +154,7 @@ struct ChangesViewTests {
     }
 
     @Test func aCleanCheckoutSaysSoUnderItsHeader() async throws {
-        let (controller, window, _) = try await Self.host(GitProbeRecordings.clean)
+        let (controller, window) = try await Self.host(GitProbeRecordings.clean)
         defer { window.isHidden = true }
 
         var labels = Set<String>()
@@ -172,7 +172,7 @@ struct ChangesViewTests {
     /// A staged rename moved on with `git add -N` lists each path once:
     /// the rename, now also deleted from the working tree, and the addition.
     @Test func aMovedStagedRenameShowsItsRenameAndItsAddition() async throws {
-        let (controller, window, _) = try await Self.host(
+        let (controller, window) = try await Self.host(
             GitProbeRecordings.intentToAddMoveAfterStagedRename)
         defer { window.isHidden = true }
 
@@ -188,7 +188,7 @@ struct ChangesViewTests {
     @Test func aDirectoryOutsideAWorkingTreeSaysSo() async throws {
         let transport = ScriptedTransport()
         await transport.scriptChangesReads([.failure(ChangesReadError.notAGitWorkingTree)])
-        let (controller, window, _) = try await Self.host(transport: transport)
+        let (controller, window) = try await Self.host(transport: transport)
         defer { window.isHidden = true }
 
         var labels = Set<String>()
@@ -215,7 +215,7 @@ struct ChangesViewTests {
             throw ChangesReadError.unavailable
         }
         let controller = UIHostingController(
-            rootView: AnyView(NavigationStack { ChangesView(store: store) {} }))
+            rootView: AnyView(NavigationStack { ChangesView(store: store) }))
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
@@ -248,26 +248,11 @@ struct ChangesViewTests {
         func markCancelled() { wasCancelled = true }
     }
 
-    @Test func backReturnsThroughTheBarButton() async throws {
-        let (controller, window, backs) = try await Self.host(GitProbeRecordings.clean)
-        defer { window.isHidden = true }
-
-        let activated = try await Self.eventually {
-            Self.activate("Back", in: controller.view)
-        }
-        #expect(activated)
-        #expect(backs.count == 1)
-    }
-
     // MARK: Hosting
-
-    final class Counter {
-        var count = 0
-    }
 
     static func host(
         _ recording: (stdout: Data, stderr: Data)
-    ) async throws -> (UIHostingController<AnyView>, UIWindow, Counter) {
+    ) async throws -> (UIHostingController<AnyView>, UIWindow) {
         let transport = ScriptedTransport()
         await transport.scriptChangesReads([.success(try ChangesStoreTests.read(recording))])
         return try await host(transport: transport)
@@ -275,26 +260,42 @@ struct ChangesViewTests {
 
     static func host(
         transport: ScriptedTransport
-    ) async throws -> (UIHostingController<AnyView>, UIWindow, Counter) {
+    ) async throws -> (UIHostingController<AnyView>, UIWindow) {
         let store = ChangesStore(directory: { "/home/dev/src/app" }) { request in
             try await transport.readChanges(request)
         }
-        let backs = Counter()
         let controller = UIHostingController(
-            rootView: AnyView(
-                NavigationStack {
-                    ChangesView(store: store) { backs.count += 1 }
-                }))
+            rootView: AnyView(NavigationStack { ChangesView(store: store) }))
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
-        return (controller, window, backs)
+        return (controller, window)
     }
 
     static func labels(in controller: UIViewController) -> Set<String> {
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
         return AgentSurfaceReplacementTests.accessibilityLabels(in: controller.view)
+    }
+
+    /// The system Back: pops the innermost stack that has pushed a screen,
+    /// as its bar button and its swipe both do.
+    static func goBack(in controller: UIViewController) -> Bool {
+        guard let stack = navigationControllers(in: controller)
+            .last(where: { $0.viewControllers.count > 1 && $0.transitionCoordinator == nil })
+        else { return false }
+        stack.popViewController(animated: true)
+        return true
+    }
+
+    /// No push or pop is still animating.
+    static func isSettled(_ controller: UIViewController) -> Bool {
+        navigationControllers(in: controller).allSatisfy { $0.transitionCoordinator == nil }
+    }
+
+    static func navigationControllers(in root: UIViewController) -> [UINavigationController] {
+        (root as? UINavigationController).map { [$0] } ?? []
+            + root.children.flatMap { navigationControllers(in: $0) }
     }
 
     /// Activates the first accessibility element labelled `label`, as
@@ -348,8 +349,8 @@ struct ChangesViewTests {
     }
 }
 
-/// Changes inside a hosted Agent detail: it replaces the terminal in place,
-/// and Back brings the same Agent detail back with its draft and input mode.
+/// Changes pushed over a hosted Agent detail: the system's Back brings the
+/// same Agent detail back with its draft and input mode.
 @MainActor
 @Suite("Agent detail Changes", .timeLimit(.minutes(1)))
 struct AgentDetailChangesTests {
@@ -398,20 +399,20 @@ struct AgentDetailChangesTests {
             return labels.contains("conflict.txt, conflicted, 4 lines added, 0 lines removed")
                 && AgentSurfaceReplacementTests.terminals(in: controller.view).isEmpty
         }
-        try #require(opened, "Changes never replaced the terminal: \(labels.sorted())")
+        try #require(opened, "Changes never covered the terminal: \(labels.sorted())")
         #expect(shownChanges.last == true)
 
         let wentBack = try await ChangesViewTests.eventually {
-            ChangesViewTests.activate("Back", in: controller.view)
+            ChangesViewTests.isSettled(controller) && ChangesViewTests.goBack(in: controller)
         }
         try #require(wentBack)
-        // Changes leave with a push transition, so their rows linger until
-        // it finishes.
+        // The pop animates, so Changes' rows linger until it finishes.
         let returned = try await ChangesViewTests.eventually {
             controller.view.layoutIfNeeded()
             return !AgentSurfaceReplacementTests.terminals(in: controller.view).isEmpty
                 && !ChangesViewTests.labels(in: controller)
                     .contains("conflict.txt, conflicted, 4 lines added, 0 lines removed")
+                && ChangesViewTests.isSettled(controller)
         }
         #expect(returned)
         #expect(changes.store == nil)
@@ -422,9 +423,9 @@ struct AgentDetailChangesTests {
         await attach.leave().value
     }
 
-    /// Agent detail leaving the screen while Changes stays open (another
-    /// tab, or a view pushed over it) hands the chrome back to the terminal
-    /// theme's owner, and coming back claims it for Changes again.
+    /// Changes leaving the screen while they stay open, for another tab,
+    /// hand the chrome back to the terminal theme's owner, and coming back
+    /// claims it for Changes again.
     @Test func changesClaimTheChromeAgainWhenAgentDetailComesBack() async throws {
         let transport = ScriptedTransport()
         await transport.scriptChangesReads([
@@ -447,9 +448,9 @@ struct AgentDetailChangesTests {
             attach: attach, composer: composer,
             inputMode: AgentInputModeSettings(defaults: defaults), defaults: defaults,
             changes: changes, onShowsChanges: { shownChanges.append($0) })
-        let cover = CoveringPath()
+        let cover = CoveringTab()
         let controller = UIHostingController(
-            rootView: CoverableStack(cover: cover, detail: detail))
+            rootView: CoverableTabs(cover: cover, detail: detail))
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)
@@ -467,33 +468,28 @@ struct AgentDetailChangesTests {
             })
         #expect(shownChanges.last == true)
 
-        cover.path = [1]
+        cover.selection = 1
         let covered = try await ChangesViewTests.eventually {
             controller.view.layoutIfNeeded()
             return shownChanges.last == false
         }
-        try #require(covered, "covering never released the chrome: \(shownChanges)")
+        try #require(covered, "another tab never released the chrome: \(shownChanges)")
 
-        cover.path = []
+        cover.selection = 0
         let reclaimed = try await ChangesViewTests.eventually {
             controller.view.layoutIfNeeded()
             return shownChanges.last == true
         }
         #expect(reclaimed, "Changes never reclaimed the chrome: \(shownChanges)")
         #expect(changes.store != nil)
-        // Hiding the window mid-pop leaves the scene's keyboard layout guide
-        // offset by the transition, which later keyboard tests then read.
+        // Hiding the window mid-transition leaves the scene's keyboard layout
+        // guide offset by it, which later keyboard tests then read.
         let settled = try await ChangesViewTests.eventually {
-            Self.navigationControllers(in: controller).allSatisfy { $0.transitionCoordinator == nil }
+            ChangesViewTests.isSettled(controller)
         }
-        #expect(settled, "the pop never finished")
+        #expect(settled, "the transition never finished")
 
         await attach.leave().value
-    }
-
-    private static func navigationControllers(in root: UIViewController) -> [UINavigationController] {
-        (root as? UINavigationController).map { [$0] } ?? []
-            + root.children.flatMap { navigationControllers(in: $0) }
     }
 
     private static func makeDetail(
@@ -663,20 +659,26 @@ struct AgentDetailChangesTests {
     }
 }
 
-/// A navigation path the test drives to push a view over Agent detail.
+/// The tab the test selects to take Agent detail, and Changes over it, off
+/// screen.
 @MainActor
 @Observable
-private final class CoveringPath {
-    var path: [Int] = []
+private final class CoveringTab {
+    var selection = 0
 }
 
-private struct CoverableStack: View {
-    @Bindable var cover: CoveringPath
+private struct CoverableTabs: View {
+    @Bindable var cover: CoveringTab
     let detail: AgentDetailView
 
     var body: some View {
-        NavigationStack(path: $cover.path) {
-            detail.navigationDestination(for: Int.self) { _ in Text("Covering") }
+        TabView(selection: $cover.selection) {
+            Tab("Agent", systemImage: "sparkles", value: 0) {
+                NavigationStack { detail }
+            }
+            Tab("Other", systemImage: "circle", value: 1) {
+                Text("Covering")
+            }
         }
     }
 }

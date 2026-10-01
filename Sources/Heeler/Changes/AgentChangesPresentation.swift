@@ -1,10 +1,10 @@
 import Observation
 import UIKit
 
-/// Changes shown in place of Agent detail, as the Shell Terminal is. Held in
-/// Agent detail's own state, so it closes with Agent detail (another Agent or
-/// terminal selected, the Host leaving Connected, the Agent exiting), and it
-/// holds the only reference to its store, so closing discards the content.
+/// Changes pushed over Agent detail. Held in Agent detail's own state, so it
+/// closes with Agent detail (another Agent or terminal selected, the Host
+/// leaving Connected, the Agent exiting), and it holds the only reference to
+/// its store, so closing discards the content.
 ///
 /// The Agents list reads each Agent's Checkout for its row totals
 /// (`AgentRowChanges`). The Agent's own Changes open on that read while
@@ -13,12 +13,16 @@ import UIKit
 @MainActor
 @Observable
 final class AgentChangesPresentation {
-    /// The open Changes; nil while Agent detail shows its terminal.
+    /// The open Changes; nil while Agent detail shows its terminal. The
+    /// push follows it, and the system's Back closes it.
     private(set) var store: ChangesStore?
     @ObservationIgnored private var pendingInsertion: String?
     /// Whether the row's store currently counts the open Changes as reading
     /// in its place.
     @ObservationIgnored private var isStandingInForRow = false
+    /// Changes' screens on screen: the list, and a file's diff pushed over
+    /// it. Changes as a whole come with the first and leave with the last.
+    @ObservationIgnored private var shownScreens = 0
 
     /// Nil follows the Agent. A Worktree directory stays fixed for the
     /// life of that store, even if the Agent later moves.
@@ -73,16 +77,30 @@ final class AgentChangesPresentation {
         return pendingInsertion
     }
 
-    /// Agent detail came back on screen with Changes still open: they read
-    /// in the row's place again.
+    /// One of Changes' screens appeared. True when it is the first, so
+    /// Changes as a whole came on screen.
+    func screenAppeared() -> Bool {
+        shownScreens += 1
+        return shownScreens == 1
+    }
+
+    /// One of Changes' screens left. True when it was the last, so Changes
+    /// as a whole left the screen.
+    func screenDisappeared() -> Bool {
+        shownScreens = max(0, shownScreens - 1)
+        return shownScreens == 0
+    }
+
+    /// Changes came back on screen still open: they read in the row's place
+    /// again.
     func detailAppeared() {
         guard let row, let store, !isStandingInForRow else { return }
         row.changes.changesOpened(store, for: row.agentID, startsFromRow: false)
         isStandingInForRow = true
     }
 
-    /// Agent detail left the screen, most often for good: the row takes
-    /// the open Changes' read now and reads for itself again.
+    /// Changes left the screen with Agent detail, most often for good: the
+    /// row takes their read now and reads for itself again.
     func detailDisappeared() {
         guard let store else { return }
         handBack(store)

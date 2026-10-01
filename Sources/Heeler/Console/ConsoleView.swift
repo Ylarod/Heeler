@@ -604,41 +604,45 @@ struct ConsoleView: View {
                 // Every tab keeps its split view alive; only the selected one
                 // may mount the detail, or a terminal would attach twice.
                 if tab == currentTab {
-                    detail(in: tab)
-                        .environment(
-                            \.detailTopChromeInset,
-                            horizontalSizeClass == .regular ? detailTopInset(for: tab) : 0)
-                        .environment(\.detailSurfaceEdges, detailSurfaceEdges(for: tab))
-                        .environment(\.revealDetailSidebar, sidebarReveal(for: tab))
-                        .toolbar {
-                            if usesSidebarNavigation,
-                                splitVisibility(for: tab).isSidebarVisible == false
-                            {
-                                ToolbarItem(placement: .topBarLeading) {
-                                    Button("Show Sidebar", systemImage: "sidebar.left") {
-                                        withAnimation(reduceMotion ? nil : .snappy) {
-                                            splitVisibilities[
-                                                tab, default: ConsoleSplitVisibilityState()
-                                            ].showSidebar()
+                    // An explicit stack, so a detail can push its own screens
+                    // (Changes over an Agent) with the system's Back and swipe.
+                    NavigationStack {
+                        detail(in: tab)
+                            .environment(
+                                \.detailTopChromeInset,
+                                horizontalSizeClass == .regular ? detailTopInset(for: tab) : 0)
+                            .environment(\.detailSurfaceEdges, detailSurfaceEdges(for: tab))
+                            .environment(\.revealDetailSidebar, sidebarReveal(for: tab))
+                            .toolbar {
+                                if usesSidebarNavigation,
+                                    splitVisibility(for: tab).isSidebarVisible == false
+                                {
+                                    ToolbarItem(placement: .topBarLeading) {
+                                        Button("Show Sidebar", systemImage: "sidebar.left") {
+                                            withAnimation(reduceMotion ? nil : .snappy) {
+                                                splitVisibilities[
+                                                    tab, default: ConsoleSplitVisibilityState()
+                                                ].showSidebar()
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
-                        .background {
-                            if horizontalSizeClass == .regular {
-                                NavigationBarTopReader { detailBar = $0 }
+                            .background {
+                                if horizontalSizeClass == .regular {
+                                    NavigationBarTopReader { detailBar = $0 }
+                                }
                             }
-                        }
-                        .overlay(alignment: .top) {
-                            if horizontalSizeClass == .regular, !terminalOwnsTopEdge {
-                                Color(uiColor: .systemBackground)
-                                    .frame(height: detailBar.top)
-                                    .ignoresSafeArea(.container, edges: .top)
-                                    .allowsHitTesting(false)
-                                    .accessibilityHidden(true)
+                            .overlay(alignment: .top) {
+                                if horizontalSizeClass == .regular, !terminalOwnsTopEdge {
+                                    Color(uiColor: .systemBackground)
+                                        .frame(height: detailBar.top)
+                                        .ignoresSafeArea(.container, edges: .top)
+                                        .allowsHitTesting(false)
+                                        .accessibilityHidden(true)
+                                }
                             }
-                        }
+                    }
                 }
             }
             // Keep structural identity stable across rotation and size-class changes.

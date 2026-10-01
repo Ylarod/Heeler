@@ -14,6 +14,8 @@ final class ChangesAutoRefresh {
     @ObservationIgnored var liveConnection: UInt64?
     @ObservationIgnored var pending = false
     @ObservationIgnored var statusTask: Task<Void, Never>?
+    /// Screens following the stream; see `followAgentStatus()`.
+    @ObservationIgnored var followers = 0
     @ObservationIgnored var statusID = UUID()
     @ObservationIgnored var debounce: Task<Void, Never>?
     @ObservationIgnored var debounceID = UUID()
@@ -39,22 +41,29 @@ extension ChangesStore {
     /// scrolling past Agents quickly costs the Host no git exec.
     static let appearanceSettle: Duration = .milliseconds(300)
 
-    /// Worktree Changes' SwiftUI task owns this across both the list and an
-    /// open diff. A fresh appearance gets a fresh stream; its first value is
-    /// always a baseline.
+    /// The SwiftUI tasks of Changes' screens, the list and the diff pushed
+    /// over it, share this: the stream runs while any of them is on screen,
+    /// and the last to leave ends it. A fresh appearance after that gets a
+    /// fresh stream; its first value is always a baseline.
     func followAgentStatus() async {
         guard !Task.isCancelled else { return }
         startFollowingAgentStatus()
         guard let task = autoRefresh.statusTask else { return }
         let id = autoRefresh.statusID
+        autoRefresh.followers += 1
         defer {
-            if autoRefresh.statusID == id { cancel() }
+            autoRefresh.followers -= 1
+            if autoRefresh.followers == 0, autoRefresh.statusID == id { cancel() }
         }
-        await withTaskCancellationHandler {
+        // Ends with the stream or with this follower, leaving the stream to
+        // any other.
+        let (ended, finish) = AsyncStream<Never>.makeStream()
+        let watch = Task {
             await task.value
-        } onCancel: {
-            task.cancel()
+            finish.finish()
         }
+        for await _ in ended {}
+        watch.cancel()
     }
 
     /// Also start on appear so a store used without a hosted view consumes

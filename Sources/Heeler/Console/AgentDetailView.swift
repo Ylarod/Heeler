@@ -139,7 +139,32 @@ struct AgentDetailView: View {
         sceneRouting?.terminalAccess(for: agent.hostID) ?? .holds
     }
 
-    /// The terminal is on screen: no Shell Terminal and no Changes in its place.
+    private var changesRoute: Binding<ChangesRoute<ChangesStore>?> {
+        Binding(
+            get: { changes.store.map(ChangesRoute.init) },
+            set: { if $0 == nil { changes.close() } })
+    }
+
+    /// Changes' screens, the list and a diff pushed over it, report coming
+    /// and going; Changes as a whole hold the chrome while any is shown.
+    /// Whether they still read in the row's place is the router's truth, not
+    /// SwiftUI's: a view pushed over the page leaves it selected, while
+    /// another tab or Agent does not.
+    private var changesScreenPresence: ChangesScreenPresence {
+        ChangesScreenPresence(
+            appeared: { [changes, onShowsChanges, isVisible] in
+                guard changes.screenAppeared(), changes.store != nil else { return }
+                onShowsChanges?(true)
+                if isVisible() { changes.detailAppeared() }
+            },
+            disappeared: { [changes, onShowsChanges, isVisible] in
+                guard changes.screenDisappeared() else { return }
+                onShowsChanges?(false)
+                if !isVisible() { changes.detailDisappeared() }
+            })
+    }
+
+    /// The terminal is on screen: no Shell Terminal and no Changes over it.
     private var showsAgentTerminal: Bool {
         openTerminal.shell == nil && changes.store == nil
     }
@@ -237,10 +262,6 @@ struct AgentDetailView: View {
                     await openTerminal.returnToAgent()
                 }
                 .id(openTerminal.destination)
-            } else if let store = changes.store {
-                ChangesView(store: store) { changes.close() }
-                    .id(ObjectIdentifier(store))
-                    .transition(.backPush)
             } else {
                 AgentTerminalView(
                     agent: agent,
@@ -285,17 +306,18 @@ struct AgentDetailView: View {
                     // must not spend the keyboard handoff meant for the real one.
                     inheritsKeyboardHandoff: !permitsRetention || retainedAgent != nil)
                 .id(ObjectIdentifier(attach))
-                .transition(.backPushUncovered)
             }
+        }
+        // Pushed as Hosts pushes a Host, so Back and the swipe are the
+        // system's own; either one closes the presentation.
+        .navigationDestination(item: changesRoute) { route in
+            ChangesView(store: route.store)
+                .environment(\.changesScreenPresence, changesScreenPresence)
         }
         .onAppear {
             hasAppeared = true
             prepareRetainedAgent()
             updateFocus()
-            // Paired with the disappearance below: Changes still open when
-            // Agent detail comes back claim the chrome again.
-            if changes.store != nil { onShowsChanges?(true) }
-            if isVisible() { changes.detailAppeared() }
         }
         .onChange(of: focusViewingState) {
             updateFocus()
@@ -303,10 +325,6 @@ struct AgentDetailView: View {
         .onDisappear {
             hasAppeared = false
             focus.leave()
-            if changes.store != nil { onShowsChanges?(false) }
-            // The router's truth, not SwiftUI's: the terminal and Changes
-            // trading places disappears one of them while the page stays.
-            if !isVisible() { changes.detailDisappeared() }
         }
         .onChange(of: console.hostConnectionGenerations[agent.hostID]) { _, generation in
             prepareRetainedAgent()

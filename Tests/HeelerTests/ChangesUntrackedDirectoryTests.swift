@@ -508,7 +508,7 @@ struct ChangesUntrackedDirectoryViewTests {
                 try await transport.listUntrackedDirectory(request)
             })
         let controller = UIHostingController(
-            rootView: AnyView(NavigationStack { ChangesView(store: store) {} }))
+            rootView: AnyView(NavigationStack { ChangesView(store: store) }))
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874),
             rootViewController: controller)

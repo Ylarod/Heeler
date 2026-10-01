@@ -14,7 +14,7 @@ struct ChangesReferenceViewTests {
         var inserted: [String] = []
         store.copyToPasteboard = { copied.append($0) }
         store.insertReference = { inserted.append($0) }
-        let controller = UIHostingController(rootView: NavigationStack { ChangesView(store: store) {} })
+        let controller = UIHostingController(rootView: NavigationStack { ChangesView(store: store) })
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
         defer { window.isHidden = true }
@@ -36,7 +36,7 @@ struct ChangesReferenceViewTests {
         store.copyToPasteboard = { copied.append($0) }
         store.insertReference = { inserted.append($0) }
         store.openDiff(file)
-        let controller = UIHostingController(rootView: NavigationStack { ChangesView(store: store) {} })
+        let controller = UIHostingController(rootView: NavigationStack { ChangesView(store: store) })
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
         defer { window.isHidden = true }
@@ -132,7 +132,7 @@ struct ChangesReferenceViewTests {
             store.insertReference = { _ in Issue.record("unsafe path was inserted") }
         }
         store.openDiff(file)
-        let controller = UIHostingController(rootView: NavigationStack { ChangesView(store: store) {} })
+        let controller = UIHostingController(rootView: NavigationStack { ChangesView(store: store) })
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
         defer { window.isHidden = true }
@@ -155,7 +155,7 @@ struct ChangesReferenceViewTests {
         store.copyToPasteboard = { copied.append($0) }
         store.insertReference = { _ in Issue.record("unrepresentable path was inserted") }
         store.openDiff(file)
-        let controller = UIHostingController(rootView: NavigationStack { ChangesView(store: store) {} })
+        let controller = UIHostingController(rootView: NavigationStack { ChangesView(store: store) })
         let window = try await makeTestWindow(
             frame: CGRect(x: 0, y: 0, width: 402, height: 874), rootViewController: controller)
         defer { window.isHidden = true }
