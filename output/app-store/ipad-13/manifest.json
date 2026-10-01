@@ -84,63 +84,7 @@
     ]
   },
   {
-    "slug": "04-skills-within-reach",
-    "source": "03-skills.png",
-    "headline": "Your Skills. Within Reach.",
-    "subhead": "Find and add skills without leaving your conversation.",
-    "accent": [
-      184,
-      137,
-      255
-    ],
-    "export": "exports/04-skills-within-reach.png",
-    "source_sha256": "56c60787fabd6a53ca539bab69229072a5c8ead4ed72e2a3604fc42693a11519",
-    "export_sha256": "9a99a82f6ba1cd455c56d3ca4678df684f59c483d964f99985f7288f1215fef9",
-    "pixels": [
-      2752,
-      2064
-    ],
-    "color_mode": "RGB",
-    "has_alpha": false,
-    "screenshot_origin": [
-      320,
-      428
-    ],
-    "screenshot_pixels": [
-      2112,
-      1584
-    ]
-  },
-  {
-    "slug": "05-a-shell-when-you-need-one",
-    "source": "04-terminal.png",
-    "headline": "A Shell When You Need One.",
-    "subhead": "Open a plain terminal in any workspace, with Text and Keys modes.",
-    "accent": [
-      88,
-      214,
-      198
-    ],
-    "export": "exports/05-a-shell-when-you-need-one.png",
-    "source_sha256": "2f2ac4cb48aa7d47321fe59524beaeeecb3b84b92813e7a019c2a56202f686c6",
-    "export_sha256": "c3eb7f8fe6c4dfa9466606f5049b102c07421e58e1cc53eb0f2f5a4bfa6686c5",
-    "pixels": [
-      2752,
-      2064
-    ],
-    "color_mode": "RGB",
-    "has_alpha": false,
-    "screenshot_origin": [
-      320,
-      428
-    ],
-    "screenshot_pixels": [
-      2112,
-      1584
-    ]
-  },
-  {
-    "slug": "06-see-what-changed",
+    "slug": "04-see-what-changed",
     "source": "06-changes.png",
     "headline": "See What Changed.",
     "subhead": "Every uncommitted file in the Agent's Checkout, beside your agents.",
@@ -149,7 +93,7 @@
       207,
       132
     ],
-    "export": "exports/06-see-what-changed.png",
+    "export": "exports/04-see-what-changed.png",
     "source_sha256": "269b06e1c2cc034bdcca9ba914ee056f88d0674ba163338c30943398011055e9",
     "export_sha256": "a38262f5cb277ecefd5ac28bcc332e1f185c067b7e85ce594ada60b8a3fbe932",
     "pixels": [
@@ -168,7 +112,7 @@
     ]
   },
   {
-    "slug": "07-every-change-line-by-line",
+    "slug": "05-every-change-line-by-line",
     "source": "07-diff.png",
     "headline": "Every Change. Line by Line.",
     "subhead": "Read any file side by side or unified, with word changes marked.",
@@ -177,9 +121,65 @@
       159,
       90
     ],
-    "export": "exports/07-every-change-line-by-line.png",
+    "export": "exports/05-every-change-line-by-line.png",
     "source_sha256": "e1ca61baba90f415955a8fb06216646f6ee10a95f5c4517275e1a935536b073a",
     "export_sha256": "c04415164dd992a0882209c13a4d92c6529d601e6200522455d2b7c28b962401",
+    "pixels": [
+      2752,
+      2064
+    ],
+    "color_mode": "RGB",
+    "has_alpha": false,
+    "screenshot_origin": [
+      320,
+      428
+    ],
+    "screenshot_pixels": [
+      2112,
+      1584
+    ]
+  },
+  {
+    "slug": "06-skills-within-reach",
+    "source": "03-skills.png",
+    "headline": "Your Skills. Within Reach.",
+    "subhead": "Find and add skills without leaving your conversation.",
+    "accent": [
+      184,
+      137,
+      255
+    ],
+    "export": "exports/06-skills-within-reach.png",
+    "source_sha256": "56c60787fabd6a53ca539bab69229072a5c8ead4ed72e2a3604fc42693a11519",
+    "export_sha256": "9a99a82f6ba1cd455c56d3ca4678df684f59c483d964f99985f7288f1215fef9",
+    "pixels": [
+      2752,
+      2064
+    ],
+    "color_mode": "RGB",
+    "has_alpha": false,
+    "screenshot_origin": [
+      320,
+      428
+    ],
+    "screenshot_pixels": [
+      2112,
+      1584
+    ]
+  },
+  {
+    "slug": "07-a-shell-when-you-need-one",
+    "source": "04-terminal.png",
+    "headline": "A Shell When You Need One.",
+    "subhead": "Open a plain terminal in any workspace, with Text and Keys modes.",
+    "accent": [
+      88,
+      214,
+      198
+    ],
+    "export": "exports/07-a-shell-when-you-need-one.png",
+    "source_sha256": "2f2ac4cb48aa7d47321fe59524beaeeecb3b84b92813e7a019c2a56202f686c6",
+    "export_sha256": "c3eb7f8fe6c4dfa9466606f5049b102c07421e58e1cc53eb0f2f5a4bfa6686c5",
     "pixels": [
       2752,
       2064

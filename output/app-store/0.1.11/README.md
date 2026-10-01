@@ -1,4 +1,4 @@
-# Heeler 0.1.11 App Store screenshot exports
+# Heeler 0.1.7 App Store screenshot exports
 
 These exports preserve the exact application UI from the committed iPhone
 captures and add deterministic marketing copy over a generated background.
@@ -23,12 +23,6 @@ captures and add deterministic marketing copy over a generated background.
 - iphone-6.9/06-your-agents-at-a-glance.png
   - Source: docs/images/live-activity-iphone.png
   - Copy: “Your Agents. At a Glance.”
-- iphone-6.9/07-see-what-changed.png
-  - Source: docs/images/changes-iphone.png
-  - Copy: “See What Changed.”
-- iphone-6.9/08-every-change-line-by-line.png
-  - Source: docs/images/diff-iphone.png
-  - Copy: “Every Change. Line by Line.”
 
 All files are opaque 1320×2868 PNGs for the iPhone 6.9-inch App Store slot.
 
@@ -44,5 +38,5 @@ are never redrawn by a generative model.
 Run from the repository root with Pillow installed:
 
 ```sh
-python3 output/app-store/0.1.11/compose_mockups.py
+python3 output/app-store/0.1.7/compose_mockups.py
 ```
