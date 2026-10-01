@@ -65,7 +65,7 @@ struct ChangesBadge: Equatable {
 
     /// Zero lines on both sides is still a dirty Checkout (untracked,
     /// binary, mode-only, or pure rename changes); "+0 −0" would read as
-    /// clean, so the badge counts its files by kind instead, as "M1 ?2".
+    /// clean, so the badge counts its files by kind instead, as "M1 U2".
     var showsFiles: Bool { totals.added == 0 && totals.removed == 0 }
 
     func countText(_ count: KindCount, style: Style = .exact, locale: Locale = .current) -> String {
@@ -131,7 +131,7 @@ enum ChangesBadgePalette {
 }
 
 /// An Agent's Checkout totals, "+12 −7" in green and red, or, when no line
-/// changed, its files by kind as the Changes list letters them, "M1 ?2", at the trailing end of its Agents list row's
+/// changed, its files by kind as the Changes list letters them, "M1 U2", at the trailing end of its Agents list row's
 /// last detail line and of Agent detail's status line. Not a control; the row opens the Agent, and the Agent menu
 /// opens Changes. Exact totals come first; a line without room takes the
 /// shortened form.

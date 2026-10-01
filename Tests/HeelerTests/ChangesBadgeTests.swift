@@ -86,7 +86,7 @@ struct ChangesBadgeTests {
         let badge = try #require(Self.badge(changes))
         #expect(badge.showsFiles)
         #expect(badge.kindCounts.map { "\($0.kind.symbol)\(badge.countText($0, locale: Self.english))" }
-            == ["U1", "M2", "D1", "?2"])
+            == ["!1", "M2", "D1", "U2"])
         #expect(badge.accessibilityValue == "4 files changed, 2 untracked items")
 
         let untrackedOnly = try #require(Self.badge(
