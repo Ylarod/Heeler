@@ -74,6 +74,47 @@ struct ChangesAutoRefreshTests {
         #expect(await transport.changesReadRequests.count == 1)
     }
 
+    /// A Host that connects again may have run whole turns unseen, so its
+    /// first live status that is not Working reads, whether or not the
+    /// drop's unknown status reached the store; a Working one waits for
+    /// its exit, and the same connection never reads again by itself.
+    @Test(arguments: [true, false])
+    func aNewConnectionCountsAsAnExit(seesTheDrop: Bool) async throws {
+        let transport = ScriptedTransport()
+        let read = try ChangesStoreTests.read(GitProbeRecordings.clean)
+        await transport.scriptChangesReads([.success(read), .success(read), .success(read)])
+        let clock = ChangesManualSleeper()
+        let (stream, updates) = AsyncStream.makeStream(of: ConsoleStore.AgentStatusUpdate.self)
+        updates.yield(.init(status: .done, liveUpdatesAvailable: true, connectionGeneration: 0))
+        let store = ChangesStore(
+            directory: { "/app" }, read: { try await transport.readChanges($0) },
+            agentStatus: { stream }, sleep: { try await clock.sleep($0) })
+        defer { store.cancel(); updates.finish() }
+        await store.appear()
+        await Self.drain()
+        if seesTheDrop {
+            updates.yield(.init(status: nil, liveUpdatesAvailable: false, connectionGeneration: 0))
+            await Self.drain()
+        }
+        updates.yield(.init(status: .done, liveUpdatesAvailable: true, connectionGeneration: 1))
+        await Self.drain()
+        await clock.fireAll()
+        await Self.drain()
+        #expect(await transport.changesReadRequests.count == 2)
+
+        updates.yield(.init(status: .done, liveUpdatesAvailable: true, connectionGeneration: 1))
+        updates.yield(.init(status: .working, liveUpdatesAvailable: true, connectionGeneration: 2))
+        await Self.drain()
+        await clock.fireAll()
+        await Self.drain()
+        #expect(await transport.changesReadRequests.count == 2)
+        updates.yield(.init(status: .done, liveUpdatesAvailable: true, connectionGeneration: 2))
+        await Self.drain()
+        await clock.fireAll()
+        await Self.drain()
+        #expect(await transport.changesReadRequests.count == 3)
+    }
+
     @Test func repeatedEdgesRestartTheDebounceAndCoalesceOneFollowUp() async throws {
         let transport = ScriptedTransport()
         let read = try ChangesStoreTests.read(GitProbeRecordings.clean)

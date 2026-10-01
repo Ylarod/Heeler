@@ -10,6 +10,9 @@ final class ConsoleStore {
     struct AgentStatusUpdate: Sendable, Equatable {
         let status: AgentStatus?
         let liveUpdatesAvailable: Bool
+        /// The Host connection the status came over; a new one may follow
+        /// turns that ran while no connection could see them.
+        var connectionGeneration: UInt64? = nil
     }
 
     private(set) var agents: [ConsoleAgent] = []
@@ -917,7 +920,8 @@ final class ConsoleStore {
             status: status,
             liveUpdatesAvailable: status != nil
                 && hostStatuses[id.hostID] == .connected
-                && !hostsAwaitingSnapshot.contains(id.hostID))
+                && !hostsAwaitingSnapshot.contains(id.hostID),
+            connectionGeneration: hostConnectionGenerations[id.hostID])
     }
 
     private func removeAgentStatusObserver(_ observerID: UUID, for id: ConsoleAgent.ID) {

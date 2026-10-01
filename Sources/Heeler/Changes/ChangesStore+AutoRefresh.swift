@@ -10,6 +10,8 @@ final class ChangesAutoRefresh {
     var readWasWhileWorking = false
     @ObservationIgnored var readSawWorking = false
     @ObservationIgnored var hasBaseline = false
+    /// The connection the latest live status came over.
+    @ObservationIgnored var liveConnection: UInt64?
     @ObservationIgnored var pending = false
     @ObservationIgnored var statusTask: Task<Void, Never>?
     @ObservationIgnored var statusID = UUID()
@@ -66,7 +68,7 @@ extension ChangesStore {
         autoRefresh.statusTask = Task { [weak self] in
             for await update in stream {
                 guard !Task.isCancelled else { return }
-                self?.receiveAgentStatus(update.status)
+                self?.receiveAgentStatus(update)
             }
         }
     }
@@ -82,9 +84,20 @@ extension ChangesStore {
         }
     }
 
-    private func receiveAgentStatus(_ status: AgentStatus?) {
+    private func receiveAgentStatus(_ update: ConsoleStore.AgentStatusUpdate) {
+        let status = update.status
         let previous = autoRefresh.status
         autoRefresh.status = status
+        // The first live status over a new connection may follow whole turns
+        // no connection saw, the drop's own unknown status included, as the
+        // stream keeps only its newest value: it counts as an exit.
+        var reconnected = false
+        if update.liveUpdatesAvailable {
+            if let seen = autoRefresh.liveConnection, seen != update.connectionGeneration {
+                reconnected = true
+            }
+            autoRefresh.liveConnection = update.connectionGeneration
+        }
         if status == .working {
             // Once editing starts, the displayed snapshot stays suspect until
             // a read that never overlaps Working succeeds.
@@ -95,7 +108,7 @@ extension ChangesStore {
             autoRefresh.hasBaseline = true
             return
         }
-        guard previous == .working, let status, status != .working else { return }
+        guard previous == .working || reconnected, let status, status != .working else { return }
         autoRefresh.pending = true
         autoRefresh.debounce?.cancel()
         let id = UUID()
