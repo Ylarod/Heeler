@@ -59,6 +59,8 @@ struct ChangesReferenceViewTests {
         let hunk = try #require(Self.element("@@ -1,3 +1,3 @@", in: controller.view))
         try Self.perform("Copy Hunk", on: hunk)
         #expect(copied.suffix(2) == ["file.swift", "@@ -1,3 +1,3 @@\n first\n-old\n+new\n last\n"])
+        // The diff pushed as the view appeared.
+        await hideTestWindowWhenSettled(window)
     }
 
     @Test func qualifiedActionsCanBeCombinedForBothSidesOfAPair() async throws {
@@ -144,6 +146,8 @@ struct ChangesReferenceViewTests {
         try Self.perform("Copy Line", on: row)
         try Self.perform("Copy Path", on: row)
         #expect(copied == ["old", unsafePath ? "line\nbreak.swift" : "file.swift"])
+        // The diff pushed as the view appeared.
+        await hideTestWindowWhenSettled(window)
     }
 
     @Test func anUnrepresentablePathStillOffersLineAndHunkCopies() async throws {
@@ -167,6 +171,8 @@ struct ChangesReferenceViewTests {
         try Self.perform("Copy Line", on: row)
         try Self.perform("Copy Hunk", on: row)
         #expect(copied == ["old", "@@ -1,3 +1,3 @@\n first\n-old\n+new\n last\n"])
+        // The diff pushed as the view appeared.
+        await hideTestWindowWhenSettled(window)
     }
 
     private static func store() async throws -> (ChangesStore, ChangedFile) {

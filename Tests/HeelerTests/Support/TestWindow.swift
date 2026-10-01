@@ -27,3 +27,25 @@ func makeTestWindow(
     window.makeKeyAndVisible()
     return window
 }
+
+/// No push or pop is still animating under `root`.
+@MainActor
+func isNavigationSettled(_ root: UIViewController?) -> Bool {
+    guard let root else { return true }
+    if let stack = root as? UINavigationController, stack.transitionCoordinator != nil {
+        return false
+    }
+    return root.children.allSatisfy { isNavigationSettled($0) }
+}
+
+/// Hides `window` once its pushes and pops have finished. A window hidden
+/// mid-transition leaves the scene's keyboard layout guide offset by the
+/// transition, which later keyboard tests then read.
+@MainActor
+func hideTestWindowWhenSettled(_ window: UIWindow, timeout: Duration = .seconds(2)) async {
+    let deadline = ContinuousClock.now + timeout
+    while !isNavigationSettled(window.rootViewController), ContinuousClock.now < deadline {
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+    window.isHidden = true
+}

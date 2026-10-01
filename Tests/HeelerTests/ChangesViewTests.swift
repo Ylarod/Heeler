@@ -290,7 +290,7 @@ struct ChangesViewTests {
 
     /// No push or pop is still animating.
     static func isSettled(_ controller: UIViewController) -> Bool {
-        navigationControllers(in: controller).allSatisfy { $0.transitionCoordinator == nil }
+        isNavigationSettled(controller)
     }
 
     static func navigationControllers(in root: UIViewController) -> [UINavigationController] {
@@ -652,6 +652,8 @@ struct AgentDetailChangesTests {
         let writes = await transport.attachInputs.compactMap(Self.keystrokes)
         #expect(writes == (mode == .direct ? [Data("modified.txt:2 ".utf8)] : []))
         #expect(!writes.contains { $0.contains(0x0D) || $0.contains(0x0A) })
+        // Inserting popped the diff and Changes together.
+        await hideTestWindowWhenSettled(window)
     }
 
     nonisolated private static func keystrokes(_ input: TerminalAttachInput) -> Data? {
