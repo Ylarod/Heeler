@@ -1513,7 +1513,9 @@ struct AgentTerminalView: View {
         if afterPossibleSuspension {
             armDirectKeyboardClaimIfNeeded()
         }
-        attach.didBecomeActive(afterPossibleSuspension: afterPossibleSuspension)
+        attach.didBecomeActive(
+            activation: activity.activationCount,
+            afterPossibleSuspension: afterPossibleSuspension)
     }
 
     private func openAttachLink(_ link: AttachLink) {

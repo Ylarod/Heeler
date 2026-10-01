@@ -106,6 +106,10 @@ final class AgentAttachStore {
     /// Joins the independently scheduled readiness projection and terminal
     /// waiter for the exact foreground-recovery pipeline.
     private var activationRecovery = TerminalRecoveryGenerationLatch()
+    /// The app activation this store last answered. A screen rebuilt over
+    /// the same store, as on the way back from Changes, reports the latest
+    /// activation again; answering it twice would replace a live terminal.
+    private var answeredActivation: UInt64?
     #if DEBUG
     /// Created at the possible-suspension activation edge and retained until
     /// the replacement that actually publishes adopts it, or recovery is
@@ -293,8 +297,13 @@ final class AgentAttachStore {
     /// immediately: PTY Attach, input session ownership, byte feed and surface
     /// identity. The surrounding Attach interaction remains the same owner, so
     /// links, staging state and a reviewed Paste survive the recovery.
-    func didBecomeActive(afterPossibleSuspension: Bool = false) {
+    /// `activation` identifies the app activation, answered once per store.
+    func didBecomeActive(activation: UInt64? = nil, afterPossibleSuspension: Bool = false) {
         guard lifecycleState == .active, isOnStage() else { return }
+        if let activation {
+            guard activation != answeredActivation else { return }
+            answeredActivation = activation
+        }
         guard !afterPossibleSuspension else {
             #if DEBUG
             if !activationRecovery.isActive {
