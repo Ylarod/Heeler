@@ -603,15 +603,10 @@ actor SessionDriver {
                 let id = nextPTYChannelID
                 ptyChannels[id] = PTYChannelState(channel: channel)
                 registeredID = id
-                // Extended data must neither enter the stdout protocol nor
-                // hold receive-window capacity the caller cannot drain.
-                let ignoreResult = try await repeatUntilCompleteYielding(
-                    deadline: deadline, identity: .pty(id)
-                ) {
-                    libssh2_channel_handle_extended_data2(
-                        $0, LIBSSH2_CHANNEL_EXTENDED_DATA_IGNORE)
-                }
-                guard ignoreResult == 0 else { throw SSHError.channelFailed }
+                // Keep the default NORMAL extended-data mode. IGNORE refunds
+                // stderr's window from packet parsing, where an outbound
+                // EAGAIN can be hidden by an already-queued stdout result.
+                // readExec drains stderr through its own tracked read instead.
                 try await startExec(
                     identity: .pty(id), command: command, deadline: deadline)
                 return SSHExecChannel(id: id, driver: self)
@@ -758,6 +753,108 @@ actor SessionDriver {
                     releaseOperation()
                     throw normalize(error)
                 }
+            }
+        }
+    }
+
+    func readExec(
+        id: UInt64,
+        maximumBytes: Int,
+        timeout: Duration
+    ) async throws -> Data? {
+        try await withDiagnosticPhase("exec stream read channel \(id)", budget: timeout) {
+            guard maximumBytes > 0 else { throw SSHError.channelFailed }
+            let deadline = ContinuousClock.now.advanced(by: timeout)
+            let stdoutOwner = allocateTransportSendOwner()
+            let stderrOwner = allocateTransportSendOwner()
+            let stderrCapacity = 16 * 1024
+            var output = Data()
+
+            while true {
+                await acquireOperation()
+                let progress: (eof: Bool, pendingSend: Bool, madeProgress: Bool, wait: SessionWaitPlan)
+                do {
+                    try checkProgress(deadline: deadline)
+                    var madeProgress = false
+                    // A suspended stderr read must resume before stdout tries
+                    // admission, otherwise this operation waits on itself.
+                    if transportSendOwner != stderrOwner {
+                        try await waitForTransportSendAdmission(
+                            owner: stdoutOwner, deadline: deadline, cancellable: true)
+                        let channel = try resolveChannel(.pty(id))
+                        let session = try requireSession()
+                        var buffer = [UInt8](repeating: 0, count: maximumBytes)
+                        let data = try readAvailableNoting(
+                            channel: channel, stream: 0, buffer: &buffer,
+                            owner: stdoutOwner, session: session)
+                        output.append(data)
+                        madeProgress = !data.isEmpty
+                    }
+                    if transportSendOwner != stdoutOwner {
+                        try await waitForTransportSendAdmission(
+                            owner: stderrOwner, deadline: deadline, cancellable: true)
+                        let channel = try resolveChannel(.pty(id))
+                        let session = try requireSession()
+                        var buffer = [UInt8](repeating: 0, count: stderrCapacity)
+                        let discarded = try readAvailableNoting(
+                            channel: channel, stream: Int32(SSH_EXTENDED_DATA_STDERR),
+                            buffer: &buffer, owner: stderrOwner, session: session)
+                        madeProgress = madeProgress || !discarded.isEmpty
+                    }
+                    let channel = try resolveChannel(.pty(id))
+                    let eof = libssh2_channel_eof(channel) == 1
+                    if eof { ptyChannels[id]?.reachedEOF = true }
+                    let pendingSend = transportSendOwner == stdoutOwner
+                        || transportSendOwner == stderrOwner
+                    progress = (eof, pendingSend, madeProgress, sessionWaitPlan(try requireSession()))
+                    releaseOperation()
+                } catch {
+                    await finishExecReadsIfNeeded(
+                        id: id, stdoutOwner: stdoutOwner, stderrOwner: stderrOwner,
+                        stdoutCapacity: maximumBytes, stderrCapacity: stderrCapacity)
+                    releaseOperation()
+                    throw normalize(error)
+                }
+
+                // Never return with either read owning a pending native send:
+                // the next public read allocates different logical owners.
+                if !progress.pendingSend {
+                    if !output.isEmpty { return output }
+                    if progress.eof { return nil }
+                }
+                if progress.madeProgress, !progress.pendingSend {
+                    await Task.yield()
+                } else {
+                    do {
+                        try await awaitSessionProgress(progress.wait, until: deadline)
+                    } catch {
+                        await acquireOperation()
+                        await finishExecReadsIfNeeded(
+                            id: id, stdoutOwner: stdoutOwner, stderrOwner: stderrOwner,
+                            stdoutCapacity: maximumBytes, stderrCapacity: stderrCapacity)
+                        releaseOperation()
+                        throw normalize(error)
+                    }
+                }
+            }
+        }
+    }
+
+    private func finishExecReadsIfNeeded(
+        id: UInt64,
+        stdoutOwner: UInt64,
+        stderrOwner: UInt64,
+        stdoutCapacity: Int,
+        stderrCapacity: Int
+    ) async {
+        for (owner, stream, capacity) in [
+            (stdoutOwner, Int32(0), stdoutCapacity),
+            (stderrOwner, Int32(SSH_EXTENDED_DATA_STDERR), stderrCapacity),
+        ] {
+            await finishOwnedSendIfNeeded(owner: owner) {
+                guard let channel = try? resolveChannel(.pty(id)) else { return nil }
+                var scratch = [UInt8](repeating: 0, count: capacity)
+                return readOnce(channel: channel, stream: stream, buffer: &scratch)
             }
         }
     }

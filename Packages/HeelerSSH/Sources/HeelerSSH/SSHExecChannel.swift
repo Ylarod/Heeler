@@ -25,7 +25,7 @@ public final class SSHExecChannel: Sendable {
         maximumBytes: Int = 16 * 1024,
         timeout: Duration
     ) async throws -> Data? {
-        try await driver.readPTY(id: id, maximumBytes: maximumBytes, timeout: timeout)
+        try await driver.readExec(id: id, maximumBytes: maximumBytes, timeout: timeout)
     }
 
     /// Completes the close handshake and returns the remote status after

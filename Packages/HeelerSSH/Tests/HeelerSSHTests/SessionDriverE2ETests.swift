@@ -134,19 +134,71 @@ struct SessionDriverE2ETests {
     func execStreamDiscardsStderrWithoutBlocking() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)
         let connection = try await environment.connect()
-        let channel = try await connection.openExec(
-            command: "python3 -c 'import sys; "
-                + "sys.stderr.buffer.write(b\"x\" * 4194304); sys.stderr.flush(); "
-                + "sys.stdout.write(\"ready\\n\")'",
-            timeout: .seconds(5))
-
-        var response = Data()
-        while let chunk = try await channel.read(timeout: .seconds(5)) {
-            response.append(chunk)
+        await connection.startSamplingTransportSendOwnerForTesting()
+        for mixed in [false, true] {
+            let flood: String
+            var expected = Data()
+            if mixed {
+                flood = """
+                    for i in range(256):
+                        sys.stderr.buffer.write(b"x" * 16384)
+                        sys.stderr.flush()
+                        sys.stdout.buffer.write(bytes([i % 251]) * 17)
+                        sys.stdout.flush()
+                    """
+                for index in 0..<256 {
+                    expected.append(Data(repeating: UInt8(index % 251), count: 17))
+                }
+            } else {
+                flood = """
+                    sys.stderr.buffer.write(b"x" * 4194304)
+                    sys.stderr.flush()
+                    """
+            }
+            let producer = """
+                import sys
+                sys.stdout.buffer.write(b"producer-ready\\n")
+                sys.stdout.flush()
+                if sys.stdin.readline() != "go\\n":
+                    sys.exit(91)
+                \(flood)
+                sys.stdout.buffer.write(b"finished\\n")
+                sys.stdout.flush()
+                """
+            let channel = try await connection.openExec(
+                command: "python3 -u -c '\(producer)'",
+                timeout: SessionDriverTestEnvironment.setupTimeout)
+            // Process startup gets its own budget. The transfer deadline
+            // starts only after the producer has reached its stdin gate.
+            var ready = Data()
+            while !ready.contains(0x0A) {
+                ready.append(try #require(try await channel.read(
+                    maximumBytes: 64, timeout: SessionDriverTestEnvironment.setupTimeout)))
+            }
+            try #require(ready == Data("producer-ready\n".utf8))
+            let reading = Task {
+                var response = Data()
+                while let chunk = try await channel.read(timeout: .seconds(5)) {
+                    response.append(chunk)
+                }
+                return response
+            }
+            defer { reading.cancel() }
+            try await channel.write(Data("go\n".utf8), timeout: .seconds(5))
+            let independent = try await connection.execute("printf independent", timeout: .seconds(5))
+            #expect(independent.stdout == Data("independent".utf8))
+            #expect(independent.exitStatus == 0)
+            expected.append(Data("finished\n".utf8))
+            #expect(try await reading.value == expected)
+            #expect(try await channel.exitStatus(timeout: .seconds(5)) == 0)
+            try await channel.close(timeout: .seconds(5))
         }
-        #expect(response == Data("ready\n".utf8))
-        #expect(try await channel.exitStatus(timeout: .seconds(5)) == 0)
-        try await channel.close(timeout: .seconds(5))
+        let ownerSamples = await connection.transportSendOwnerSamplesForTesting()
+        #expect(!ownerSamples.isEmpty)
+        #expect(ownerSamples.allSatisfy { !$0.isForbiddenClearWindow })
+        let reused = try await connection.execute("printf reusable", timeout: .seconds(5))
+        #expect(reused.stdout == Data("reusable".utf8))
+        #expect(await connection.isConnected)
         try await connection.close(timeout: .seconds(2))
     }
 
