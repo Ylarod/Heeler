@@ -7,6 +7,20 @@ Entries reference the issue that motivated them.
 
 ## [Unreleased]
 
+### Added
+
+- Manual SSH connections to native Windows herdr 0.9.3 or newer, including
+  default and named sessions, live Agent and shell terminals, and Windows
+  directory navigation. Windows uses herdr's official API bridge and terminal
+  controller. Pairing, Changes, Skills, file uploads, and notification
+  registration remain unavailable on Windows. (#400)
+
+### Fixed
+
+- Preserve literal absolute Unix API endpoints without a HOME probe, and keep
+  Windows API and terminal connections on the selected session when SSH
+  inherits legacy socket overrides. (#400)
+
 ## [0.1.12] - 2026-10-02
 
 ### Added

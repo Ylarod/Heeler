@@ -1976,7 +1976,7 @@ if [[ "$password_fixture_available" == "1" ]]; then
 fi
 run_suite HeelerSSHDirectStreamLocalE2ETests 9 1 0 \
     HeelerSSHDirectStreamLocalE2ETests
-run_suite SharedFixtureE2ETests 115 7 0 \
+run_suite SharedFixtureE2ETests 116 7 0 \
     HeelerSSHPTYE2ETests \
     HeelerSSHJumpHostGateE2ETests \
     HeelerSSHTransportBehaviorE2ETests \
@@ -2019,6 +2019,9 @@ assert_behavior "Jump Host product path" HeelerSSHJumpHostGateE2ETests \
     '"protocol 17 ping traverses independent SSH hops"'
 assert_behavior "Events" HeelerSSHTransportBehaviorE2ETests \
     '"direct Host Events preserve framing, concurrency, and slot reuse"'
+assert_behavior "absolute Unix endpoints without HOME probing" \
+    HeelerSSHTransportBehaviorE2ETests \
+    '"absolute Unix endpoints preserve shell characters for RPC and Events without probing HOME"'
 assert_behavior "git stdin bytes and fixed command" HeelerSSHTransportBehaviorE2ETests \
     '"git stdin scripts preserve bytes and use only the fixed shell on direct and Jump paths"'
 assert_behavior "git deadline isolation" HeelerSSHTransportBehaviorE2ETests \
@@ -2198,7 +2201,22 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 65 tests in 5 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 70 tests in 5 suites passed' "$package_e2e_log" \
+    || ! grep -q \
+        'Test "exec streams preserve stdout bytes without allocating a PTY" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "exec streams discard stderr without blocking stdout" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "exec stream read timeout and cancellation preserve channel reuse" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "closing a live exec stream is idempotent and spares the connection" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "uncertain exec stream opening invalidates the connection" passed' \
+        "$package_e2e_log" \
     || ! grep -q \
         'Test "post-negotiation transport loss is not an algorithm mismatch" passed' \
         "$package_e2e_log" \
@@ -2295,7 +2313,7 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || ! grep -q \
         'Test "a bridge write to a closed peer reports peerClosed" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all sixty-five tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all seventy tests" >&2
     exit 1
 fi
 exit 0
