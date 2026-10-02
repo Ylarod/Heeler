@@ -27,26 +27,68 @@ import Testing
         #expect(!environment.isWindows)
     }
 
+    @Test(arguments: ["/tmp/it's-a.sock", "/tmp/herdr\\custom.sock"])
+    func customPosixEndpointPreservesLiteralPathWithoutHomeResolution(path: String) throws {
+        let environment = RemoteHostEnvironment.posix(home: "relative and invalid HOME")
+        #expect(try environment.socketPath(for: .absolutePath(path)) == path)
+    }
+
     @Test func encodedCommandPreservesUnicodeAndShellMetacharacters() throws {
         let script = "[Console]::WriteLine('测试 $HOME ` whoami & café')"
         #expect(try decode(PowerShellCommand.encoded(script)) == script)
         let command = PowerShellCommand.herdr(
             arguments: ["terminal", "session", "control", "opaque'$(whoami)"],
-            socketPath: "C:\\Users\\Test User\\herdr.sock", location: .namedSession("work"))
+            socketPath: "C:\\Users\\Test User\\herdr.sock",
+            location: .absolutePath("C:\\Users\\Test User\\herdr.sock"))
         let decoded = try decode(command)
-        #expect(decoded.contains("$env:HERDR_SESSION = 'work'"))
-        #expect(decoded.contains("Remove-Item Env:HERDR_SOCKET_PATH"))
-        #expect(!decoded.contains("$env:HERDR_SOCKET_PATH ="))
+        #expect(decoded.contains("$env:HERDR_SOCKET_PATH = 'C:\\Users\\Test User\\herdr.sock'"))
         #expect(decoded.contains("'opaque''$(whoami)'"))
         #expect(!command.contains("$(whoami)"))
-        let defaultCommand = try decode(PowerShellCommand.herdr(
-            arguments: ["remote-api-bridge"], socketPath: "C:\\herdr.sock"))
-        #expect(defaultCommand.contains("Remove-Item Env:HERDR_SESSION"))
-        #expect(defaultCommand.contains("Remove-Item Env:HERDR_SOCKET_PATH"))
-        let customCommand = try decode(PowerShellCommand.herdr(
-            arguments: ["remote-api-bridge"], socketPath: "C:/Custom/herdr.sock",
-            location: .absolutePath("C:/Custom/herdr.sock")))
-        #expect(customCommand.contains("$env:HERDR_SOCKET_PATH = 'C:/Custom/herdr.sock'"))
+    }
+
+    @Test(arguments: [
+        HerdrSocketLocation.defaultSession,
+        .namedSession("work"),
+        .absolutePath("C:/Custom/herdr.sock"),
+    ], [
+        ["remote-api-bridge"],
+        ["terminal", "session", "control", "w1:p1"],
+    ])
+    func windowsAPIAndTerminalCommandsIsolateTheSelectedSession(
+        location: HerdrSocketLocation, arguments: [String]
+    ) throws {
+        let environment = RemoteHostEnvironment.windows(
+            home: "C:\\Users\\user", configDirectory: "C:\\Config\\herdr")
+        let socketPath = try environment.socketPath(for: location)
+        let script = try decode(PowerShellCommand.herdr(
+            arguments: arguments, socketPath: socketPath, location: location, streaming: true))
+        let invocation = try #require(script.range(of: "& herdr.exe "))
+        let clientReset = try #require(script.range(of:
+            "Remove-Item Env:HERDR_CLIENT_SOCKET_PATH -ErrorAction SilentlyContinue"))
+        #expect(clientReset.upperBound < invocation.lowerBound)
+        #expect(!script.contains("$env:HERDR_CLIENT_SOCKET_PATH ="))
+
+        switch location {
+        case .defaultSession, .namedSession:
+            let apiReset = try #require(script.range(of:
+                "Remove-Item Env:HERDR_SOCKET_PATH -ErrorAction SilentlyContinue"))
+            #expect(apiReset.upperBound < invocation.lowerBound)
+            #expect(!script.contains("$env:HERDR_SOCKET_PATH ="))
+        case .absolutePath(let path):
+            #expect(script.contains("$env:HERDR_SOCKET_PATH = \(PowerShellCommand.literal(path))\n"))
+            #expect(!script.contains("Remove-Item Env:HERDR_SOCKET_PATH"))
+        }
+
+        switch location {
+        case .namedSession(let name):
+            #expect(script.contains("$env:HERDR_SESSION = \(PowerShellCommand.literal(name))\n"))
+            #expect(!script.contains("Remove-Item Env:HERDR_SESSION"))
+        case .defaultSession, .absolutePath:
+            let sessionReset = try #require(script.range(of:
+                "Remove-Item Env:HERDR_SESSION -ErrorAction SilentlyContinue"))
+            #expect(sessionReset.upperBound < invocation.lowerBound)
+            #expect(!script.contains("$env:HERDR_SESSION ="))
+        }
     }
 
     @Test func platformFeatureFailuresDoNotReconnect() {

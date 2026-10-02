@@ -15,6 +15,12 @@ Entries reference the issue that motivated them.
   controller. Pairing, Changes, Skills, file uploads, and notification
   registration remain unavailable on Windows. (#399)
 
+### Fixed
+
+- Preserve literal absolute Unix API endpoints without a HOME probe, and keep
+  Windows API and terminal connections on the selected session when SSH
+  inherits legacy socket overrides. (#399)
+
 ## [0.1.12] - 2026-10-02
 
 ### Added

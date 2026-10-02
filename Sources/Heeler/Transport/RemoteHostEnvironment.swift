@@ -20,11 +20,9 @@ enum RemoteHostEnvironment: Sendable, Equatable {
     func socketPath(for location: HerdrSocketLocation) throws -> String {
         switch self {
         case .posix:
-            let path = location.path(homeDirectory: home)
-            guard RemoteShellPath.isQuotableAbsolute(path) else {
-                throw TransportError.invalidDirectoryPath(path: path)
-            }
-            return path
+            // API endpoints are stream-local values, not shell arguments.
+            // The SSH channel validates absolute paths and embedded NULs.
+            return location.path(homeDirectory: home)
         case .windows(_, let config):
             let path: String
             switch location {
@@ -96,6 +94,9 @@ enum PowerShellCommand {
     ) -> String {
         var script = preamble + "\n"
         if let socketPath {
+            // The terminal controller uses the client endpoint. A legacy
+            // override must not redirect it away from the selected API session.
+            script += "Remove-Item Env:HERDR_CLIENT_SOCKET_PATH -ErrorAction SilentlyContinue\n"
             if case .absolutePath = location {
                 script += "$env:HERDR_SOCKET_PATH = \(literal(socketPath))\n"
             } else {

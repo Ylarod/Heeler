@@ -2013,7 +2013,7 @@ actor HeelerSSHTransport: Transport {
     /// while native Windows endpoints still discover their platform once.
     private func apiEnvironment() async throws -> RemoteHostEnvironment {
         if case .absolutePath(let path) = socketLocation,
-            RemoteShellPath.isQuotableAbsolute(path),
+            path.hasPrefix("/"),
             connection.serverIdentification?.contains("Windows") != true
         {
             return .posix(home: "/")

@@ -26,7 +26,7 @@ and refused explicitly. Their POSIX shell and permission assumptions require
 separate work. Unix transport and offline discovery retain their existing
 behavior, including known absolute endpoints that do not require HOME.
 
-## Local verification
+## Initial implementation verification (`831542c9`)
 
 - `make test-app TEST_FLAGS='-only-testing:HeelerTests/<SuiteTypeName> ...'`
   selected 15 suites on the final implementation: **187 tests passed**.
@@ -53,8 +53,10 @@ behavior, including known absolute endpoints that do not require HOME.
   `AgentDirectInputTests/composerAndDirectInputTransferVisibleKeyboardWithoutReloading()`,
   `TerminalAttachTests/aDroppedPresentationSettlesAgainstTheWindowsLiveKeyboardLayoutGuide()`,
   and `TerminalAttachTests/theComposerSettlesItsHandoffAgainstTheLiveKeyboardLayoutGuide()`.
-  One keyboard case also timed out in isolation. No parent-revision run was
-  performed, so this does not establish a passing or failing baseline.
+  One keyboard case also timed out in isolation. The subsequent review ran
+  these three cases on parent `1076ec6c` and recorded the same failed
+  expectations. Xcode stalled while collecting diagnostics after the test
+  summary and was interrupted; that comparison is not a completed CI gate.
 - `git diff --check` and `bash -n scripts/run-ci-ios-tests.sh` passed.
   The Xcode project was regenerated through `make`.
 
@@ -63,3 +65,18 @@ lifecycle coverage. **Native Windows runtime acceptance has not been run.**
 Use [the Windows checklist](../guides/native-windows-testing.md) for
 DefaultShell, pipe, session isolation, input, resize, scrolling, and reconnect
 acceptance. It also records the feature boundaries and separate outcomes.
+
+## Review corrections
+
+- Absolute Unix API endpoints retain literal path spelling and skip HOME
+  resolution, including paths containing apostrophes or backslashes. Shell
+  quoting remains limited to exec commands. A real SSH regression test checks
+  Ping and Events through such an endpoint and fails if HOME is probed.
+- Selected Windows API and terminal commands clear both HERDR_SOCKET_PATH and
+  HERDR_CLIENT_SOCKET_PATH overrides, retaining an explicit custom API path
+  when supplied. A default/named/custom command matrix covers both protocols;
+  native acceptance additionally checks a real inherited client override.
+- After these corrections, the same 15-suite selection passed **189 tests**.
+  The CI shared-fixture lane now requires 116 executed tests and names the new
+  Unix endpoint regression explicitly. This count is a gate requirement, not
+  Windows runtime evidence.

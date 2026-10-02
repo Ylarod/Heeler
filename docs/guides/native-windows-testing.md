@@ -224,6 +224,95 @@ Expected result: requests and the long-lived event subscription reach the
 selected Windows session through `remote-api-bridge`. A successful `ping`
 alone does not establish that subscription updates work.
 
+### Inherited client socket override
+
+Check that a legacy `HERDR_CLIENT_SOCKET_PATH` in the SSH shell cannot send
+terminal control to a different session from the API. Start a second native
+session in another Windows terminal:
+
+```powershell
+herdr --session heeler-win-other
+```
+
+Give the two sessions different workspace or tab labels in the Windows UI.
+In an ordinary shell pane in each, print a distinct marker such as
+`Write-Output 'heeler-session-A'` and `Write-Output 'heeler-session-B'`.
+
+For the PowerShell 7 `DefaultShell` run, use the SSH account's local PowerShell
+7 window to temporarily set the override in its applicable startup profile.
+The following uses `CurrentUserAllHosts`, saves its original bytes, and restores
+them when you finish. Keep this window open at the prompt while testing:
+
+```powershell
+$HeelerLegacySession = (herdr session list --json | ConvertFrom-Json).sessions |
+    Where-Object { $_.name -eq 'heeler-win-other' -and $_.running } |
+    Select-Object -First 1
+if (-not $HeelerLegacySession) { throw 'Start heeler-win-other first' }
+$HeelerLegacyClient = Join-Path $HeelerLegacySession.session_dir 'herdr-client.sock'
+$HeelerProfilePath = $PROFILE.CurrentUserAllHosts
+$HeelerProfileExisted = Test-Path -LiteralPath $HeelerProfilePath
+$HeelerProfileBytes = if ($HeelerProfileExisted) {
+    ,([System.IO.File]::ReadAllBytes($HeelerProfilePath))
+} else { $null }
+$HeelerProfileText = if ($HeelerProfileExisted) {
+    [System.IO.File]::ReadAllText($HeelerProfilePath)
+} else { '' }
+$HeelerProfileDirectory = Split-Path -Parent $HeelerProfilePath
+$HeelerProfileDirectoryExisted = Test-Path -LiteralPath $HeelerProfileDirectory
+try {
+    [void][System.IO.Directory]::CreateDirectory($HeelerProfileDirectory)
+    $HeelerOverrideLine = "`n`$env:HERDR_CLIENT_SOCKET_PATH = '" +
+        $HeelerLegacyClient.Replace("'", "''") + "'`n"
+    [System.IO.File]::WriteAllText($HeelerProfilePath,
+        $HeelerProfileText + $HeelerOverrideLine,
+        [System.Text.UTF8Encoding]::new($false))
+    $HeelerProbeScript = "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(`$false); " +
+        "[Console]::WriteLine('__HEELER_LEGACY_CLIENT__=' + `$env:HERDR_CLIENT_SOCKET_PATH)"
+    $HeelerProbeEncoded = [Convert]::ToBase64String(
+        [System.Text.Encoding]::Unicode.GetBytes($HeelerProbeScript))
+    Write-Output "powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand $HeelerProbeEncoded"
+    [void](Read-Host 'Run the fresh SSH probe and Heeler checks, then press Enter to restore the profile')
+} finally {
+    if ($HeelerProfileExisted) {
+        [System.IO.File]::WriteAllBytes($HeelerProfilePath, $HeelerProfileBytes)
+    } else {
+        Remove-Item -LiteralPath $HeelerProfilePath -ErrorAction SilentlyContinue
+    }
+    if (-not $HeelerProfileDirectoryExisted -and
+        -not (Get-ChildItem -LiteralPath $HeelerProfileDirectory -Force)) {
+        Remove-Item -LiteralPath $HeelerProfileDirectory
+    }
+}
+```
+
+From another machine, run a **fresh, non-PTY** SSH command with the printed
+`powershell.exe ... -EncodedCommand ...` command:
+
+```sh
+ssh -T -p 22 <user>@<windows-address> "<paste-the-generated-command>"
+```
+
+The `__HEELER_LEGACY_CLIENT__=` line must contain the client path for
+`heeler-win-other`. An empty or different value means this setup did not
+inject the override into the SSH process, so mark this check **not tested**.
+Do not count a local `$env` value as proof of SSH inheritance. For a cmd
+`DefaultShell` run, use an override already inherited by that account's SSH
+process, if available, and apply the same probe requirement.
+
+After the probe confirms the override, reconnect Heeler to `heeler-win-test`.
+Confirm that both its Console labels and terminal's `heeler-session-A` marker
+belong to that session. Type `Write-Output 'heeler-selected-session-input'`
+on the phone and confirm it appears only in that session's Windows pane.
+Switch to `heeler-win-other`, repeat with another marker, and switch back.
+If a default session is running, repeat with **Session name** blank while the
+override still points to `heeler-win-other`.
+
+Expected: API snapshots, event updates, terminal output, and terminal input
+all follow the selected session; no other session receives the input. Finish
+the prompt to restore the prior profile, then reconnect and recheck the SSH
+probe against the account's original environment. See herdr's
+[client socket precedence](https://github.com/herdrdev/herdr/blob/7b116c05bfda646af39d2524c54e70c751f57ee8/src/server/socket_paths.rs#L15-L49).
+
 ## 6. Verify live terminal input and rendering
 
 Open the test agent's terminal in Heeler, then test an ordinary shell pane.
@@ -328,6 +417,7 @@ Record each result separately:
 | Device Key authentication | | | | |
 | PowerShell startup banner | | N/A | N/A | |
 | Named-session selection and isolation | | | | |
+| Inherited client socket override isolation | | | N/A | |
 | Initial workspace/agent snapshot | | | | |
 | Event updates after connect/reconnect | | | | |
 | Foreground Live Activity updates | | | | |

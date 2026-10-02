@@ -40,12 +40,16 @@ transport never activates after a Unix forwarding refusal.
 
 - Detect Windows and discover USERPROFILE and the herdr configuration root
   once per Transport. Honor XDG_CONFIG_HOME before APPDATA. Set the selected
-  session through PowerShell environment variables, clearing inherited socket
-  overrides. Let herdr resolve default and named endpoints; pipe identity can
+  session through PowerShell environment variables, clearing inherited
+  HERDR_SOCKET_PATH and HERDR_CLIENT_SOCKET_PATH overrides. Let herdr resolve
+  default and named endpoints; pipe identity can
   depend on the exact path spelling. Only an explicit absolute endpoint sets
   HERDR_SOCKET_PATH.
   Use UTF-16LE EncodedCommand for cmd and PowerShell login shells; paths and
   opaque targets remain literals inside the script.
+- Keep absolute Unix API endpoints as literal stream-local paths, without a
+  HOME probe or shell quoting restrictions. Only exec commands need shell
+  quoting; the SSH channel retains absolute-path and NUL validation.
 - Discard account-shell startup output until the app's stream marker. Request
   channels hold stdin open until their response arrives, preserving Windows
   bridge output. Keep the existing dispatch hooks and subscription ack rule.
