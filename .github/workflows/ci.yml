@@ -114,11 +114,14 @@ jobs:
         run: xcodebuild -version
 
       - name: Test CI watchdog
-        run: scripts/test-run-with-timeout.sh
+        run: make test-ci-watchdog
+
+      - name: Test CI gate guards
+        run: make test-ci-guards
 
       # The script selects one available iPhone 17 UDID, boots it, injects the
       # fixture environment there, and targets that same device for every test
-      # action. The app deployment target is iOS 26.
+      # action. The app deployment target is iOS 18.
       - name: Build and test
         timeout-minutes: 32
         # The fixture runs unprivileged; HEELER_CI_MANDATORY makes the one
