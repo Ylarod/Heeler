@@ -64,7 +64,7 @@ In another PowerShell window, run:
 
 ```powershell
 herdr session list --json
-herdr --session heeler-win-test agent list --json
+herdr --session heeler-win-test agent list
 herdr --session heeler-win-test pane list
 herdr remote-api-bridge --check
 ```
