@@ -83,14 +83,7 @@ running herdr — no server changes, no extra packages. The SSH server must
 allow stream-local forwarding (the OpenSSH default); onboarding calls it out
 when it's disabled.
 
-Native Windows Hosts running herdr 0.9.3 or newer use its official
-`remote-api-bridge` and `terminal session control` over SSH exec channels.
-Add them manually with SSH credentials and select an existing session.
-Pairing, Changes, Skills, file uploads, and notification registration are
-currently unavailable on Windows. See the
-[Windows setup guide](docs/guides/windows-setup.md) for installation and
-automatic startup, and the
-[Windows test checklist](docs/guides/native-windows-testing.md) for acceptance steps.
+Native Windows Hosts (herdr >= 0.9.3) connect over SSH and are added manually.
 
 Unroutable machines can sit behind an SSH Jump Host:
 
@@ -102,12 +95,9 @@ Unroutable machines can sit behind an SSH Jump Host:
 Install Heeler from the [App Store](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135)
 or [TestFlight](https://testflight.apple.com/join/aXSxRn4r).
 
-For native Windows Hosts, follow the [Windows setup guide](docs/guides/windows-setup.md)
-to install OpenSSH and herdr, connect manually, and configure automatic startup.
-Use a Heeler build that includes native Windows Host support.
-
-For macOS and Linux Hosts, install [herdr](https://herdr.dev/docs/install/),
-enable SSH access, and follow the pairing steps below.
+- **macOS / Linux:** Install [herdr](https://herdr.dev/docs/install/), enable SSH,
+  then follow the pairing steps below.
+- **Native Windows:** Follow the [Windows setup guide](docs/guides/windows-setup.md).
 
 ## Adding a machine
 
