@@ -207,43 +207,6 @@ If you manually run the task while the same session is already running,
 herdr rejects the duplicate server; check the session before treating that
 task result as a startup failure.
 
-## 5. Optional: install Claude Code
-
-Install the native Windows CLI in a normal PowerShell window:
-
-```powershell
-winget install --id Anthropic.ClaudeCode --exact --source winget --scope user
-```
-
-Open a new terminal and run `claude --version`. Authenticate and configure
-your provider following the [official Claude Code setup guide](https://code.claude.com/docs/en/setup).
-Launch `claude` inside a herdr pane in your project directory.
-
-For ZenMux, merge this example into the Windows account's
-`%USERPROFILE%\.claude\settings.json`, preserving existing settings. Replace
-the `ANTHROPIC_AUTH_TOKEN` placeholder locally with your ZenMux API key:
-
-```json
-{
-  "model": "openai/gpt-5.6-luna",
-  "env": {
-    "ANTHROPIC_BASE_URL": "https://zenmux.ai/api/anthropic",
-    "ANTHROPIC_MODEL": "openai/gpt-5.6-luna",
-    "ANTHROPIC_AUTH_TOKEN": "<YOUR_ZENMUX_API_KEY>",
-    "ANTHROPIC_API_KEY": "",
-    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
-    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
-  }
-}
-```
-
-Keep this credential in the Windows account's user configuration, outside
-your project and Git. If first-use authentication does not pick up settings,
-follow [ZenMux's Claude Code guide](https://zenmux.ai/docs/best-practices/claude-code.html)
-to set the provider variables before launching. Open a fresh Claude session
-and send a short prompt to verify the endpoint and model.
-
 ## Supported features and further checks
 
 Native Windows supports manual SSH connections, session selection, live
