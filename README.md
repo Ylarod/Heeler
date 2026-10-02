@@ -88,17 +88,30 @@ Native Windows Hosts running herdr 0.9.3 or newer use its official
 Add them manually with SSH credentials and select an existing session.
 Pairing, Changes, Skills, file uploads, and notification registration are
 currently unavailable on Windows. See the
-[Windows test checklist](docs/guides/native-windows-testing.md) for setup,
-supported behavior, and acceptance steps.
+[Windows setup guide](docs/guides/windows-setup.md) for installation and
+automatic startup, and the
+[Windows test checklist](docs/guides/native-windows-testing.md) for acceptance steps.
 
 Unroutable machines can sit behind an SSH Jump Host:
 
 - [Set up remote access step by step](docs/guides/vps-jump-host-setup.md)
 - [Architecture, security boundaries, and the VPS runbook](docs/guides/vps-jump-host.md)
 
+## Installation
+
+Install Heeler from the [App Store](https://apps.apple.com/us/app/heeler-for-herdr/id6797263135)
+or [TestFlight](https://testflight.apple.com/join/aXSxRn4r).
+
+For native Windows Hosts, follow the [Windows setup guide](docs/guides/windows-setup.md)
+to install OpenSSH and herdr, connect manually, and configure automatic startup.
+Use a Heeler build that includes native Windows Host support.
+
+For macOS and Linux Hosts, install [herdr](https://herdr.dev/docs/install/),
+enable SSH access, and follow the pairing steps below.
+
 ## Adding a machine
 
-On the machine running herdr (Node >= 20, herdr >= 0.7.5, OpenSSH server on —
+On a macOS or Linux machine running herdr (Node >= 20, herdr >= 0.7.5, OpenSSH server on —
 macOS: **System Settings > General > Sharing > Remote Login**):
 
 ```bash
