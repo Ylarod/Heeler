@@ -122,6 +122,8 @@ actor SessionDriver {
         var teardownInProgress = false
     }
     private var streamLocalChannels: [UInt64: StreamLocalChannelState] = [:]
+    /// Long-lived session channels share I/O and teardown regardless of
+    /// whether opening requested a PTY. Only SSHPTYChannel exposes resize.
     private struct PTYChannelState {
         let channel: OpaquePointer
         var reachedEOF = false
@@ -557,6 +559,62 @@ actor SessionDriver {
                     command: command,
                     deadline: deadline)
                 return SSHPTYChannel(id: id, driver: self)
+            } catch {
+                let normalized = normalize(error)
+                if let id = registeredID {
+                    do {
+                        try await cleanChannel(
+                            identity: .pty(id),
+                            deadline: ContinuousClock.now.advanced(by: .seconds(2)),
+                            cancellable: false)
+                        ptyChannels.removeValue(forKey: id)
+                    } catch {
+                        invalidateResources()
+                    }
+                } else if !(error is ChannelOpenAdmissionError) {
+                    invalidateResources()
+                }
+                throw normalized
+            }
+        }
+    }
+
+    func openExec(command: String, timeout: Duration) async throws -> SSHExecChannel {
+        try await withDiagnosticPhase("exec stream open", budget: timeout) {
+            await acquireOperation()
+            defer { releaseOperation() }
+
+            guard valid, !forwarding, authenticated, session != nil else {
+                throw SSHError.connectionInvalidated
+            }
+            guard
+                !command.isEmpty,
+                !command.utf8.contains(0),
+                command.utf8.count <= Int(UInt32.max)
+            else {
+                throw SSHError.channelFailed
+            }
+            let deadline = ContinuousClock.now.advanced(by: timeout)
+            var registeredID: UInt64?
+
+            do {
+                let channel = try await openSessionChannel(deadline: deadline)
+                nextPTYChannelID &+= 1
+                let id = nextPTYChannelID
+                ptyChannels[id] = PTYChannelState(channel: channel)
+                registeredID = id
+                // Extended data must neither enter the stdout protocol nor
+                // hold receive-window capacity the caller cannot drain.
+                let ignoreResult = try await repeatUntilCompleteYielding(
+                    deadline: deadline, identity: .pty(id)
+                ) {
+                    libssh2_channel_handle_extended_data2(
+                        $0, LIBSSH2_CHANNEL_EXTENDED_DATA_IGNORE)
+                }
+                guard ignoreResult == 0 else { throw SSHError.channelFailed }
+                try await startExec(
+                    identity: .pty(id), command: command, deadline: deadline)
+                return SSHExecChannel(id: id, driver: self)
             } catch {
                 let normalized = normalize(error)
                 if let id = registeredID {

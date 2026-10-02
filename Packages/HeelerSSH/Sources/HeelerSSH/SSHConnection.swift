@@ -225,6 +225,17 @@ public final class SSHConnection: Sendable {
             timeout: timeout)
     }
 
+    /// Opens one long-lived SSH exec channel without allocating a PTY.
+    /// Standard output remains byte-preserving and separate from diagnostics;
+    /// standard error is discarded so it cannot fill the channel's receive
+    /// window while the caller reads a stdout protocol.
+    public func openExec(
+        command: String,
+        timeout: Duration
+    ) async throws -> SSHExecChannel {
+        try await driver.openExec(command: command, timeout: timeout)
+    }
+
     /// Opens one direct-streamlocal channel, writes one request, reads one
     /// newline-terminated response, and closes the channel. Every call owns a
     /// fresh channel to preserve one-request-per-socket protocols.

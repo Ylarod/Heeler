@@ -75,13 +75,21 @@ Heeler is an **agent console**: a native dashboard of every coding agent running
 
 ## How it connects
 
-Heeler speaks herdr's JSON API over SSH: each request opens a
+On macOS and Linux Hosts, Heeler speaks herdr's JSON API over SSH: each request opens a
 direct-streamlocal channel onto `herdr.sock`, one long-lived channel carries
 the event stream, and interactive terminals run `herdr agent attach
 --takeover` on an SSH PTY. The only prerequisites are SSH access and a
 running herdr — no server changes, no extra packages. The SSH server must
 allow stream-local forwarding (the OpenSSH default); onboarding calls it out
 when it's disabled.
+
+Native Windows Hosts running herdr 0.9.3 or newer use its official
+`remote-api-bridge` and `terminal session control` over SSH exec channels.
+Add them manually with SSH credentials and select an existing session.
+Pairing, Changes, Skills, file uploads, and notification registration are
+currently unavailable on Windows. See the
+[Windows test checklist](docs/guides/native-windows-testing.md) for setup,
+supported behavior, and acceptance steps.
 
 Unroutable machines can sit behind an SSH Jump Host:
 

@@ -2198,7 +2198,22 @@ clear_simulator_environment
 
 if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || grep -q 'skipped:' "$package_e2e_log" \
-    || ! grep -q 'Test run with 65 tests in 5 suites passed' "$package_e2e_log" \
+    || ! grep -q 'Test run with 70 tests in 5 suites passed' "$package_e2e_log" \
+    || ! grep -q \
+        'Test "exec streams preserve stdout bytes without allocating a PTY" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "exec streams discard stderr without blocking stdout" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "exec stream read timeout and cancellation preserve channel reuse" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "closing a live exec stream is idempotent and spares the connection" passed' \
+        "$package_e2e_log" \
+    || ! grep -q \
+        'Test "uncertain exec stream opening invalidates the connection" passed' \
+        "$package_e2e_log" \
     || ! grep -q \
         'Test "post-negotiation transport loss is not an algorithm mismatch" passed' \
         "$package_e2e_log" \
@@ -2295,7 +2310,7 @@ if grep -q 'Suite "Session driver resource e2e" skipped' "$package_e2e_log" \
     || ! grep -q \
         'Test "a bridge write to a closed peer reports peerClosed" passed' \
         "$package_e2e_log"; then
-    echo "The mandatory HeelerSSH package suites did not execute all sixty-five tests" >&2
+    echo "The mandatory HeelerSSH package suites did not execute all seventy tests" >&2
     exit 1
 fi
 exit 0

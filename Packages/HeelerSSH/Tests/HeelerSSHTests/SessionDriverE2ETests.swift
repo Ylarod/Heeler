@@ -108,6 +108,109 @@ struct SessionDriverE2ETests {
         }
     }
 
+    @Test("exec streams preserve stdout bytes without allocating a PTY")
+    func execStreamPreservesBytesWithoutPTY() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        let channel = try await connection.openExec(
+            command: "[ ! -t 0 ] && [ ! -t 1 ] || exit 99; "
+                + "IFS= read -r line; printf '%s\\000\\377' \"$line\"; exit 7",
+            timeout: .seconds(5))
+
+        try await channel.write(Data("request\r\n".utf8), timeout: .seconds(5))
+        var response = Data()
+        while let chunk = try await channel.read(maximumBytes: 3, timeout: .seconds(5)) {
+            response.append(chunk)
+        }
+        var expected = Data("request\r".utf8)
+        expected.append(contentsOf: [0, 255])
+        #expect(response == expected)
+        #expect(try await channel.exitStatus(timeout: .seconds(5)) == 7)
+        try await channel.close(timeout: .seconds(5))
+        try await connection.close(timeout: .seconds(2))
+    }
+
+    @Test("exec streams discard stderr without blocking stdout")
+    func execStreamDiscardsStderrWithoutBlocking() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        let channel = try await connection.openExec(
+            command: "python3 -c 'import sys; "
+                + "sys.stderr.buffer.write(b\"x\" * 4194304); sys.stderr.flush(); "
+                + "sys.stdout.write(\"ready\\n\")'",
+            timeout: .seconds(5))
+
+        var response = Data()
+        while let chunk = try await channel.read(timeout: .seconds(5)) {
+            response.append(chunk)
+        }
+        #expect(response == Data("ready\n".utf8))
+        #expect(try await channel.exitStatus(timeout: .seconds(5)) == 0)
+        try await channel.close(timeout: .seconds(5))
+        try await connection.close(timeout: .seconds(2))
+    }
+
+    @Test("exec stream read timeout and cancellation preserve channel reuse")
+    func execStreamReadFailuresPreserveChannelReuse() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        let channel = try await connection.openExec(
+            command: "IFS= read -r line; printf '%s\\n' \"$line\"",
+            timeout: .seconds(5))
+        await #expect(throws: SSHError.timedOut) {
+            _ = try await channel.read(timeout: .milliseconds(100))
+        }
+
+        let hold = SessionWaitHold()
+        await connection.holdNextSessionWaitForTesting { await hold.waitUntilReleased() }
+        let reading = Task { try await channel.read(timeout: .seconds(5)) }
+        try await waitUntilTrue("the exec read should reach the wait") { await hold.hasEntered }
+        reading.cancel()
+        await hold.release()
+        await #expect(throws: SSHError.cancelled) {
+            _ = try await reading.value
+        }
+
+        try await channel.write(Data("reused\n".utf8), timeout: .seconds(5))
+        var response = Data()
+        while let chunk = try await channel.read(timeout: .seconds(5)) {
+            response.append(chunk)
+        }
+        #expect(response == Data("reused\n".utf8))
+        #expect(try await channel.exitStatus(timeout: .seconds(5)) == 0)
+        try await channel.close(timeout: .seconds(5))
+        #expect(await connection.isConnected)
+        try await connection.close(timeout: .seconds(2))
+    }
+
+    @Test("closing a live exec stream is idempotent and spares the connection")
+    func execStreamCloseSparesConnection() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        let channel = try await connection.openExec(command: "cat", timeout: .seconds(5))
+        try await channel.close(timeout: .seconds(5))
+        try await channel.close(timeout: .seconds(5))
+        let result = try await connection.execute("printf reusable", timeout: .seconds(5))
+        #expect(result.stdout == Data("reusable".utf8))
+        #expect(result.exitStatus == 0)
+        try await connection.close(timeout: .seconds(2))
+    }
+
+    @Test("uncertain exec stream opening invalidates the connection")
+    func execStreamUncertainOpenInvalidatesConnection() async throws {
+        let environment = try #require(SessionDriverTestEnvironment.current)
+        let connection = try await environment.connect()
+        await #expect(throws: SSHError.channelFailed) {
+            _ = try await connection.openExec(command: "invalid\0command", timeout: .seconds(5))
+        }
+        #expect(await connection.isConnected)
+        await #expect(throws: SSHError.timedOut) {
+            _ = try await connection.openExec(command: "cat", timeout: .zero)
+        }
+        #expect(!(await connection.isConnected))
+        try await connection.close(timeout: .seconds(2))
+    }
+
     @Test("remote transport loss reclaims every owned native resource")
     func remoteTransportLossReclaimsResources() async throws {
         let environment = try #require(SessionDriverTestEnvironment.current)

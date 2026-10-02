@@ -460,7 +460,15 @@ final class ComposerStagingStore {
     }
 
     private static func failure(for error: any Error, medium: Medium) -> Failure {
-        switch error {
+        if let transportError = error as? TransportError,
+            case .hostFeatureUnavailable = transportError
+        {
+            return Failure(
+                medium: medium,
+                message: transportError.presentation.message,
+                isRetryable: false)
+        }
+        return switch error {
         case TransportError.sshUnreachable:
             Failure(
                 medium: medium,
