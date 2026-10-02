@@ -13,13 +13,13 @@ Entries reference the issue that motivated them.
   default and named sessions, live Agent and shell terminals, and Windows
   directory navigation. Windows uses herdr's official API bridge and terminal
   controller. Pairing, Changes, Skills, file uploads, and notification
-  registration remain unavailable on Windows. (#399)
+  registration remain unavailable on Windows. (#400)
 
 ### Fixed
 
 - Preserve literal absolute Unix API endpoints without a HOME probe, and keep
   Windows API and terminal connections on the selected session when SSH
-  inherits legacy socket overrides. (#399)
+  inherits legacy socket overrides. (#400)
 
 ## [0.1.12] - 2026-10-02
 
