@@ -29,9 +29,12 @@ herdr session list --json
 ```
 
 Start with herdr **0.9.3** and OpenSSH `DefaultShell` set to **PowerShell 7**,
-matching the reported environment. Save the Heeler version/build number,
-Windows version, herdr version, shell path, and session-list output with your
-results. Check that `herdr.exe` is the native Windows binary.
+matching the reported environment. Heeler also supports cmd as the OpenSSH
+default shell; normal setup does not require a shell change.
+
+Save the Heeler version/build number, Windows version, herdr version, shell
+path, and session-list output with your results. Check that `herdr.exe` is
+the native Windows binary.
 The source references in this guide are pinned to herdr 0.9.3 commit
 `7b116c05bfda646af39d2524c54e70c751f57ee8`.
 

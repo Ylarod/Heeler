@@ -165,10 +165,9 @@ $HeelerHerdrExe
 $env:USERPROFILE
 ```
 
-The official installer provides the stable launcher path above. If your
-installation uses a versioned release path instead, update the task's
-program path when upgrading herdr. Copy the expanded absolute paths into
-Task Scheduler; do not paste PowerShell expressions into its fields.
+Use the stable path if it exists. Otherwise, use the path returned by
+`Get-Command` and update the task after upgrading herdr. Copy the paths
+printed above into Task Scheduler, rather than the PowerShell expressions.
 
 Open **Task Scheduler as Administrator**, select **Create Task**, and use:
 
@@ -190,22 +189,37 @@ configuration directory. Microsoft documents the
 [task login types](https://learn.microsoft.com/en-us/windows/win32/taskschd/principal-logontype)
 and the [default 72-hour execution limit](https://learn.microsoft.com/en-us/windows/win32/taskschd/tasksettings-executiontimelimit).
 
+### Verify the saved task
+
+First check `herdr session list --json`. If `heeler-win-test` is already
+running, wait until its agents can be stopped, then stop that session before
+testing the task. herdr rejects a second server for the same session.
+
+In Task Scheduler, right-click **Herdr Server** and select **Run**. Confirm
+that its status is **Running**, then run these checks in PowerShell under
+the SSH account:
+
+```powershell
+Get-Service sshd | Select-Object Name, Status, StartType
+herdr --session heeler-win-test status server --json
+```
+
+Expect `sshd` to show `Running` and `Automatic`. The herdr response should
+contain `running: true` and `session: "heeler-win-test"`.
+
+The task stays **Running** while serving the session. A **Last Run Result**
+of `0x41301` (`267009`) means it is still running; this is normal for a
+long-running server. See [Microsoft's task status codes](https://learn.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-error-and-success-constants).
+
+Reconnect from Heeler and confirm that the named session loads.
+
 ### Verify after a reboot
 
 Restart Windows when your agents can be stopped. Before logging in to the
 Windows desktop, connect from Heeler and check that the named session loads.
-Then inspect the service and session in PowerShell:
-
-```powershell
-Get-Service sshd
-herdr session list --json
-```
-
-Expect `sshd` to be `Running` and `heeler-win-test` to be running. The
-headless task can remain in the `Running` state while serving the session.
-If you manually run the task while the same session is already running,
-herdr rejects the duplicate server; check the session before treating that
-task result as a startup failure.
+After logging in, repeat the service and API checks above and confirm that
+the task is **Running**. A successful manual run does not verify startup
+after a reboot.
 
 ## Supported features and further checks
 
