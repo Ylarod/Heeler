@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Exercise the merge gate's own assertions without running the merge gate.
 #
-# A developer tool, run by hand. It is deliberately not wired into CI or into
-# run-ci-ios-tests.sh: it proves the gate's guards can fail, which is a claim
-# about the gate rather than about the app.
+# Run through make test-ci-guards, locally or before the app lane in CI.
+# It proves the gate's guards can fail without building or running the app.
 #
 # The guards it exercises are the ones the full lane gained under #135. Those
 # guards exist because a gate run reported `864 tests in 92 suites passed` while

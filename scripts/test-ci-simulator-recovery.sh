@@ -38,6 +38,14 @@ if [[ "$count" == 1 || "$SCENARIO" == persistent ]]; then
     echo 'xcodebuild: error: Unable to find a device matching the provided destination specifier:' >&2
     exit 70
 fi
+while [[ "$#" -gt 0 ]]; do
+    if [[ "$1" == -resultBundlePath ]]; then
+        [[ "$#" -gt 1 ]] || exit 2
+        mkdir -p "$2"
+        shift
+    fi
+    shift
+done
 echo 'Test run with 1 tests in 1 suite passed'
 STUB
 
@@ -46,6 +54,14 @@ cat > "$work/bin/xcrun" <<'STUB'
 set -eu
 printf '%s\n' "$*" >> "$CASE_DIR/simctl"
 case "$*" in
+    'xcresulttool get test-results summary --path '*' --compact')
+        [[ -d "$6" ]] || exit 1
+        printf '%s\n' '{"totalTestCount":1,"skippedTests":0,"failedTests":0,"result":"Passed"}'
+        ;;
+    'xcresulttool get test-results tests --path '*' --compact')
+        [[ -d "$6" ]] || exit 1
+        printf '%s\n' '{"testNodes":[{"nodeType":"Unit test bundle","name":"HeelerTests","children":[{"nodeType":"Test Suite","name":"ExampleSuite","children":[{"nodeType":"Test Case","name":"example()","nodeIdentifier":"ExampleSuite/example()","result":"Passed"}]}]}]}'
+        ;;
     'simctl list devices available')
         [[ "$SCENARIO" != list-failure ]] || exit 1
         cat "$CASE_DIR/devices"
