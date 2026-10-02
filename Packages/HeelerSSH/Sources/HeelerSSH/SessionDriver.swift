@@ -126,6 +126,7 @@ actor SessionDriver {
     /// whether opening requested a PTY. Only SSHPTYChannel exposes resize.
     private struct PTYChannelState {
         let channel: OpaquePointer
+        var pendingExecOutput = Data()
         var reachedEOF = false
         var closed = false
         var acceptsIO = true
@@ -192,6 +193,8 @@ actor SessionDriver {
     private var nextSFTPWriteDelayForTesting: Duration?
     private var sftpWriteDelayIsActiveForTesting = false
     private var nextSessionWaitHoldForTesting: (@Sendable () async throws -> Void)?
+    private var nextExecStderrReadErrorForTesting: SSHError?
+    private var nextExecStdoutOwnerErrorForTesting: SSHError?
     private var nextExecChannelAllocatedHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextExecCleanupHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextCompensationUnlinkPhaseHookForTesting: (@Sendable () async throws -> Void)?
@@ -768,28 +771,23 @@ actor SessionDriver {
             let stdoutOwner = allocateTransportSendOwner()
             let stderrOwner = allocateTransportSendOwner()
             let stderrCapacity = 16 * 1024
-            var output = Data()
 
             while true {
                 await acquireOperation()
-                let progress: (eof: Bool, pendingSend: Bool, madeProgress: Bool, wait: SessionWaitPlan)
+                let progress: (
+                    data: Data, eof: Bool, pendingSend: Bool,
+                    madeProgress: Bool, wait: SessionWaitPlan)
                 do {
                     try checkProgress(deadline: deadline)
-                    var madeProgress = false
-                    // A suspended stderr read must resume before stdout tries
-                    // admission, otherwise this operation waits on itself.
-                    if transportSendOwner != stderrOwner {
-                        try await waitForTransportSendAdmission(
-                            owner: stdoutOwner, deadline: deadline, cancellable: true)
-                        let channel = try resolveChannel(.pty(id))
-                        let session = try requireSession()
-                        var buffer = [UInt8](repeating: 0, count: maximumBytes)
-                        let data = try readAvailableNoting(
-                            channel: channel, stream: 0, buffer: &buffer,
-                            owner: stdoutOwner, session: session)
-                        output.append(data)
-                        madeProgress = !data.isEmpty
+                    _ = try resolveChannel(.pty(id))
+                    if let pending = takePendingExecOutput(id: id, maximumBytes: maximumBytes) {
+                        releaseOperation()
+                        return pending
                     }
+                    var madeProgress = false
+                    // Resume an owned stdout read before stderr admission.
+                    // Otherwise drain stderr first so consumed stdout never
+                    // waits behind a later stderr window-adjust continuation.
                     if transportSendOwner != stdoutOwner {
                         try await waitForTransportSendAdmission(
                             owner: stderrOwner, deadline: deadline, cancellable: true)
@@ -799,14 +797,48 @@ actor SessionDriver {
                         let discarded = try readAvailableNoting(
                             channel: channel, stream: Int32(SSH_EXTENDED_DATA_STDERR),
                             buffer: &buffer, owner: stderrOwner, session: session)
-                        madeProgress = madeProgress || !discarded.isEmpty
+                        madeProgress = !discarded.isEmpty
+                        #if DEBUG
+                        if madeProgress, let error = nextExecStderrReadErrorForTesting {
+                            nextExecStderrReadErrorForTesting = nil
+                            throw error
+                        }
+                        #endif
+                    }
+                    var output = Data()
+                    if transportSendOwner != stderrOwner {
+                        try await waitForTransportSendAdmission(
+                            owner: stdoutOwner, deadline: deadline, cancellable: true)
+                        let channel = try resolveChannel(.pty(id))
+                        let session = try requireSession()
+                        if let pending = takePendingExecOutput(id: id, maximumBytes: maximumBytes) {
+                            output = pending
+                        } else {
+                            #if DEBUG
+                            if let error = nextExecStdoutOwnerErrorForTesting {
+                                nextExecStdoutOwnerErrorForTesting = nil
+                                // Model interruption of a read that owns a
+                                // receive-window send before resuming stdout.
+                                transportSendOwner = stdoutOwner
+                                throw error
+                            }
+                            #endif
+                            var buffer = [UInt8](repeating: 0, count: maximumBytes)
+                            output = try readAvailableNoting(
+                                channel: channel, stream: 0, buffer: &buffer,
+                                owner: stdoutOwner, session: session)
+                        }
+                        madeProgress = madeProgress || !output.isEmpty
                     }
                     let channel = try resolveChannel(.pty(id))
                     let eof = libssh2_channel_eof(channel) == 1
+                        && ptyChannels[id]?.pendingExecOutput.isEmpty == true
                     if eof { ptyChannels[id]?.reachedEOF = true }
                     let pendingSend = transportSendOwner == stdoutOwner
                         || transportSendOwner == stderrOwner
-                    progress = (eof, pendingSend, madeProgress, sessionWaitPlan(try requireSession()))
+                    progress = (
+                        output, eof, pendingSend, madeProgress,
+                        sessionWaitPlan(try requireSession()))
                     releaseOperation()
                 } catch {
                     await finishExecReadsIfNeeded(
@@ -819,7 +851,7 @@ actor SessionDriver {
                 // Never return with either read owning a pending native send:
                 // the next public read allocates different logical owners.
                 if !progress.pendingSend {
-                    if !output.isEmpty { return output }
+                    if !progress.data.isEmpty { return progress.data }
                     if progress.eof { return nil }
                 }
                 if progress.madeProgress, !progress.pendingSend {
@@ -854,9 +886,26 @@ actor SessionDriver {
             await finishOwnedSendIfNeeded(owner: owner) {
                 guard let channel = try? resolveChannel(.pty(id)) else { return nil }
                 var scratch = [UInt8](repeating: 0, count: capacity)
-                return readOnce(channel: channel, stream: stream, buffer: &scratch)
+                let count = rawChannelRead(channel: channel, stream: stream, buffer: &scratch)
+                if count > 0, stream == 0 {
+                    // Completing an owned window adjustment can also consume
+                    // stdout. Keep those bytes for the caller's next read.
+                    ptyChannels[id]?.pendingExecOutput.append(contentsOf: scratch.prefix(count))
+                }
+                if count == Int(LIBSSH2_ERROR_EAGAIN) { return LIBSSH2_ERROR_EAGAIN }
+                if count >= 0 { return 0 }
+                return Int32(clamping: count)
             }
         }
+    }
+
+    private func takePendingExecOutput(id: UInt64, maximumBytes: Int) -> Data? {
+        guard var state = ptyChannels[id], !state.pendingExecOutput.isEmpty else { return nil }
+        let count = min(maximumBytes, state.pendingExecOutput.count)
+        let data = Data(state.pendingExecOutput.prefix(count))
+        state.pendingExecOutput.removeFirst(count)
+        ptyChannels[id] = state
+        return data
     }
 
     func resizePTY(
@@ -2521,6 +2570,14 @@ actor SessionDriver {
         _ hold: @escaping @Sendable () async throws -> Void
     ) {
         nextSessionWaitHoldForTesting = hold
+    }
+
+    func failNextExecStderrReadForTesting(_ error: SSHError) {
+        nextExecStderrReadErrorForTesting = error
+    }
+
+    func interruptNextExecStdoutOwnerForTesting(_ error: SSHError) {
+        nextExecStdoutOwnerErrorForTesting = error
     }
 
     func holdNextExecChannelAllocationForTesting(

@@ -299,6 +299,14 @@ public final class SSHConnection: Sendable {
         await driver.holdNextSessionWaitForTesting(hold)
     }
 
+    func failNextExecStderrReadForTesting(_ error: SSHError) async {
+        await driver.failNextExecStderrReadForTesting(error)
+    }
+
+    func interruptNextExecStdoutOwnerForTesting(_ error: SSHError) async {
+        await driver.interruptNextExecStdoutOwnerForTesting(error)
+    }
+
     public func holdNextExecChannelAllocationForTesting(
         _ hold: @escaping @Sendable () async throws -> Void
     ) async {

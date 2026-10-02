@@ -231,6 +231,45 @@ struct SessionDriverE2ETests {
         #expect(response == Data("reused\n".utf8))
         #expect(try await channel.exitStatus(timeout: .seconds(5)) == 0)
         try await channel.close(timeout: .seconds(5))
+        for (failure, duringOwnedCleanup) in [
+            (SSHError.timedOut, false), (.cancelled, false),
+            (.timedOut, true), (.cancelled, true),
+        ] {
+            let interrupted = try await connection.openExec(
+                command: "printf 'producer-ready\\n'; IFS= read -r go; "
+                    + "printf 'recovered\\000\\377'; printf warning >&2; exit 9",
+                timeout: SessionDriverTestEnvironment.setupTimeout)
+            var ready = Data()
+            while !ready.contains(0x0A) {
+                ready.append(try #require(try await interrupted.read(
+                    maximumBytes: 64, timeout: SessionDriverTestEnvironment.setupTimeout)))
+            }
+            try #require(ready == Data("producer-ready\n".utf8))
+            if duringOwnedCleanup {
+                await connection.interruptNextExecStdoutOwnerForTesting(failure)
+            } else {
+                await connection.failNextExecStderrReadForTesting(failure)
+            }
+            try await interrupted.write(Data("go\n".utf8), timeout: .seconds(5))
+            // This independent channel drains remote packets into libssh2's
+            // queues before interruption at the stderr-read boundary.
+            let checkpoint = try await connection.execute("printf checkpoint", timeout: .seconds(5))
+            try #require(checkpoint.stdout == Data("checkpoint".utf8))
+            await #expect(throws: failure) {
+                _ = try await interrupted.read(
+                    maximumBytes: duringOwnedCleanup ? 9 : 3, timeout: .seconds(5))
+            }
+            var recovered = Data()
+            while let chunk = try await interrupted.read(maximumBytes: 3, timeout: .seconds(5)) {
+                #expect(chunk.count <= 3)
+                recovered.append(chunk)
+            }
+            var expected = Data("recovered".utf8)
+            expected.append(contentsOf: [0, 255])
+            #expect(recovered == expected)
+            #expect(try await interrupted.exitStatus(timeout: .seconds(5)) == 9)
+            try await interrupted.close(timeout: .seconds(5))
+        }
         #expect(await connection.isConnected)
         try await connection.close(timeout: .seconds(2))
     }
