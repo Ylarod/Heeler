@@ -17,6 +17,10 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
+- Opening an Agent from the iPhone Agent list no longer shows the input bar
+  a tab bar's height too high before it drops to the bottom of the screen.
+  (#406)
+
 - Preserve literal absolute Unix API endpoints without a HOME probe, and keep
   Windows API and terminal connections on the selected session when SSH
   inherits legacy socket overrides. (#400)
