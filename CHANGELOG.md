@@ -17,10 +17,11 @@ Entries reference the issue that motivated them.
 
 ### Fixed
 
-- Prepend user-local and package-manager prefixes (`~/.local/bin`, Homebrew,
-  Cargo, mise) before the session `PATH` on non-interactive SSH commands, so
-  user installations take precedence over stale system binaries in `/usr/bin`
-  that would otherwise cause `protocol_mismatch` on attach. (#403)
+- Fix Agent terminal connections failing when an older system herdr shadows the user's updated installation. (#404)
+- Opening an Agent from the iPhone Agent list no longer shows the input bar
+  a tab bar's height too high before it drops to the bottom of the screen.
+  (#406)
+
 - Preserve literal absolute Unix API endpoints without a HOME probe, and keep
   Windows API and terminal connections on the selected session when SSH
   inherits legacy socket overrides. (#400)
