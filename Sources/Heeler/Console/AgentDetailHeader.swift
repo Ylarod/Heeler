@@ -11,6 +11,8 @@ import SwiftUI
 /// leave out the ones it cannot offer and the capsule goes with the last.
 struct AgentDetailHeader: View {
     static let controlSize: CGFloat = 44
+    /// How much of the glass shows, the rest letting output through.
+    fileprivate static let glassOpacity: Double = 0.5
     /// Buttons sharing the actions capsule sit closer than standalone ones.
     private static let capsuleButtonWidth: CGFloat = 36
     private static let capsuleInset: CGFloat = (controlSize - capsuleButtonWidth) / 2
@@ -107,13 +109,20 @@ struct AgentDetailHeaderButton: View {
 }
 
 extension View {
-    /// Liquid Glass where the system has it, a blur before that.
-    @ViewBuilder
-    fileprivate func headerGlass(in shape: some Shape, isInteractive: Bool = true) -> some View {
-        if #available(iOS 26, *) {
-            glassEffect(.regular.interactive(isInteractive), in: shape)
-        } else {
-            background(.ultraThinMaterial, in: shape)
+    /// Liquid Glass where the system has it, a blur before that. The glass
+    /// sits behind the icons at part strength, so the output under the
+    /// buttons still shows through while the icons stay solid.
+    fileprivate func headerGlass(in shape: some Shape) -> some View {
+        background {
+            Group {
+                if #available(iOS 26, *) {
+                    Color.clear.glassEffect(.regular, in: shape)
+                } else {
+                    shape.fill(.ultraThinMaterial)
+                }
+            }
+            .opacity(AgentDetailHeader.glassOpacity)
         }
+        .contentShape(shape)
     }
 }
