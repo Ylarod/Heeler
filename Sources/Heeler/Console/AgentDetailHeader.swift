@@ -2,9 +2,10 @@ import SwiftUI
 
 /// An iPhone's way back from a pushed Agent, which the edge swipe alone
 /// never showed (#396). Separate glass pieces float over the terminal:
-/// Back, the Agent's name, any trailing actions in one capsule, and at the
-/// far end a fold button that stays put. Folding leaves only that button,
-/// so the header can cover almost no output.
+/// Back at the leading end, any trailing actions in one capsule, and at the
+/// far end a fold button that stays put. The room between them is left to
+/// the terminal, and folding leaves only that button, so the header can
+/// cover almost no output.
 ///
 /// Trailing actions are plain values rather than views, so a screen can
 /// leave out the ones it cannot offer and the capsule goes with the last.
@@ -14,8 +15,6 @@ struct AgentDetailHeader: View {
     private static let capsuleButtonWidth: CGFloat = 36
     private static let capsuleInset: CGFloat = (controlSize - capsuleButtonWidth) / 2
 
-    let title: String
-    let subtitle: String
     let palette: TerminalThemePalette
     @Binding var isExpanded: Bool
     let onBack: () -> Void
@@ -26,15 +25,11 @@ struct AgentDetailHeader: View {
     var body: some View {
         HStack(spacing: 8) {
             if isExpanded {
-                Group {
-                    AgentDetailHeaderButton("Back", systemImage: "chevron.left", action: onBack)
-                        .headerGlass(in: .circle)
-                    titleBlock
-                        .layoutPriority(-1)
-                }
-                .transition(
-                    .scale(scale: 0.6, anchor: .trailing).combined(with: .opacity))
+                AgentDetailHeaderButton("Back", systemImage: "chevron.left", action: onBack)
+                    .headerGlass(in: .circle)
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
             }
+            Spacer(minLength: 0)
             if isExpanded, !actions.isEmpty {
                 HStack(spacing: 0) {
                     ForEach(actions) { action in
@@ -51,7 +46,6 @@ struct AgentDetailHeader: View {
             }
             foldButton
         }
-        .frame(maxWidth: .infinity, alignment: .trailing)
         .foregroundStyle(palette.foreground)
     }
 
@@ -69,28 +63,6 @@ struct AgentDetailHeader: View {
             }
         }
         .headerGlass(in: .circle)
-    }
-
-    /// On glass like the buttons: bare text over output stays unreadable
-    /// however strong a halo it gets. It fills the room between Back and
-    /// the trailing buttons, so a short name does not leave a stub of glass,
-    /// and it takes the taps on it rather than letting them select output.
-    private var titleBlock: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-            Text(subtitle)
-                .font(.caption2)
-                .foregroundStyle(palette.foreground.opacity(0.65))
-        }
-        .lineLimit(1)
-        .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: Self.controlSize)
-        .headerGlass(in: .capsule, isInteractive: false)
-        .contentShape(.capsule)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
     }
 }
 

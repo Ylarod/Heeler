@@ -1079,8 +1079,6 @@ struct AgentTerminalView: View {
         .overlay(alignment: .top) {
             if showsBackHeader {
                 AgentDetailHeader(
-                    title: headerTitle,
-                    subtitle: headerSubtitle,
                     palette: themePalette,
                     isExpanded: $isBackHeaderExpanded,
                     onBack: { dismiss() },
@@ -1155,20 +1153,6 @@ struct AgentTerminalView: View {
                 title: "Changes", systemImage: "arrow.triangle.branch", perform: showChanges))
         }
         return actions
-    }
-
-    /// The Agent's name as its row shows it.
-    private var headerTitle: String {
-        AgentCardPresentation(agent: agent, layout: console.rowLayout(for: agent.hostID))
-            .switcherTitle
-    }
-
-    /// The Workspace, unless it is already the title, and the Host.
-    private var headerSubtitle: String {
-        let title = headerTitle
-        return [agent.workspaceLabel.flatMap { $0 == title ? nil : $0 }, agent.hostName]
-            .compactMap { $0 }
-            .joined(separator: " \u{00B7} ")
     }
 
     private func prepareComposerKeyboardPresentation(

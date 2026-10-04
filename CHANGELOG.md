@@ -14,9 +14,9 @@ Entries reference the issue that motivated them.
   directory navigation. Windows uses herdr's official API bridge and terminal
   controller. Pairing, Changes, Skills, file uploads, and notification
   registration remain unavailable on Windows. (#400)
-- Agent detail on iPhone has a floating glass header with Back, the Agent's
-  name, the Workspace's terminals, and Changes. It starts folded to a single
-  button and stays shown once the user opens it. Swiping back from an Agent
+- Agent detail on iPhone has floating glass buttons for Back, the
+  Workspace's terminals, and Changes. They start folded to a single button
+  and stay shown once the user opens them. Swiping back from an Agent
   follows the finger like any other screen. (#409)
 
 ### Fixed
