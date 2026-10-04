@@ -30,7 +30,6 @@ struct AgentDetailHeader: View {
                     AgentDetailHeaderButton("Back", systemImage: "chevron.left", action: onBack)
                         .headerGlass(in: .circle)
                     titleBlock
-                        .frame(maxWidth: .infinity, alignment: .leading)
                         .layoutPriority(-1)
                 }
                 .transition(
@@ -73,7 +72,9 @@ struct AgentDetailHeader: View {
     }
 
     /// On glass like the buttons: bare text over output stays unreadable
-    /// however strong a halo it gets.
+    /// however strong a halo it gets. It fills the room between Back and
+    /// the trailing buttons, so a short name does not leave a stub of glass,
+    /// and it takes the taps on it rather than letting them select output.
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title)
@@ -84,9 +85,10 @@ struct AgentDetailHeader: View {
         }
         .lineLimit(1)
         .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: Self.controlSize)
-        .headerGlass(in: .capsule)
-        .allowsHitTesting(false)
+        .headerGlass(in: .capsule, isInteractive: false)
+        .contentShape(.capsule)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }
@@ -135,9 +137,9 @@ struct AgentDetailHeaderButton: View {
 extension View {
     /// Liquid Glass where the system has it, a blur before that.
     @ViewBuilder
-    fileprivate func headerGlass(in shape: some Shape) -> some View {
+    fileprivate func headerGlass(in shape: some Shape, isInteractive: Bool = true) -> some View {
         if #available(iOS 26, *) {
-            glassEffect(.regular.interactive(), in: shape)
+            glassEffect(.regular.interactive(isInteractive), in: shape)
         } else {
             background(.ultraThinMaterial, in: shape)
         }
