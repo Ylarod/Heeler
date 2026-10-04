@@ -613,6 +613,7 @@ struct ConsoleView: View {
                                 horizontalSizeClass == .regular ? detailTopInset(for: tab) : 0)
                             .environment(\.detailSurfaceEdges, detailSurfaceEdges(for: tab))
                             .environment(\.revealDetailSidebar, sidebarReveal(for: tab))
+                            .environment(\.isDetailPushed, !presentation.usesRegularColumns)
                             .toolbar {
                                 if usesSidebarNavigation,
                                     splitVisibility(for: tab).isSidebarVisible == false
@@ -2245,6 +2246,10 @@ extension EnvironmentValues {
     /// edge swipe calls it in place of going back; nil where the detail has
     /// no sidebar to show.
     @Entry var revealDetailSidebar: (@MainActor @Sendable () -> Void)? = nil
+    /// The detail is pushed over the list in a collapsed split view, so
+    /// going back pops it. False in regular columns, including a large
+    /// iPhone in landscape, where the detail is a column's root.
+    @Entry var isDetailPushed = false
 }
 
 /// A navigation bar's vertical extent in its column's own coordinates.

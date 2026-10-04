@@ -265,6 +265,7 @@ struct AgentTerminalView: View {
     @Environment(\.sceneWindow) private var sceneWindow
     @Environment(\.detailCrossfade) private var detailCrossfade
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
+    @Environment(\.isDetailPushed) private var isDetailPushed
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     @Environment(\.detailTopChromeInset) private var topChromeInset
@@ -855,7 +856,16 @@ struct AgentTerminalView: View {
             onSelect: switchToAgent,
             onTogglePin: { id in
                 console.togglePin(hostID: id.hostID, paneID: id.paneID)
-            })
+            },
+            onBack: switcherBack)
+    }
+
+    /// Only a pushed detail has a list to go back to. In regular columns the
+    /// list is beside it or behind the sidebar toggle, and dismiss would not pop.
+    private var switcherBack: (@MainActor () -> Void)? {
+        guard isDetailPushed else { return nil }
+        let dismiss = dismiss
+        return { dismiss() }
     }
 
     #if DEBUG

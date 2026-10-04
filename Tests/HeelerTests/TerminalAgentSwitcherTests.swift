@@ -118,6 +118,49 @@ struct TerminalAgentSwitcherTests {
             "the strip claimed \(stripFrame.maxX) of \(width), leaving no room for both toggles")
     }
 
+    /// The way back to the Agent list sits ahead of the chips, outside the
+    /// scroll view, so no amount of scrolling hides it (#396). Without a back
+    /// action the strip starts at the row's edge as before.
+    @MainActor
+    @Test(.timeLimit(.minutes(1)))
+    func backSitsAheadOfTheStripOnlyWhenOffered() throws {
+        let host = UUID()
+        let agents = (0..<10).map {
+            Self.makeAgent(
+                pane: "p\($0)", workspace: "a-project-with-a-long-name-\($0)", host: host)
+        }
+        func stripFrame(onBack: (@MainActor () -> Void)?) throws -> CGRect {
+            let row = TerminalAgentSwitcherRow(
+                switcher: TerminalAgentSwitcher(
+                    items: agents.map { Self.makeItem($0) },
+                    selectedID: agents[9].id,
+                    onSelect: { _ in },
+                    onTogglePin: { _ in },
+                    onBack: onBack),
+                isKeyboardUp: false,
+                toggleKeyboard: {})
+            let controller = UIHostingController(rootView: row)
+            let width: CGFloat = 402
+            let window = try makeWindow(width: width, rootViewController: controller)
+            defer { window.isHidden = true }
+            controller.view.frame = CGRect(
+                x: 0, y: 0, width: width, height: TerminalAgentSwitcherBar.preferredHeight)
+            controller.view.layoutIfNeeded()
+            let strip = try #require(Self.firstStrip(in: controller.view))
+            return strip.convert(strip.bounds, to: controller.view)
+        }
+
+        let withoutBack = try stripFrame(onBack: nil)
+        #expect(withoutBack.minX == 0)
+
+        let withBack = try stripFrame(onBack: {})
+        #expect(
+            withBack.minX >= 44,
+            "the strip starts at \(withBack.minX), over the Back button's 44pt target")
+        #expect(withBack.width > 0)
+        #expect(withBack.maxX == withoutBack.maxX)
+    }
+
     @MainActor
     private func makeWindow(
         width: CGFloat, rootViewController: UIViewController
