@@ -1070,9 +1070,8 @@ struct AgentTerminalView: View {
                 .environment(
                     \.colorScheme,
                     terminal.themes.selection(for: colorScheme).chromeColorScheme(for: colorScheme))
-                .padding(.trailing, 12)
+                .padding(.horizontal, 12)
                 .padding(.top, terminalTopInset + 4)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .onWindowControlsHeightChange { windowControlsHeight = $0 }

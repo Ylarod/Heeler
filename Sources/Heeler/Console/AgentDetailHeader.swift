@@ -1,16 +1,14 @@
 import SwiftUI
 
 /// An iPhone's way back from a pushed Agent, which the edge swipe alone
-/// never showed (#396). It floats over the terminal, docked to the leading
-/// edge: a handle that stays put, then Back, the Agent's name, and any
-/// trailing actions, which all fold into the handle so the header covers no
-/// more output than the Workspace drawer's handle does.
+/// never showed (#396). Separate glass pieces float over the terminal:
+/// Back, the Agent's name, any trailing actions in one capsule, and at the
+/// far end a fold button that stays put. Folding leaves only that button,
+/// so the header can cover almost no output.
 ///
-/// Trailing actions take `AgentDetailHeaderButton`s. Without them the
-/// header hugs its title; with them it spans the width, the title takes
-/// what the buttons leave, and the buttons sit at the far end.
+/// Trailing actions take `AgentDetailHeaderButton`s.
 struct AgentDetailHeader<Actions: View>: View {
-    static var height: CGFloat { 48 }
+    static var controlSize: CGFloat { 44 }
 
     let title: String
     let subtitle: String
@@ -40,57 +38,59 @@ struct AgentDetailHeader<Actions: View>: View {
     private var hasActions: Bool { Actions.self != EmptyView.self }
 
     var body: some View {
-        HStack(spacing: 0) {
-            handle
+        HStack(spacing: 8) {
             if isExpanded {
-                HStack(spacing: 10) {
+                Group {
                     AgentDetailHeaderButton("Back", systemImage: "chevron.left", action: onBack)
+                        .headerGlass(in: .circle)
                     titleBlock
-                        .frame(maxWidth: hasActions ? .infinity : nil, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .layoutPriority(-1)
                     if hasActions {
-                        HStack(spacing: 4) { actions }
+                        HStack(spacing: 0) { actions }
                             .fixedSize()
+                            .headerGlass(in: .capsule)
                     }
                 }
-                // Circular buttons at the end want the same margin as Back
-                // has from the handle; text wants a little more.
-                .padding(.trailing, hasActions ? 6 : 16)
-                .transition(.move(edge: .leading).combined(with: .opacity))
+                .transition(
+                    .scale(scale: 0.6, anchor: .trailing).combined(with: .opacity))
             }
+            foldButton
         }
-        .frame(height: Self.height)
-        .clipShape(AgentDetailHeaderSurface.shape)
-        .background { AgentDetailHeaderSurface(palette: palette) }
+        .frame(maxWidth: .infinity, alignment: .trailing)
         .foregroundStyle(palette.foreground)
     }
 
-    /// Stays against the edge in both states; its glyph says which way the
-    /// header will go.
-    private var handle: some View {
-        Button {
+    /// Stays at the far end in both states.
+    private var foldButton: some View {
+        AgentDetailHeaderButton(
+            isExpanded ? "Hide Header" : "Show Header",
+            systemImage: isExpanded
+                ? "arrow.down.right.and.arrow.up.left"
+                : "arrow.up.left.and.arrow.down.right"
+        ) {
             withAnimation(reduceMotion ? nil : .snappy) {
                 isExpanded.toggle()
             }
-        } label: {
-            Image(systemName: isExpanded ? "chevron.compact.left" : "chevron.compact.right")
-                .font(.system(size: 15, weight: .semibold))
-                .opacity(TerminalFloatingButtonStyle.iconOpacity)
-                .frame(width: TerminalEdgeTabBackground.width, height: Self.height)
-                .contentShape(.rect)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(isExpanded ? "Hide Header" : "Show Header")
+        .headerGlass(in: .circle)
     }
 
+    /// On glass like the buttons: bare text over output stays unreadable
+    /// however strong a halo it gets.
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title)
-                .font(.subheadline.weight(.semibold))
+                .font(.headline)
             Text(subtitle)
-                .font(.caption2)
-                .foregroundStyle(palette.foreground.opacity(0.6))
+                .font(.caption)
+                .foregroundStyle(palette.foreground.opacity(0.65))
         }
         .lineLimit(1)
+        .padding(.horizontal, 16)
+        .frame(height: Self.controlSize)
+        .headerGlass(in: .capsule)
+        .allowsHitTesting(false)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }
@@ -110,11 +110,10 @@ extension AgentDetailHeader where Actions == EmptyView {
     }
 }
 
-/// A round icon button inside `AgentDetailHeader`: Back, and the actions
-/// at its trailing end. It takes the header's foreground.
+/// An icon button inside `AgentDetailHeader`. It has no surface of its own:
+/// the header puts Back and the fold button on glass circles, and its
+/// trailing actions together on one glass capsule.
 struct AgentDetailHeaderButton: View {
-    static var size: CGFloat { 36 }
-
     let title: LocalizedStringKey
     let systemImage: String
     let action: () -> Void
@@ -128,42 +127,25 @@ struct AgentDetailHeaderButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 16, weight: .semibold))
-                .frame(width: Self.size, height: Self.size)
-                .background(.foreground.opacity(0.1), in: .circle)
-                .contentShape(.circle)
+                .font(.system(size: 17, weight: .semibold))
+                .frame(
+                    width: AgentDetailHeader<EmptyView>.controlSize,
+                    height: AgentDetailHeader<EmptyView>.controlSize)
+                .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
     }
 }
 
-/// The header's surface: the trailing-edge tabs' shape mirrored onto the
-/// leading edge, with their border and shadow over a blur, so output
-/// passing beneath the Agent's name reads as texture instead of text
-/// competing with it.
-private struct AgentDetailHeaderSurface: View {
-    /// Squared off against the screen, rounded on the side facing the terminal.
-    static let shape = UnevenRoundedRectangle(
-        topLeadingRadius: 0,
-        bottomLeadingRadius: 0,
-        bottomTrailingRadius: TerminalEdgeTabBackground.cornerRadius,
-        topTrailingRadius: TerminalEdgeTabBackground.cornerRadius,
-        style: .continuous)
-
-    let palette: TerminalThemePalette
-
-    var body: some View {
-        Self.shape
-            .fill(.ultraThinMaterial)
-            .overlay {
-                Self.shape
-                    .fill(palette.background.mix(with: palette.foreground, by: 0.16).opacity(0.5))
-            }
-            .overlay {
-                Self.shape.strokeBorder(palette.foreground.opacity(0.2), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
-            .allowsHitTesting(false)
+extension View {
+    /// Liquid Glass where the system has it, a blur before that.
+    @ViewBuilder
+    fileprivate func headerGlass(in shape: some Shape) -> some View {
+        if #available(iOS 26, *) {
+            glassEffect(.regular.interactive(), in: shape)
+        } else {
+            background(.ultraThinMaterial, in: shape)
+        }
     }
 }
