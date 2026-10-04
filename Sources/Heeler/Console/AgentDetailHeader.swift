@@ -2,40 +2,27 @@ import SwiftUI
 
 /// An iPhone's way back from a pushed Agent, which the edge swipe alone
 /// never showed (#396). Separate glass pieces float over the terminal:
-/// Back, the Agent's name, any trailing actions in one capsule, and at the
-/// far end a fold button that stays put. Folding leaves only that button,
-/// so the header can cover almost no output.
+/// Back, the Agent's name, and one capsule of trailing actions that ends in
+/// a fold button, which stays put. Folding leaves only that button, so the
+/// header can cover almost no output.
 ///
-/// Trailing actions take `AgentDetailHeaderButton`s.
-struct AgentDetailHeader<Actions: View>: View {
-    static var controlSize: CGFloat { 44 }
+/// Trailing actions are plain values rather than views, so a screen can
+/// leave out the ones it cannot offer and the capsule goes with the last.
+struct AgentDetailHeader: View {
+    static let controlSize: CGFloat = 44
+    /// Buttons sharing the trailing capsule sit closer than standalone ones;
+    /// the capsule's own inset brings a lone fold button back to a circle.
+    private static let capsuleButtonWidth: CGFloat = 36
+    private static let capsuleInset: CGFloat = (controlSize - capsuleButtonWidth) / 2
 
     let title: String
     let subtitle: String
     let palette: TerminalThemePalette
     @Binding var isExpanded: Bool
     let onBack: () -> Void
-    let actions: Actions
+    var actions: [AgentDetailHeaderAction] = []
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    init(
-        title: String,
-        subtitle: String,
-        palette: TerminalThemePalette,
-        isExpanded: Binding<Bool>,
-        onBack: @escaping () -> Void,
-        @ViewBuilder actions: () -> Actions
-    ) {
-        self.title = title
-        self.subtitle = subtitle
-        self.palette = palette
-        _isExpanded = isExpanded
-        self.onBack = onBack
-        self.actions = actions()
-    }
-
-    private var hasActions: Bool { Actions.self != EmptyView.self }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -46,16 +33,24 @@ struct AgentDetailHeader<Actions: View>: View {
                     titleBlock
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .layoutPriority(-1)
-                    if hasActions {
-                        HStack(spacing: 0) { actions }
-                            .fixedSize()
-                            .headerGlass(in: .capsule)
-                    }
                 }
                 .transition(
                     .scale(scale: 0.6, anchor: .trailing).combined(with: .opacity))
             }
-            foldButton
+            HStack(spacing: 0) {
+                if isExpanded {
+                    ForEach(actions) { action in
+                        AgentDetailHeaderButton(
+                            action.title, systemImage: action.systemImage,
+                            width: Self.capsuleButtonWidth, action: action.perform)
+                    }
+                    .transition(.opacity)
+                }
+                foldButton
+            }
+            .padding(.horizontal, Self.capsuleInset)
+            .fixedSize()
+            .headerGlass(in: .capsule)
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
         .foregroundStyle(palette.foreground)
@@ -68,13 +63,13 @@ struct AgentDetailHeader<Actions: View>: View {
             // A window's top bar, which is what this shows and hides: put
             // away while it is out, filled in while it is folded.
             systemImage: isExpanded
-                ? "menubar.arrow.up.rectangle" : "inset.filled.topthird.rectangle"
+                ? "menubar.arrow.up.rectangle" : "inset.filled.topthird.rectangle",
+            width: Self.capsuleButtonWidth
         ) {
             withAnimation(reduceMotion ? nil : .snappy) {
                 isExpanded.toggle()
             }
         }
-        .headerGlass(in: .circle)
     }
 
     /// On glass like the buttons: bare text over output stays unreadable
@@ -97,31 +92,31 @@ struct AgentDetailHeader<Actions: View>: View {
     }
 }
 
-extension AgentDetailHeader where Actions == EmptyView {
-    init(
-        title: String,
-        subtitle: String,
-        palette: TerminalThemePalette,
-        isExpanded: Binding<Bool>,
-        onBack: @escaping () -> Void
-    ) {
-        self.init(
-            title: title, subtitle: subtitle, palette: palette, isExpanded: isExpanded,
-            onBack: onBack, actions: { EmptyView() })
-    }
+/// One of `AgentDetailHeader`'s trailing buttons.
+struct AgentDetailHeaderAction: Identifiable {
+    let title: LocalizedStringKey
+    let systemImage: String
+    let perform: () -> Void
+
+    var id: String { systemImage }
 }
 
 /// An icon button inside `AgentDetailHeader`. It has no surface of its own:
-/// the header puts Back and the fold button on glass circles, and its
-/// trailing actions together on one glass capsule.
+/// the header puts Back on a glass circle, and its trailing actions and
+/// fold button together on one glass capsule.
 struct AgentDetailHeaderButton: View {
     let title: LocalizedStringKey
     let systemImage: String
+    let width: CGFloat
     let action: () -> Void
 
-    init(_ title: LocalizedStringKey, systemImage: String, action: @escaping () -> Void) {
+    init(
+        _ title: LocalizedStringKey, systemImage: String,
+        width: CGFloat = AgentDetailHeader.controlSize, action: @escaping () -> Void
+    ) {
         self.title = title
         self.systemImage = systemImage
+        self.width = width
         self.action = action
     }
 
@@ -129,9 +124,7 @@ struct AgentDetailHeaderButton: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 17, weight: .semibold))
-                .frame(
-                    width: AgentDetailHeader<EmptyView>.controlSize,
-                    height: AgentDetailHeader<EmptyView>.controlSize)
+                .frame(width: width, height: AgentDetailHeader.controlSize)
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)

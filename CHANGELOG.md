@@ -14,9 +14,9 @@ Entries reference the issue that motivated them.
   directory navigation. Windows uses herdr's official API bridge and terminal
   controller. Pairing, Changes, Skills, file uploads, and notification
   registration remain unavailable on Windows. (#400)
-- Agent detail on iPhone has a floating glass header with Back and the
-  Agent's name, which folds away to a single button, so leaving an Agent no
-  longer depends on an edge swipe. (#409)
+- Agent detail on iPhone has a floating glass header with Back, the Agent's
+  name, the Workspace's terminals, and Changes, which folds away to a single
+  button, so leaving an Agent no longer depends on an edge swipe. (#409)
 
 ### Fixed
 

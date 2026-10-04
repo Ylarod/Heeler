@@ -269,6 +269,9 @@ struct AgentTerminalView: View {
     /// Whether the back header is out, or folded into its edge handle.
     /// Remembered across Agents: folding it is a reading preference.
     @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = true
+    /// The Workspace drawer's panel, while the back header's button owns it.
+    @State private var isHeaderDrawerOpen = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     @Environment(\.detailTopChromeInset) private var topChromeInset
@@ -1000,7 +1003,16 @@ struct AgentTerminalView: View {
         // Above the floating buttons: the open panel covers them.
         .overlay {
             if let workspaceDrawer {
-                keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
+                let drawer = keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
+                // The back header's button stands in for the edge handle
+                // while the header is out; folded, the handle comes back.
+                if showsBackHeader, isBackHeaderExpanded {
+                    drawer.openedFromHeader(
+                        $isHeaderDrawerOpen,
+                        panelTop: backHeaderTop + AgentDetailHeader.controlSize + 8)
+                } else {
+                    drawer
+                }
             }
         }
         .overlay { statusOverlay }
@@ -1066,12 +1078,16 @@ struct AgentTerminalView: View {
                     subtitle: headerSubtitle,
                     palette: themePalette,
                     isExpanded: $isBackHeaderExpanded,
-                    onBack: { dismiss() })
+                    onBack: { dismiss() },
+                    actions: backHeaderActions)
                 .environment(
                     \.colorScheme,
                     terminal.themes.selection(for: colorScheme).chromeColorScheme(for: colorScheme))
                 .padding(.horizontal, 12)
-                .padding(.top, terminalTopInset + 4)
+                .padding(.top, backHeaderTop)
+                .onChange(of: isBackHeaderExpanded) { _, expanded in
+                    if !expanded { isHeaderDrawerOpen = false }
+                }
             }
         }
         .onWindowControlsHeightChange { windowControlsHeight = $0 }
@@ -1111,6 +1127,28 @@ struct AgentTerminalView: View {
 
     private var terminalTopInset: CGFloat {
         max(statusBarInset, topChromeInset, windowControlsHeight)
+    }
+
+    private var backHeaderTop: CGFloat { terminalTopInset + 4 }
+
+    /// The Workspace's terminals, then Changes at the far end; each only
+    /// where this screen can offer it.
+    private var backHeaderActions: [AgentDetailHeaderAction] {
+        var actions: [AgentDetailHeaderAction] = []
+        if workspaceDrawer != nil {
+            actions.append(AgentDetailHeaderAction(
+                title: "Workspace Terminals", systemImage: "terminal"
+            ) {
+                withAnimation(reduceMotion ? nil : .snappy(duration: 0.24)) {
+                    isHeaderDrawerOpen.toggle()
+                }
+            })
+        }
+        if let showChanges {
+            actions.append(AgentDetailHeaderAction(
+                title: "Changes", systemImage: "arrow.triangle.branch", perform: showChanges))
+        }
+        return actions
     }
 
     /// The Agent's name as its row shows it.
