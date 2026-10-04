@@ -266,7 +266,6 @@ struct AgentTerminalView: View {
     @Environment(\.detailCrossfade) private var detailCrossfade
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
     @Environment(\.showsDetailBackHeader) private var showsBackHeader
-    @Environment(\.detailNavigationBarBottom) private var navigationBarBottom
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     @Environment(\.detailTopChromeInset) private var topChromeInset
@@ -1053,11 +1052,15 @@ struct AgentTerminalView: View {
                 isReserved: agent.sessionFilePath != nil,
                 palette: themePalette)
         }
-        // The navigation bar remains present as the owner of the status bar
-        // appearance and, on an iPhone, of the Back button and title. This
-        // inset keeps terminal output below the system clock, or below that
-        // header where it shows.
-        .padding(.top, terminalTopInset)
+        // The navigation bar remains present only as the owner of the status
+        // bar appearance. Its content stays hidden, while this inset keeps
+        // terminal output below the system clock and any back header.
+        .padding(.top, terminalTopInset + (showsBackHeader ? Self.backHeaderClearance : 0))
+        .overlay(alignment: .top) {
+            if showsBackHeader {
+                backHeader.padding(.top, terminalTopInset)
+            }
+        }
         .onWindowControlsHeightChange { windowControlsHeight = $0 }
         .background {
             // Keyboard geometry and the status bar inset follow this view's
@@ -1082,63 +1085,77 @@ struct AgentTerminalView: View {
             terminal.themes.selection(for: colorScheme)
                 .chromeColorScheme(for: colorScheme),
             for: .navigationBar)
-        // An iPhone keeps the system Back button: the edge swipe alone gave
-        // no sign of the way back (#396). In regular columns the list is
-        // beside the detail or behind Show Sidebar instead.
-        .navigationBarBackButtonHidden(!showsBackHeader)
-        .toolbar {
-            if showsBackHeader { headerTitleItem }
-        }
+        .navigationBarBackButtonHidden(true)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         // `toolbarColorScheme` takes effect only while the bar background is
         // visible. A clear visible background keeps the bar visually absent
         // and the terminal unobscured while still applying status-bar contrast.
-        // The back header is the bar itself, so it alone is opaque.
-        .toolbarBackground(
-            showsBackHeader ? AnyShapeStyle(.bar) : AnyShapeStyle(Color.clear),
-            for: .navigationBar)
+        .toolbarBackground(Color.clear, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar(.visible, for: .navigationBar)
     }
 
     private var terminalTopInset: CGFloat {
-        let inset = max(statusBarInset, topChromeInset, windowControlsHeight)
-        return showsBackHeader ? max(inset, navigationBarBottom) : inset
+        max(statusBarInset, topChromeInset, windowControlsHeight)
     }
 
-    /// The Agent's name as its row shows it, over the Workspace and Host
-    /// when they add to it, beside the Back button.
-    @ToolbarContentBuilder
-    private var headerTitleItem: some ToolbarContent {
-        if #available(iOS 26, *) {
-            ToolbarItem(placement: .topBarLeading) { headerTitle }
-                .sharedBackgroundVisibility(.hidden)
-        } else {
-            ToolbarItem(placement: .topBarLeading) { headerTitle }
-        }
-    }
+    private static let backHeaderHeight: CGFloat = 52
+    /// The terminal starts below the back header, so its first line is
+    /// never hidden behind it.
+    private static let backHeaderClearance: CGFloat = backHeaderHeight + 6
 
-    private var headerTitle: some View {
+    /// An iPhone's way back from a pushed Agent, which the edge swipe alone
+    /// never showed (#396). It floats, translucent, below the status bar and
+    /// wears the terminal's theme like the usage strip does.
+    private var backHeader: some View {
         let title = AgentCardPresentation(
             agent: agent, layout: console.rowLayout(for: agent.hostID)
         ).switcherTitle
         let subtitle = [agent.workspaceLabel.flatMap { $0 == title ? nil : $0 }, agent.hostName]
             .compactMap { $0 }
             .joined(separator: " \u{00B7} ")
-        return VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .font(.headline)
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        let palette = themePalette
+        return HStack(spacing: 10) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 40, height: 40)
+                    .background(palette.foreground.opacity(0.1), in: .circle)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back")
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.headline)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(palette.foreground.opacity(0.6))
+            }
+            .lineLimit(1)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 0)
         }
-        .lineLimit(1)
-        // A bar item gets only its ideal width, which a truncating title
-        // would shrink to an ellipsis; this fixes the room it may take.
-        .frame(width: 240, alignment: .leading)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
+        .foregroundStyle(palette.foreground)
+        .padding(.horizontal, 6)
+        .frame(height: Self.backHeaderHeight)
+        .background {
+            // Blurred rather than merely faded, so output passing beneath
+            // reads as texture instead of text competing with the title.
+            let shape = RoundedRectangle(
+                cornerRadius: Self.backHeaderHeight / 2, style: .continuous)
+            shape.fill(.ultraThinMaterial)
+                .overlay { shape.fill(palette.background.opacity(0.45)) }
+                .overlay { shape.strokeBorder(palette.foreground.opacity(0.1)) }
+                .environment(
+                    \.colorScheme,
+                    terminal.themes.selection(for: colorScheme).chromeColorScheme(for: colorScheme))
+        }
+        .padding(.horizontal, 12)
     }
 
     private func prepareComposerKeyboardPresentation(

@@ -617,7 +617,6 @@ struct ConsoleView: View {
                                 \.showsDetailBackHeader,
                                 !presentation.usesRegularColumns
                                     && UIDevice.current.userInterfaceIdiom == .phone)
-                            .environment(\.detailNavigationBarBottom, detailBar.bottom)
                             .toolbar {
                                 if usesSidebarNavigation,
                                     splitVisibility(for: tab).isSidebarVisible == false
@@ -633,9 +632,10 @@ struct ConsoleView: View {
                                     }
                                 }
                             }
-                            // Compact too: an iPhone's back header sits under it.
                             .background {
-                                NavigationBarTopReader { detailBar = $0 }
+                                if horizontalSizeClass == .regular {
+                                    NavigationBarTopReader { detailBar = $0 }
+                                }
                             }
                             .overlay(alignment: .top) {
                                 if horizontalSizeClass == .regular, !terminalOwnsTopEdge {
@@ -2249,14 +2249,11 @@ extension EnvironmentValues {
     /// edge swipe calls it in place of going back; nil where the detail has
     /// no sidebar to show.
     @Entry var revealDetailSidebar: (@MainActor @Sendable () -> Void)? = nil
-    /// The detail is pushed over the list on an iPhone, so it shows a header
-    /// with the system Back button. False in regular columns, including a
-    /// large iPhone in landscape, and on an iPad, where an edge swipe or
-    /// the sidebar leads back.
+    /// The detail is pushed over the list on an iPhone, so it shows its own
+    /// floating header with a Back button. False in regular columns,
+    /// including a large iPhone in landscape, and on an iPad, where an edge
+    /// swipe or the sidebar leads back.
     @Entry var showsDetailBackHeader = false
-    /// Where the detail's navigation bar ends, in the column's own space. A
-    /// detail with a back header starts below it.
-    @Entry var detailNavigationBarBottom: CGFloat = 0
 }
 
 /// A navigation bar's vertical extent in its column's own coordinates.
