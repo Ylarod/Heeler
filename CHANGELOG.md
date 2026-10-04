@@ -16,7 +16,7 @@ Entries reference the issue that motivated them.
   registration remain unavailable on Windows. (#400)
 - A Back button at the start of the Agent switcher strip returns to the Agent
   list on iPhone and in compact iPad windows, so leaving an Agent no longer
-  depends on an edge swipe. (#396)
+  depends on an edge swipe. (#409)
 
 ### Fixed
 
