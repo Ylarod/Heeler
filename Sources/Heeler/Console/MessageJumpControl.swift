@@ -604,22 +604,10 @@ struct TerminalEdgeTabBackground: View {
     var fillOpacity: Double = tabFillOpacity
 
     var body: some View {
-        TerminalEdgeTabSurface(outline: Self.shape, palette: palette, fillOpacity: fillOpacity)
-    }
-}
-
-/// An edge tab's fill, border, and shadow, around any outline: the drawer's
-/// rounded tab and the Back handle's half ellipse look like one family.
-struct TerminalEdgeTabSurface<Outline: InsettableShape>: View {
-    let outline: Outline
-    let palette: TerminalThemePalette
-    var fillOpacity: Double = TerminalEdgeTabBackground.tabFillOpacity
-
-    var body: some View {
-        outline
+        Self.shape
             .fill(palette.background.mix(with: palette.foreground, by: 0.16).opacity(fillOpacity))
             .overlay {
-                outline.strokeBorder(palette.foreground.opacity(0.2), lineWidth: 1)
+                Self.shape.strokeBorder(palette.foreground.opacity(0.2), lineWidth: 1)
             }
             .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
             .allowsHitTesting(false)

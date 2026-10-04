@@ -266,6 +266,7 @@ struct AgentTerminalView: View {
     @Environment(\.detailCrossfade) private var detailCrossfade
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
     @Environment(\.isDetailPushed) private var isDetailPushed
+    @Environment(\.detailNavigationBarBottom) private var navigationBarBottom
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     @Environment(\.detailTopChromeInset) private var topChromeInset
@@ -1008,17 +1009,6 @@ struct AgentTerminalView: View {
                 if let revealDetailSidebar { revealDetailSidebar() } else { dismiss() }
             }
         }
-        // Over the edge gesture, whose strip would otherwise take the
-        // handle's taps. Only a pushed detail has a list to go back to: in
-        // regular columns the list is beside it or behind the sidebar
-        // toggle, and dismiss would not pop.
-        .overlay {
-            if isDetailPushed {
-                AgentBackEdgeHandle(edgeDock: terminal.edgeDock, palette: themePalette) {
-                    dismiss()
-                }
-            }
-        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             attachmentStatus
         }
@@ -1063,10 +1053,12 @@ struct AgentTerminalView: View {
                 isReserved: agent.sessionFilePath != nil,
                 palette: themePalette)
         }
-        // The navigation bar remains present only as the owner of the status
-        // bar appearance. Its content stays hidden, while this inset keeps
-        // terminal output below the system clock.
-        .padding(.top, max(statusBarInset, topChromeInset, windowControlsHeight))
+        // The navigation bar remains present as the owner of the status bar
+        // appearance and, on a pushed detail, of the Back button. This inset
+        // keeps terminal output below the system clock and that button.
+        .padding(.top, max(
+            statusBarInset, topChromeInset, windowControlsHeight,
+            isDetailPushed ? navigationBarBottom : 0))
         .onWindowControlsHeightChange { windowControlsHeight = $0 }
         .background {
             // Keyboard geometry and the status bar inset follow this view's
@@ -1091,7 +1083,10 @@ struct AgentTerminalView: View {
             terminal.themes.selection(for: colorScheme)
                 .chromeColorScheme(for: colorScheme),
             for: .navigationBar)
-        .navigationBarBackButtonHidden(true)
+        // A pushed detail keeps the system Back button: the edge swipe
+        // alone gave no sign of the way back (#396). In regular columns the
+        // list is beside it or behind Show Sidebar instead.
+        .navigationBarBackButtonHidden(!isDetailPushed)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         // `toolbarColorScheme` takes effect only while the bar background is
@@ -1843,113 +1838,6 @@ private struct AgentEdgeBackGesture: View {
                         dismiss()
                     })
             .accessibilityHidden(true)
-    }
-}
-
-/// The edge swipe made visible (#396): a half ellipse on the leading edge
-/// facing the Workspace drawer's tab, so leaving an Agent no longer depends
-/// on knowing the gesture. A tap or a swipe from it goes back; a long press
-/// slides it along the edge like the drawer's (``EdgeDockLift``).
-private struct AgentBackEdgeHandle: View {
-    let edgeDock: EdgeDockSettings
-    let palette: TerminalThemePalette
-    let goBack: @MainActor () -> Void
-
-    /// Docks and lifts like the drawer's tab, and is as tall, so the two
-    /// read as a pair.
-    private typealias Tab = WorkspaceTerminalDrawer
-    /// Narrower than the drawer's tab: it marks a gesture rather than
-    /// opening a panel, so it takes less of the output.
-    private static let width: CGFloat = 24
-    /// One accessibility nudge moves the handle by its own height.
-    private static let nudge: CGFloat = Tab.handleSize.height
-    /// Shorter than the edge swipe's: starting on the handle already says
-    /// where the swipe is going.
-    private static let swipeDistance: CGFloat = 40
-
-    @State private var isLifted = false
-    @State private var liftTravel: CGFloat = 0
-
-    var body: some View {
-        GeometryReader { geometry in
-            let height = geometry.size.height
-            let top = Tab.handleTop(
-                fraction: edgeDock.fraction(for: .backHandle),
-                liftTravel: liftTravel, height: height)
-            handle(top: top, height: height)
-                .offset(y: top)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-        .foregroundStyle(palette.foreground)
-    }
-
-    private func dock(handleTop top: CGFloat, height: CGFloat) {
-        edgeDock.setFraction(Tab.fraction(handleTop: top, height: height), for: .backHandle)
-        liftTravel = 0
-    }
-
-    private func handle(top: CGFloat, height: CGFloat) -> some View {
-        Image(systemName: "chevron.backward")
-            .font(.system(size: 13, weight: .semibold))
-            .opacity(TerminalFloatingButtonStyle.iconOpacity)
-            .frame(width: Self.width, height: Tab.handleSize.height)
-            .background {
-                TerminalEdgeTabSurface(outline: LeadingHalfEllipse(), palette: palette)
-            }
-            .frame(width: Tab.handleHitWidth, alignment: .leading)
-            .contentShape(.rect)
-            .onTapGesture {
-                guard !isLifted else { return }
-                goBack()
-            }
-            .gesture(
-                DragGesture(minimumDistance: 12)
-                    .onEnded { value in
-                        let horizontal = value.translation.width
-                        guard !isLifted, horizontal >= Self.swipeDistance,
-                              abs(value.translation.height) <= horizontal * 0.75
-                        else { return }
-                        goBack()
-                    })
-            .edgeDockLift(
-                isLifted: $isLifted,
-                onMove: { liftTravel = $0 },
-                onDrop: { travel in
-                    dock(handleTop: Tab.handleTop(
-                        fraction: edgeDock.fraction(for: .backHandle),
-                        liftTravel: travel, height: height), height: height)
-                })
-            .hoverEffect(.highlight)
-            .accessibilityElement(children: .ignore)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityLabel("Back to Agents")
-            .accessibilityAction { goBack() }
-            .accessibilityAction(named: "Move up") {
-                dock(handleTop: top - Self.nudge, height: height)
-            }
-            .accessibilityAction(named: "Move down") {
-                dock(handleTop: top + Self.nudge, height: height)
-            }
-    }
-}
-
-/// The half of an ellipse that bulges out of a leading edge: square against
-/// the edge, its curve spanning the full height.
-private struct LeadingHalfEllipse: InsettableShape {
-    var insetAmount: CGFloat = 0
-
-    func path(in rect: CGRect) -> Path {
-        let ellipse = CGRect(
-            x: rect.minX - rect.width, y: rect.minY,
-            width: rect.width * 2, height: rect.height
-        ).insetBy(dx: insetAmount, dy: insetAmount)
-        return Path(ellipseIn: ellipse).intersection(Path(rect))
-    }
-
-    func inset(by amount: CGFloat) -> Self {
-        var copy = self
-        copy.insetAmount += amount
-        return copy
     }
 }
 

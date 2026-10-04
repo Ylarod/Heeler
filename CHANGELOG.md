@@ -14,9 +14,8 @@ Entries reference the issue that motivated them.
   directory navigation. Windows uses herdr's official API bridge and terminal
   controller. Pairing, Changes, Skills, file uploads, and notification
   registration remain unavailable on Windows. (#400)
-- A Back handle on the leading edge of Agent detail, facing the Workspace
-  drawer's, returns to the Agent list with a tap or a swipe on iPhone and in
-  compact iPad windows. Long-press it to move it along the edge. (#409)
+- Agent detail shows the system Back button on iPhone and in compact iPad
+  windows, so leaving an Agent no longer depends on an edge swipe. (#409)
 
 ### Fixed
 

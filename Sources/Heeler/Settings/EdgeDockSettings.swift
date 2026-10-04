@@ -11,14 +11,12 @@ final class EdgeDockSettings {
     enum Control: String, CaseIterable, Sendable {
         case workspaceDrawer = "workspace-drawer"
         case messageJump = "message-jump"
-        case backHandle = "back-handle"
 
         /// Where a control sits until the user moves it: the drawer handle
-        /// and the Back handle facing it midway, the jump buttons as low as
-        /// the keyboard band allows.
+        /// midway, the jump buttons as low as the keyboard band allows.
         var defaultFraction: CGFloat {
             switch self {
-            case .workspaceDrawer, .backHandle: 0.5
+            case .workspaceDrawer: 0.5
             case .messageJump: 1
             }
         }

@@ -614,6 +614,7 @@ struct ConsoleView: View {
                             .environment(\.detailSurfaceEdges, detailSurfaceEdges(for: tab))
                             .environment(\.revealDetailSidebar, sidebarReveal(for: tab))
                             .environment(\.isDetailPushed, !presentation.usesRegularColumns)
+                            .environment(\.detailNavigationBarBottom, detailBar.bottom)
                             .toolbar {
                                 if usesSidebarNavigation,
                                     splitVisibility(for: tab).isSidebarVisible == false
@@ -629,10 +630,9 @@ struct ConsoleView: View {
                                     }
                                 }
                             }
+                            // Compact too: a pushed detail clears its Back button.
                             .background {
-                                if horizontalSizeClass == .regular {
-                                    NavigationBarTopReader { detailBar = $0 }
-                                }
+                                NavigationBarTopReader { detailBar = $0 }
                             }
                             .overlay(alignment: .top) {
                                 if horizontalSizeClass == .regular, !terminalOwnsTopEdge {
@@ -2250,6 +2250,9 @@ extension EnvironmentValues {
     /// going back pops it. False in regular columns, including a large
     /// iPhone in landscape, where the detail is a column's root.
     @Entry var isDetailPushed = false
+    /// Where the detail's navigation bar ends, in the column's own space. A
+    /// pushed detail that shows the bar's Back button starts below it.
+    @Entry var detailNavigationBarBottom: CGFloat = 0
 }
 
 /// A navigation bar's vertical extent in its column's own coordinates.
