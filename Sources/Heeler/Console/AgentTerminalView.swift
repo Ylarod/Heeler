@@ -266,6 +266,10 @@ struct AgentTerminalView: View {
     @Environment(\.detailCrossfade) private var detailCrossfade
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
     @Environment(\.showsDetailBackHeader) private var showsBackHeader
+    /// Whether the back header shows the Agent's name or only its icon.
+    /// Remembered across Agents: collapsing it is a reading preference.
+    @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     @Environment(\.detailTopChromeInset) private var topChromeInset
@@ -1054,8 +1058,8 @@ struct AgentTerminalView: View {
         }
         // The navigation bar remains present only as the owner of the status
         // bar appearance. Its content stays hidden, while this inset keeps
-        // terminal output below the system clock and any back header.
-        .padding(.top, terminalTopInset + (showsBackHeader ? Self.backHeaderClearance : 0))
+        // terminal output below the system clock.
+        .padding(.top, terminalTopInset)
         .overlay(alignment: .top) {
             if showsBackHeader {
                 backHeader.padding(.top, terminalTopInset)
@@ -1100,14 +1104,13 @@ struct AgentTerminalView: View {
         max(statusBarInset, topChromeInset, windowControlsHeight)
     }
 
-    private static let backHeaderHeight: CGFloat = 52
-    /// The terminal starts below the back header, so its first line is
-    /// never hidden behind it.
-    private static let backHeaderClearance: CGFloat = backHeaderHeight + 6
+    private static let backHeaderHeight: CGFloat = 44
 
     /// An iPhone's way back from a pushed Agent, which the edge swipe alone
-    /// never showed (#396). It floats, translucent, below the status bar and
-    /// wears the terminal's theme like the usage strip does.
+    /// never showed (#396). It floats over the terminal below the status
+    /// bar: Back, then a fixed icon that unfolds the Agent's name to its
+    /// right or folds it away, so the header can cover as little output as
+    /// two buttons.
     private var backHeader: some View {
         let title = AgentCardPresentation(
             agent: agent, layout: console.rowLayout(for: agent.hostID)
@@ -1116,46 +1119,56 @@ struct AgentTerminalView: View {
             .compactMap { $0 }
             .joined(separator: " \u{00B7} ")
         let palette = themePalette
-        return HStack(spacing: 10) {
+        return HStack(spacing: 8) {
             Button {
                 dismiss()
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 17, weight: .semibold))
-                    .frame(width: 40, height: 40)
-                    .background(palette.foreground.opacity(0.1), in: .circle)
+                    .frame(width: Self.backHeaderHeight, height: Self.backHeaderHeight)
+                    .floatingHeaderBackground(in: .circle, palette: palette)
                     .contentShape(.circle)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Back")
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.headline)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(palette.foreground.opacity(0.6))
+            Button {
+                withAnimation(reduceMotion ? nil : .snappy) {
+                    isBackHeaderExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 0) {
+                    Image(systemName: "text.alignleft")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(width: Self.backHeaderHeight, height: Self.backHeaderHeight)
+                    if isBackHeaderExpanded {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(title)
+                                .font(.subheadline.weight(.semibold))
+                            Text(subtitle)
+                                .font(.caption2)
+                                .foregroundStyle(palette.foreground.opacity(0.6))
+                        }
+                        .lineLimit(1)
+                        .padding(.trailing, 16)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                    }
+                }
+                .frame(height: Self.backHeaderHeight)
+                .clipShape(.capsule)
+                .floatingHeaderBackground(in: .capsule, palette: palette)
+                .contentShape(.capsule)
             }
-            .lineLimit(1)
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
-            Spacer(minLength: 0)
+            .buttonStyle(.plain)
+            .accessibilityLabel(isBackHeaderExpanded ? "Hide Agent Name" : "Show Agent Name")
+            .accessibilityValue(isBackHeaderExpanded ? "\(title), \(subtitle)" : "")
+            Spacer(minLength: 12)
         }
         .foregroundStyle(palette.foreground)
-        .padding(.horizontal, 6)
-        .frame(height: Self.backHeaderHeight)
-        .background {
-            // Blurred rather than merely faded, so output passing beneath
-            // reads as texture instead of text competing with the title.
-            let shape = RoundedRectangle(
-                cornerRadius: Self.backHeaderHeight / 2, style: .continuous)
-            shape.fill(.ultraThinMaterial)
-                .overlay { shape.fill(palette.background.opacity(0.45)) }
-                .overlay { shape.strokeBorder(palette.foreground.opacity(0.1)) }
-                .environment(
-                    \.colorScheme,
-                    terminal.themes.selection(for: colorScheme).chromeColorScheme(for: colorScheme))
-        }
-        .padding(.horizontal, 12)
+        .environment(
+            \.colorScheme,
+            terminal.themes.selection(for: colorScheme).chromeColorScheme(for: colorScheme))
+        .padding(.leading, 12)
+        .padding(.top, 4)
     }
 
     private func prepareComposerKeyboardPresentation(
@@ -1880,6 +1893,20 @@ struct AgentTerminalView: View {
 
 /// Preserve edge-swipe navigation after the title bar is removed. Beside
 /// an iPad's sidebar the swipe brings the sidebar out instead of going back.
+extension View {
+    /// Blurred rather than merely faded, so output passing beneath a back
+    /// header control reads as texture instead of text competing with it.
+    fileprivate func floatingHeaderBackground(
+        in shape: some Shape, palette: TerminalThemePalette
+    ) -> some View {
+        background {
+            shape.fill(.ultraThinMaterial)
+                .overlay { shape.fill(palette.background.opacity(0.45)) }
+                .overlay { shape.stroke(palette.foreground.opacity(0.1)) }
+        }
+    }
+}
+
 private struct AgentEdgeBackGesture: View {
     let dismiss: @MainActor () -> Void
 
