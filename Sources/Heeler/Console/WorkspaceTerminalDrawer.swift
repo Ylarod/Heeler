@@ -66,15 +66,18 @@ struct WorkspaceTerminalDrawer: View {
     /// Where the handle's top edge rests inside `height`, from the remembered
     /// fraction plus any lift in progress, clamped to the edge.
     static func handleTop(
-        fraction: CGFloat, liftTravel: CGFloat, height: CGFloat
+        fraction: CGFloat, liftTravel: CGFloat, height: CGFloat,
+        handleHeight: CGFloat = handleSize.height
     ) -> CGFloat {
-        let travel = max(0, height - handleSize.height)
+        let travel = max(0, height - handleHeight)
         return min(max(fraction * travel + liftTravel, 0), travel)
     }
 
     /// The fraction a handle dropped at `top` should remember.
-    static func fraction(handleTop top: CGFloat, height: CGFloat) -> CGFloat {
-        let travel = max(0, height - handleSize.height)
+    static func fraction(
+        handleTop top: CGFloat, height: CGFloat, handleHeight: CGFloat = handleSize.height
+    ) -> CGFloat {
+        let travel = max(0, height - handleHeight)
         guard travel > 0 else { return 0 }
         return top / travel
     }

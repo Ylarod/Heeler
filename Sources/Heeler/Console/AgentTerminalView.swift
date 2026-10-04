@@ -1846,19 +1846,23 @@ private struct AgentEdgeBackGesture: View {
     }
 }
 
-/// The edge swipe made visible (#396): a handle on the leading edge facing
-/// the Workspace drawer's, so leaving an Agent no longer depends on knowing
-/// the gesture. A tap or a swipe from it goes back; a long press slides it
+/// The edge swipe made visible (#396): a half disc on the leading edge
+/// facing the Workspace drawer's tab, so leaving an Agent no longer depends
+/// on knowing the gesture. A tap or a swipe from it goes back; a long press slides it
 /// along the edge like the drawer's (``EdgeDockLift``).
 private struct AgentBackEdgeHandle: View {
     let edgeDock: EdgeDockSettings
     let palette: TerminalThemePalette
     let goBack: @MainActor () -> Void
 
-    /// Same tab as the drawer's, so the two read as a pair.
+    /// Docks and lifts like the drawer's tab.
     private typealias Tab = WorkspaceTerminalDrawer
+    /// As wide as the drawer's tab, so it covers no more of the output, and
+    /// twice as tall so that width rounds it into a half disc.
+    private static let size = CGSize(
+        width: TerminalEdgeTabBackground.width, height: TerminalEdgeTabBackground.width * 2)
     /// One accessibility nudge moves the handle by its own height.
-    private static let nudge: CGFloat = Tab.handleSize.height
+    private static let nudge: CGFloat = size.height
     /// Shorter than the edge swipe's: starting on the handle already says
     /// where the swipe is going.
     private static let swipeDistance: CGFloat = 40
@@ -1871,7 +1875,7 @@ private struct AgentBackEdgeHandle: View {
             let height = geometry.size.height
             let top = Tab.handleTop(
                 fraction: edgeDock.fraction(for: .backHandle),
-                liftTravel: liftTravel, height: height)
+                liftTravel: liftTravel, height: height, handleHeight: Self.size.height)
             handle(top: top, height: height)
                 .offset(y: top)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -1880,7 +1884,9 @@ private struct AgentBackEdgeHandle: View {
     }
 
     private func dock(handleTop top: CGFloat, height: CGFloat) {
-        edgeDock.setFraction(Tab.fraction(handleTop: top, height: height), for: .backHandle)
+        edgeDock.setFraction(
+            Tab.fraction(handleTop: top, height: height, handleHeight: Self.size.height),
+            for: .backHandle)
         liftTravel = 0
     }
 
@@ -1888,8 +1894,12 @@ private struct AgentBackEdgeHandle: View {
         Image(systemName: "chevron.backward")
             .font(.system(size: 13, weight: .semibold))
             .opacity(TerminalFloatingButtonStyle.iconOpacity)
-            .frame(width: Tab.handleSize.width, height: Tab.handleSize.height)
-            .background { TerminalEdgeTabBackground(palette: palette, edge: .leading) }
+            .frame(width: Self.size.width, height: Self.size.height)
+            .background {
+                TerminalEdgeTabBackground(
+                    palette: palette, edge: .leading, radius: Self.size.width,
+                    cornerStyle: .circular)
+            }
             .frame(width: Tab.handleHitWidth, alignment: .leading)
             .contentShape(.rect)
             .onTapGesture {
@@ -1911,7 +1921,8 @@ private struct AgentBackEdgeHandle: View {
                 onDrop: { travel in
                     dock(handleTop: Tab.handleTop(
                         fraction: edgeDock.fraction(for: .backHandle),
-                        liftTravel: travel, height: height), height: height)
+                        liftTravel: travel, height: height, handleHeight: Self.size.height),
+                        height: height)
                 })
             .hoverEffect(.highlight)
             .accessibilityElement(children: .ignore)

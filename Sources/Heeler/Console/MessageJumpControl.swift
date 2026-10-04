@@ -588,15 +588,18 @@ struct TerminalEdgeTabBackground: View {
     static var shape: UnevenRoundedRectangle { shape(dockedTo: .trailing) }
 
     /// Rounded on the side facing the terminal, square against `edge`.
-    static func shape(dockedTo edge: HorizontalEdge) -> UnevenRoundedRectangle {
-        let leading = edge == .trailing ? cornerRadius : 0
-        let trailing = edge == .leading ? cornerRadius : 0
+    static func shape(
+        dockedTo edge: HorizontalEdge, radius: CGFloat = cornerRadius,
+        style: RoundedCornerStyle = .continuous
+    ) -> UnevenRoundedRectangle {
+        let leading = edge == .trailing ? radius : 0
+        let trailing = edge == .leading ? radius : 0
         return UnevenRoundedRectangle(
             topLeadingRadius: leading,
             bottomLeadingRadius: leading,
             bottomTrailingRadius: trailing,
             topTrailingRadius: trailing,
-            style: .continuous)
+            style: style)
     }
 
     /// A tab over live output is translucent enough that the output stays
@@ -608,9 +611,13 @@ struct TerminalEdgeTabBackground: View {
     let palette: TerminalThemePalette
     var fillOpacity: Double = tabFillOpacity
     var edge: HorizontalEdge = .trailing
+    var radius: CGFloat = cornerRadius
+    /// Circular for a half disc: a continuous curve that spans the whole
+    /// side flattens it.
+    var cornerStyle: RoundedCornerStyle = .continuous
 
     var body: some View {
-        let shape = Self.shape(dockedTo: edge)
+        let shape = Self.shape(dockedTo: edge, radius: radius, style: cornerStyle)
         shape
             .fill(palette.background.mix(with: palette.foreground, by: 0.16).opacity(fillOpacity))
             .overlay {
