@@ -266,9 +266,10 @@ struct AgentTerminalView: View {
     @Environment(\.detailCrossfade) private var detailCrossfade
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
     @Environment(\.showsDetailBackHeader) private var showsBackHeader
-    /// Whether the back header is out, or folded into its edge handle.
-    /// Remembered across Agents: folding it is a reading preference.
-    @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = true
+    /// Whether the back header is out, or folded into its one button.
+    /// Folded until the user shows it, so it covers no output by default,
+    /// then remembered across Agents as a reading preference.
+    @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = false
     /// The Workspace drawer's panel, while the back header's button owns it.
     @State private var isHeaderDrawerOpen = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
