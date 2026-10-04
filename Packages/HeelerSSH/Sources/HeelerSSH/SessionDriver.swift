@@ -111,6 +111,9 @@ actor SessionDriver {
     /// covers genuine post-negotiation transport loss, which is equally
     /// transient.
     private(set) var handshakeFailedInKeyExchange = false
+    /// Time spent in synchronous diagnostic sinks after the handshake result
+    /// was captured. This includes sink scheduling and output, not just formatting.
+    private(set) var handshakeFailureDiagnosticDuration: Duration?
     /// The identification string the server sent during the handshake
     /// (RFC 4253 section 4.2, without the trailing CR LF), such as
     /// `SSH-2.0-OpenSSH_9.9`. Nil until a handshake completes.
@@ -165,8 +168,10 @@ actor SessionDriver {
     private var oneShotChannels: [UInt64: OneShotChannel] = [:]
     private var nextTransportSendIdentity: UInt64 = 0
     /// The logical libssh2 call that last returned `EAGAIN` with an outbound
-    /// block. Cleared only by that same call returning non-`EAGAIN`, or by
-    /// completed whole-session invalidation. Cancellation does not clear it.
+    /// block. Cleared only by that same call returning non-`EAGAIN`, by a
+    /// one-shot exchange read returning `EAGAIN` with no outbound block left,
+    /// or by completed whole-session invalidation. Cancellation does not
+    /// clear it.
     private var transportSendOwner: UInt64?
     /// Session-owned channel opens must not interleave, even when the opener
     /// releases the operation mutex to wait for a foreign send owner.
@@ -195,6 +200,9 @@ actor SessionDriver {
     private var nextSessionWaitHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextExecStderrReadErrorForTesting: SSHError?
     private var nextExecStdoutOwnerErrorForTesting: SSHError?
+    private var nextExchangeStderrOwnerForTesting: Bool?
+    private var nextExchangeOwnedReadHoldForTesting: (@Sendable () async -> Void)?
+    private var nextStreamLocalTimeoutHookForTesting: (@Sendable () async throws -> Void)?
     private var nextExecChannelAllocatedHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextExecCleanupHoldForTesting: (@Sendable () async throws -> Void)?
     private var nextCompensationUnlinkPhaseHookForTesting: (@Sendable () async throws -> Void)?
@@ -233,12 +241,14 @@ actor SessionDriver {
 
             do {
                 do {
+                    SSHDiagnosticOperation.current?.step = "TCP connect"
                     descriptor = try await SocketConnector.connect(to: endpoint, until: deadline)
                 } catch {
                     SSHDiagnostics.note(
                         "\(diagnosticContext) failed before the TCP connection completed: \(error)")
                     throw error
                 }
+                SSHDiagnosticOperation.current?.step = ""
                 return try await performHandshake(deadline: deadline)
             } catch {
                 invalidateResources()
@@ -1049,7 +1059,12 @@ actor SessionDriver {
     ) async throws -> Data {
         try await withDiagnosticPhase("stream-local exchange on \(socketPath)") {
             await acquireOperation()
-            defer { releaseOperation() }
+            defer {
+                #if DEBUG
+                nextStreamLocalTimeoutHookForTesting = nil
+                #endif
+                releaseOperation()
+            }
 
             guard valid, !forwarding, authenticated, session != nil else {
                 throw SSHError.connectionInvalidated
@@ -2580,6 +2595,30 @@ actor SessionDriver {
         nextExecStdoutOwnerErrorForTesting = error
     }
 
+    func forceNextExchangeReadOwnerForTesting(
+        stderr: Bool,
+        holdingOwnedRead hold: (@Sendable () async -> Void)? = nil
+    ) {
+        nextExchangeStderrOwnerForTesting = stderr
+        nextExchangeOwnedReadHoldForTesting = hold
+    }
+
+    func runNextStreamLocalTimeoutHookForTesting(
+        _ hook: @escaping @Sendable () async throws -> Void
+    ) {
+        nextStreamLocalTimeoutHookForTesting = hook
+    }
+
+    private func runStreamLocalTimeoutHookForTestingIfNeeded(_ error: any Error) async throws {
+        // The app's request deadline can cancel before the driver's own timer.
+        guard let failure = error as? SSHError,
+            failure == .timedOut || failure == .cancelled,
+            let hook = nextStreamLocalTimeoutHookForTesting
+        else { return }
+        nextStreamLocalTimeoutHookForTesting = nil
+        try await hook()
+    }
+
     func holdNextExecChannelAllocationForTesting(
         _ hold: @escaping @Sendable () async throws -> Void
     ) {
@@ -2761,7 +2800,7 @@ actor SessionDriver {
 #endif
             handshakeFailedInKeyExchange =
                 handshakeResult == LIBSSH2_ERROR_KEY_EXCHANGE_FAILURE
-            throw mapSessionError(handshakeResult)
+            throw mapSessionError(handshakeResult, includeHandshakeMethods: true)
         }
         serverIdentification = libssh2_session_banner_get(createdSession).map {
             String(cString: $0)
@@ -3965,13 +4004,26 @@ actor SessionDriver {
             }
         }
 
+        #if DEBUG
+        // Model read-continuation ownership, not a native EAGAIN injection.
+        if let stderr = nextExchangeStderrOwnerForTesting {
+            nextExchangeStderrOwnerForTesting = nil
+            transportSendOwner = stderr ? stderrOwner : stdoutOwner
+            if let hold = nextExchangeOwnedReadHoldForTesting {
+                nextExchangeOwnedReadHoldForTesting = nil
+                await hold()
+            }
+        }
+        #endif
+
         while true {
             do {
                 try checkProgress(deadline: deadline)
                 var madeProgress = false
                 var skipReads = false
+                let resumingRead = transportSendOwner == stdoutOwner || transportSendOwner == stderrOwner
 
-                if inputOffset < input.count {
+                if !resumingRead, inputOffset < input.count {
                     try await waitForTransportSendAdmission(
                         owner: writeOwner,
                         deadline: deadline,
@@ -3992,7 +4044,7 @@ actor SessionDriver {
                     } else if transportSendOwner == writeOwner {
                         skipReads = true
                     }
-                } else if !sentEOF {
+                } else if !resumingRead, !sentEOF {
                     try await waitForTransportSendAdmission(
                         owner: eofOwner,
                         deadline: deadline,
@@ -4016,21 +4068,23 @@ actor SessionDriver {
                 }
 
                 if !skipReads {
-                    try await waitForTransportSendAdmission(
-                        owner: stdoutOwner,
-                        deadline: deadline,
-                        cancellable: true)
-                    let stdoutChannel = try resolveChannel(identity)
-                    let session = try requireSession()
-                    let stdoutRead = try readAvailableNoting(
-                        channel: stdoutChannel,
-                        stream: 0,
-                        buffer: &buffer,
-                        owner: stdoutOwner,
-                        session: session)
-                    if stdoutRead.count > 0 {
-                        stdout.append(stdoutRead)
-                        madeProgress = true
+                    if transportSendOwner != stderrOwner {
+                        try await waitForTransportSendAdmission(
+                            owner: stdoutOwner,
+                            deadline: deadline,
+                            cancellable: true)
+                        let stdoutChannel = try resolveChannel(identity)
+                        let session = try requireSession()
+                        let stdoutRead = try readAvailableNoting(
+                            channel: stdoutChannel,
+                            stream: 0,
+                            buffer: &buffer,
+                            owner: stdoutOwner,
+                            session: session)
+                        if stdoutRead.count > 0 {
+                            stdout.append(stdoutRead)
+                            madeProgress = true
+                        }
                     }
                     if transportSendOwner != stdoutOwner {
                         try await waitForTransportSendAdmission(
@@ -4050,10 +4104,28 @@ actor SessionDriver {
                             madeProgress = true
                         }
                     }
+                    // A read owns the send only while libssh2 holds its packet.
+                    // One that sent its window adjustment and then found no
+                    // data returns EAGAIN with no outbound block left.
+                    let readOwnsSend = transportSendOwner == stdoutOwner
+                        || transportSendOwner == stderrOwner
+                    if readOwnsSend, !sessionReportsOutbound(try requireSession()) {
+                        transportSendOwner = nil
+                    }
+                }
+
+                // Ending a read's send skipped this round's input, and that
+                // read may have queued the other stream's data. Retry at once
+                // instead of waiting for a socket edge that already passed.
+                if resumingRead, transportSendOwner != stdoutOwner,
+                   transportSendOwner != stderrOwner {
+                    madeProgress = true
                 }
 
                 let eofChannel = try resolveChannel(identity)
-                if libssh2_channel_eof(eofChannel) == 1 {
+                let ownsSend = transportSendOwner == writeOwner || transportSendOwner == eofOwner
+                    || transportSendOwner == stdoutOwner || transportSendOwner == stderrOwner
+                if !ownsSend, libssh2_channel_eof(eofChannel) == 1 {
                     let exitStatus = try await exitStatusAfterChannelClose(
                         identity: identity,
                         deadline: deadline)
@@ -4197,12 +4269,18 @@ actor SessionDriver {
                     } catch {
                         let drainRequestOffset = requestOffset
                         await acquireOperation()
+                        #if DEBUG
+                        try await runStreamLocalTimeoutHookForTestingIfNeeded(error)
+                        #endif
                         await drainOwnedSends(requestOffset: drainRequestOffset)
                         throw error
                     }
                     await acquireOperation()
                 }
             } catch {
+                #if DEBUG
+                try await runStreamLocalTimeoutHookForTestingIfNeeded(error)
+                #endif
                 await drainOwnedSends(requestOffset: requestOffset)
                 throw error
             }
@@ -4940,14 +5018,27 @@ actor SessionDriver {
     /// One line per failure: the phase, the raw libssh2 code by name, and the
     /// message libssh2 attached to it. The coarse `SSHError` the caller gets
     /// is unchanged; this is the detail it deliberately does not carry.
-    private func noteFailure(_ code: Int32) {
+    private func noteFailure(_ code: Int32, includeHandshakeMethods: Bool = false) {
         guard SSHDiagnostics.isEnabled else { return }
         var line = "\(diagnosticContext) failed: \(Self.libssh2ErrorName(code)) (\(code))"
         if let session, let message = Self.lastErrorMessage(session), !message.isEmpty {
             line += ": \(message)"
         }
+        if includeHandshakeMethods, let session {
+            // Capture the active methods before handshake failure invalidates
+            // the native session; an algorithm name contains no credentials.
+            let kex = libssh2_session_methods(session, LIBSSH2_METHOD_KEX)
+                .map { String(cString: $0) } ?? "none"
+            let hostKey = libssh2_session_methods(session, LIBSSH2_METHOD_HOSTKEY)
+                .map { String(cString: $0) } ?? "none"
+            line += " [negotiated_kex=\(kex); negotiated_hostkey=\(hostKey)]"
+        }
         if let context = SSHDiagnosticOperation.current { line += " \(context.timingDetails)" }
+        let sinkStarted = includeHandshakeMethods ? ContinuousClock.now : nil
         SSHDiagnostics.note(line)
+        if let sinkStarted {
+            handshakeFailureDiagnosticDuration = sinkStarted.duration(to: ContinuousClock.now)
+        }
     }
 
     /// A deadline can expire in a progress check, in a readiness timer, or in
@@ -5030,8 +5121,11 @@ actor SessionDriver {
         }
     }
 
-    private func mapSessionError(_ code: Int32) -> SSHError {
-        noteFailure(code)
+    private func mapSessionError(
+        _ code: Int32,
+        includeHandshakeMethods: Bool = false
+    ) -> SSHError {
+        noteFailure(code, includeHandshakeMethods: includeHandshakeMethods)
         switch code {
         case LIBSSH2_ERROR_KEX_FAILURE,
             LIBSSH2_ERROR_METHOD_NONE,

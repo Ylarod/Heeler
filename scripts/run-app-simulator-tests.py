@@ -11,6 +11,7 @@ and selector identities from xcresulttool's test-results summary/tests reports.
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
 import plistlib
 import shlex
@@ -36,6 +37,7 @@ class TestRunSummary:
     skipped: int
     failed: int
     result: str
+    expected_failures: int = 0
 
     @property
     def executed(self) -> int:
@@ -54,7 +56,10 @@ class TestRunSummary:
         total, skipped, failed = counts
         if skipped + failed > total or not isinstance(value.get("result"), str):
             raise ValueError("xcresult summary has inconsistent test counts or result")
-        return cls(total, skipped, failed, value["result"])
+        expected_failures = value.get("expectedFailures", 0)
+        if type(expected_failures) is not int or expected_failures < 0:
+            raise ValueError("xcresult summary has an invalid expectedFailures")
+        return cls(total, skipped, failed, value["result"], expected_failures)
 
 
 def option_value(arguments: list[str], option: str) -> str | None:
@@ -171,13 +176,20 @@ def selector_matches(selector: str, identifier: str) -> bool:
             or identifier.removesuffix("()") == selector.removesuffix("()"))
 
 
-def verify_test_result(bundle: Path, selectors: list[str]) -> None:
-    summary = TestRunSummary.parse(xcresult_report(bundle, "summary"))
+def verify_test_result(bundle: Path, selectors: list[str], arguments: list[str] | None = None) -> None:
+    summary_report = xcresult_report(bundle, "summary")
+    summary = TestRunSummary.parse(summary_report)
     if summary.executed <= 0:
         raise ValueError(f"App test run executed no tests ({summary.total} registered, {summary.skipped} skipped)")
-    if summary.failed or summary.result not in {"Passed", "Expected Failure"}:
+    if summary.expected_failures or summary.result == "Expected Failure":
+        # CI evidence records only passed and skipped tests, so a known issue
+        # would pass here and fail that shard's recorder much later.
+        raise ValueError(f"App test result reports {summary.expected_failures} expected failures; "
+                         "fix or disable the known issue instead (docs/agents/testing.md)")
+    if summary.failed or summary.result != "Passed":
         raise ValueError(f"App test result reports {summary.result} with {summary.failed} failed tests")
-    identifiers = executed_test_identifiers(xcresult_report(bundle, "tests"))
+    tests_report = xcresult_report(bundle, "tests")
+    identifiers = executed_test_identifiers(tests_report)
     if not identifiers:
         raise ValueError("App test result contains no executed test identifiers")
     for selector in selectors:
@@ -185,6 +197,28 @@ def verify_test_result(bundle: Path, selectors: list[str]) -> None:
             raise ValueError(f"Requested selector executed no matching tests: {selector}")
     print(f"==> App tests executed {summary.executed} of {summary.total} tests "
           f"({summary.skipped} skipped); {len(selectors)} selectors verified", flush=True)
+    evidence_directory = os.environ.get("HEELER_CI_EVIDENCE_DIR")
+    if evidence_directory:
+        # Export only after the existing result and selector checks succeed.
+        # The shell/workflow marks completion after its own guards and cleanup.
+        evidence_path = Path(__file__).with_name("verify-ci-ios-evidence.py")
+        spec = importlib.util.spec_from_file_location("heeler_ci_evidence", evidence_path)
+        if spec is None or spec.loader is None:
+            raise ValueError("Cannot load the CI evidence recorder")
+        evidence = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(evidence)
+        flags = arguments or []
+        exclusions = []
+        for index, flag in enumerate(flags):
+            if flag.startswith("-skip-testing:"):
+                exclusions.append(flag.removeprefix("-skip-testing:"))
+            elif flag == "-skip-testing":
+                if index + 1 == len(flags) or flags[index + 1].startswith("-"):
+                    raise ValueError("-skip-testing requires a selector")
+                exclusions.append(flags[index + 1])
+        evidence.record(Path(evidence_directory), os.environ.get("HEELER_CI_TEST_PHASE", ""),
+                        "app", os.environ.get("HEELER_CI_APP_SHARD", "all"),
+                        summary_report, tests_report, selectors, exclusions)
 
 
 def simctl(*arguments: str) -> bytes:
@@ -246,7 +280,7 @@ def run(arguments: list[str]) -> int:
         status = subprocess.call(["xcodebuild", *arguments])
         status = 128 - status if status < 0 else status
         if status == 0 and result_bundle is not None:
-            verify_test_result(result_bundle, selectors)
+            verify_test_result(result_bundle, selectors, arguments)
         return status
 
     # -b boots a shut-down device and waits for its services before defaults or
@@ -309,7 +343,7 @@ def run(arguments: list[str]) -> int:
         if restore_failed and status == 0:
             status = 1
     if status == 0 and result_bundle is not None:
-        verify_test_result(result_bundle, selectors)
+        verify_test_result(result_bundle, selectors, arguments)
     return status
 
 
