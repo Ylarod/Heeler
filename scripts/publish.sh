@@ -10,8 +10,7 @@
 # CHANGELOG and versions, regenerates the project, commits, tags, and pushes
 # the commit and tag in one atomic push. The tag starts
 # .github/workflows/release.yml, which tests, archives and uploads to App Store
-# Connect after approval, and creates the GitHub release. Nothing is built or
-# signed here.
+# Connect, and creates the GitHub release. Nothing is built or signed here.
 #
 # Options arrive as environment variables because make consumes flags of its
 # own (--dry-run is make's -n) and rejects unknown long options, so a flag
@@ -167,8 +166,8 @@ echo
 row "commit" "chore: release $tag"
 row "tag" "$tag (annotated)"
 row "push" "git push --atomic $REMOTE $DEFAULT_BRANCH $tag"
-row "release" ".github/workflows/release.yml: test, archive and upload to TestFlight"
-row "" "after approval of the release environment, then the GitHub release"
+row "release" ".github/workflows/release.yml: test, archive, upload to TestFlight,"
+row "" "then the GitHub release"
 printf '\nRelease notes (from %s [Unreleased]):\n' "$CHANGELOG"
 printf '%s\n' "$notes" | sed 's/^/  /'
 echo
@@ -239,8 +238,7 @@ git tag -a "$tag" -m "$tag"
 git push --atomic "$REMOTE" "$DEFAULT_BRANCH" "refs/tags/$tag"
 stage="done"
 
-printf '\nPushed %s. The release workflow now tests the tag and waits for approval of\n' "$tag"
-printf 'the release environment before it archives and uploads to TestFlight.\n'
+printf '\nPushed %s. The release workflow now tests, archives, and uploads it to TestFlight.\n' "$tag"
 # The push already succeeded; a failed lookup must not turn that into an error.
 if repo_url="$(gh repo view --json url --jq .url 2>/dev/null)"; then
     printf '  %s/actions/workflows/release.yml\n' "$repo_url"

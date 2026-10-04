@@ -93,12 +93,12 @@ The tag starts [`release.yml`](../../.github/workflows/release.yml):
 |---|---|
 | `meta` | Checks the tag: `vX.Y.Z`, annotated, on `main`, equal to `MARKETING_VERSION` in `project.yml` and in the committed project, no GitHub release yet. Takes the `[X.Y.Z]` CHANGELOG section as the release notes. |
 | `test` | Runs both `ci.yml` lanes against the tag. |
-| `archive` | Waits for approval of the `release` environment. Archives the committed project with manual App Store signing, exports the IPA, checks its versions, bundle IDs, and entitlements, validates it with App Store Connect, and uploads it. |
+| `archive` | Runs in the `release` environment. Archives the committed project with manual App Store signing, exports the IPA, checks its versions, bundle IDs, and entitlements, validates it with App Store Connect, and uploads it. |
 | `release` | Creates the GitHub release with the notes as its body and checks that it is published, not a draft. |
 
-Approve the `archive` job when GitHub asks: open the run, choose
-**Review deployments**, select `release`, and approve. The build then
-reaches TestFlight after App Store Connect finishes processing it.
+There is no approval step: only admins can create `v*` tags, so pushing
+the tag is the decision to release. The build reaches TestFlight once App
+Store Connect finishes processing it.
 
 The GitHub release carries the notes and the tag only. There is no
 downloadable asset: an App Store-signed `.ipa` installs nowhere, and the
@@ -110,8 +110,7 @@ Run the workflow manually from `main` (Actions → Release → Run workflow)
 after rotating the certificate, a profile, or the API key. A rehearsal
 skips the tests, archives the next patch version with the next build
 number, and stops after App Store Connect validation: nothing is uploaded,
-no build number is consumed, and no release is created. It needs the same
-approval.
+no build number is consumed, and no release is created.
 
 ### Failure and recovery
 
@@ -128,8 +127,8 @@ version. Version gaps are fine.
 | `archive`, upload step or later | Check TestFlight first. If the build did not arrive, re-run failed jobs. If it arrived, do not re-run anything: `archive` would upload the same build number again, which App Store Connect rejects, and `release` stays skipped while `archive` reads as failed. Create the GitHub release by hand instead (below). |
 | `release` | Re-run failed jobs; the job skips creating a release that already exists. |
 
-Use **Re-run failed jobs**, not "Re-run all jobs", so the tests and the
-approval are not repeated needlessly.
+Use **Re-run failed jobs**, not "Re-run all jobs", so the tests are not
+repeated needlessly.
 
 To create the GitHub release by hand, take the notes from the run's
 `release-notes` artifact:
@@ -170,7 +169,7 @@ key, and every run on a clean runner creates another development
 certificate for the archive step.
 
 The `release` environment holds everything, and admits only `v*` tags
-and `main` with a required reviewer:
+and `main`:
 
 | Name | Kind | Content |
 |---|---|---|
@@ -202,14 +201,15 @@ rehearsal before the next release.
 
 Once, before the first release:
 
-1. **Environment `release`** (Settings → Environments): required reviewer
-   the maintainer, administrators may not bypass; deployment branches and
-   tags limited to the tag pattern `v*` and the branch `main`. Add the
-   secrets and variables above to it, never at repository level.
-2. **Tag ruleset**: target tags matching `v*`, restrict updates and
-   deletions, so a tag cannot move between the approval and the upload.
-3. **Rehearse**: run the workflow from `main` and approve it. It must pass
-   before the first `make publish`.
+1. **Environment `release`** (Settings → Environments): no reviewer;
+   deployment branches and tags limited to the tag pattern `v*` and the
+   branch `main`. Add the secrets and variables above to it, never at
+   repository level.
+2. **Tag ruleset**: target tags matching `v*`; restrict creation, updates,
+   and deletions, with only the admin role allowed to bypass. Creating a
+   release tag is then an admin's decision, and a pushed tag never moves.
+3. **Rehearse**: run the workflow from `main`. It must pass before the
+   first `make publish`.
 
 ## `make publish` versus `make bump && make testflight`
 

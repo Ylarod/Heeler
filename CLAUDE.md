@@ -54,7 +54,7 @@ Native iOS companion app for [herdr](https://herdr.dev), an agent console over S
   `CONTEXT.md`; hard-to-reverse, surprising trade-offs get an ADR.
 - Release work follows [releasing.md](docs/guides/releasing.md): `make publish`
   cuts CHANGELOG and versions and pushes the tag; `release.yml` signs and
-  uploads it after approval. `make bump && make testflight` stays a local
+  uploads it. `make bump && make testflight` stays a local
   interim upload. The release runner owns version edits and tags.
 - Commits and PRs carry no attribution trailers or email addresses; local hooks
   and CI enforce the [contribution policy](CONTRIBUTING.md#commit-attribution).
