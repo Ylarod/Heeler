@@ -98,6 +98,9 @@ struct AgentComposerLinkPresentation: Equatable {
 /// Enter and presents the tools keyboard. Explicit tool-keyboard controls
 /// send terminal sequences through Attach.
 struct AgentComposerView: View {
+    @AppStorage(ComposerInputPreferences.autocorrectionKey)
+    private var autocorrectionEnabled = false
+
     let store: AgentComposerStore
     let status: AgentStatus
     /// Read-only projection of the Host's own connection telemetry; nil
@@ -180,6 +183,7 @@ struct AgentComposerView: View {
                                 selectedRange: store.draftSelection,
                                 onEdit: { store.applyEditorDraft($0, selection: $1) },
                                 isFocused: $isInputFocused,
+                                autocorrectionEnabled: autocorrectionEnabled,
                                 keyboardPresentation: keyboardPresentation,
                                 keyboardHandoffID: keyboardHandoffID,
                                 isKeyboardHandoffCurrent: isKeyboardHandoffCurrent,
@@ -612,6 +616,7 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
     let selectedRange: NSRange
     let onEdit: (String, NSRange) -> Void
     @Binding var isFocused: Bool
+    let autocorrectionEnabled: Bool
     let keyboardPresentation: AgentComposerKeyboardPresentation
     let keyboardHandoffID: UUID?
     let isKeyboardHandoffCurrent: (UUID) -> Bool
@@ -630,10 +635,7 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
         textView.adjustsFontForContentSizeCategory = true
         textView.textContainerInset = UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
         textView.textContainer.lineFragmentPadding = 0
-        // Correction traits are pinned in AgentComposerUITextView's
-        // initializers, identical to the terminal's — matching traits
-        // keep one keyboard context across the Direct Input responder
-        // transfer (de36399).
+        textView.updateAutocorrection(enabled: autocorrectionEnabled)
         textView.accessibilityLabel = "Message the Agent"
         textView.onKeyboardHandoffSettled = onKeyboardHandoffSettled
         return textView
@@ -641,6 +643,7 @@ private struct AgentComposerTextEditor: UIViewRepresentable {
 
     func updateUIView(_ textView: AgentComposerUITextView, context: Context) {
         context.coordinator.onEdit = onEdit
+        textView.updateAutocorrection(enabled: autocorrectionEnabled)
         if textView.text != text {
             textView.text = text
         }
@@ -768,26 +771,38 @@ final class AgentComposerUITextView: UITextView {
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
-        applyTerminalMatchedInputTraits()
+        applyDefaultInputTraits()
         installKeyboardObservers()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-        applyTerminalMatchedInputTraits()
+        applyDefaultInputTraits()
         installKeyboardObservers()
     }
 
-    /// No-correction traits, identical to the terminal's — the parity
-    /// keeps one keyboard context across the Direct Input responder
-    /// transfer (de36399).
-    private func applyTerminalMatchedInputTraits() {
+    /// Default-off preserves the terminal-matched keyboard handoff. Composer
+    /// can opt into correction independently; terminals never change traits.
+    private func applyDefaultInputTraits() {
         autocorrectionType = .no
         spellCheckingType = .no
         smartQuotesType = .no
         smartDashesType = .no
         smartInsertDeleteType = .no
         inlinePredictionType = .no
+    }
+
+    func updateAutocorrection(enabled: Bool) {
+        let correction: UITextAutocorrectionType = enabled ? .yes : .no
+        let spelling: UITextSpellCheckingType = enabled ? .yes : .no
+        guard autocorrectionType != correction || spellCheckingType != spelling else { return }
+        autocorrectionType = correction
+        spellCheckingType = spelling
+        // Refresh a visible keyboard only when the preference changes. Normal
+        // draft updates and responder handoffs do not reload input views.
+        if isFirstResponder {
+            reloadInputViews()
+        }
     }
 
     private func installKeyboardObservers() {
