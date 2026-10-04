@@ -15,7 +15,7 @@ Entries reference the issue that motivated them.
   controller. Pairing, Changes, Skills, file uploads, and notification
   registration remain unavailable on Windows. (#400)
 - Long-press an Agent row to close its pane, tab, or workspace, with the same
-  confirmation as the swipe action. (#315)
+  confirmation as the swipe action. (#408)
 
 ### Fixed
 
