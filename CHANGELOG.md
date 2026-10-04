@@ -16,7 +16,8 @@ Entries reference the issue that motivated them.
   registration remain unavailable on Windows. (#400)
 - Agent detail on iPhone has a floating glass header with Back, the Agent's
   name, the Workspace's terminals, and Changes, which folds away to a single
-  button, so leaving an Agent no longer depends on an edge swipe. (#409)
+  button, so leaving an Agent no longer depends on an edge swipe. Swiping
+  back from it follows the finger like any other screen. (#409)
 
 ### Fixed
 

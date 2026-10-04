@@ -276,6 +276,7 @@
 		80E28FB88E27A5A8FA516BAA /* IBMPlexMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 48F025CF6E2C3068BF911290 /* IBMPlexMono-Regular.ttf */; };
 		81129F8952AA54C9B1B205C1 /* GitProbe+Changes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A4E53E3D3855055D7DF04AA /* GitProbe+Changes.swift */; };
 		81C8DD4AB0B96F366DDDA096 /* ConsoleTerminalInventoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D67C65FCE91D863F4028B886 /* ConsoleTerminalInventoryTests.swift */; };
+		81DA9F136FCE696ACD0632DF /* InteractivePopGesture.swift in Sources */ = {isa = PBXBuildFile; fileRef = D46DEE9ECECAF179DB591F32 /* InteractivePopGesture.swift */; };
 		81E0207D8AA28513FEA755B0 /* SkillsPaneStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A9156B9BB51E7A5AD1792D9 /* SkillsPaneStore.swift */; };
 		81F92E9FF8783F2B473DAE5A /* HostTelemetryPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2FDB99BA76C2379B0590B3B /* HostTelemetryPresentationTests.swift */; };
 		8254C70BCD2334725D5F3ED2 /* AgentNotificationIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 401F5B396F9F00568A4FFF88 /* AgentNotificationIdentity.swift */; };
@@ -1020,6 +1021,7 @@
 		D3A7DD50C003CDD7220D86CE /* HostLiveActivityCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostLiveActivityCoordinatorTests.swift; sourceTree = "<group>"; };
 		D419158B027AF5F38B73AD8B /* PairingCodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingCodeTests.swift; sourceTree = "<group>"; };
 		D43AE8B2A62473EBA9EA090E /* SSHTransportSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHTransportSettings.swift; sourceTree = "<group>"; };
+		D46DEE9ECECAF179DB591F32 /* InteractivePopGesture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractivePopGesture.swift; sourceTree = "<group>"; };
 		D4CA687285B470E3968D1DB6 /* PairingCeremony.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingCeremony.swift; sourceTree = "<group>"; };
 		D588CA22544907E638437FEA /* AgentInputModeSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentInputModeSettingsTests.swift; sourceTree = "<group>"; };
 		D5C058D102046A707547A0FD /* GeneratedWireTypesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedWireTypesTests.swift; sourceTree = "<group>"; };
@@ -1583,6 +1585,7 @@
 				88E1434C9C39A6419A3A0D79 /* HostConsoleProjection.swift */,
 				6CAC72199BF308E484F37439 /* HostTelemetryPresentation.swift */,
 				5A001C1028C859D6281E1642 /* InputShortcutStripPresentation.swift */,
+				D46DEE9ECECAF179DB591F32 /* InteractivePopGesture.swift */,
 				DE495B3E9477AF03F551A350 /* LiveInAnotherWindowPresentation.swift */,
 				17631B548FA0C56DD5318D7A /* MessageJumpControl.swift */,
 				ADA42EBE95B7E6452127AD5C /* NewTerminalStore.swift */,
@@ -2251,6 +2254,7 @@
 				05D055959ECD98B80AC364A0 /* HostTerminalOwnership.swift in Sources */,
 				EA83373CB743395BF9FF0689 /* ImagePreparer.swift in Sources */,
 				170F2BD0EB0840B197A6475E /* InputShortcutStripPresentation.swift in Sources */,
+				81DA9F136FCE696ACD0632DF /* InteractivePopGesture.swift in Sources */,
 				D8742E32B3BA3A76771BC2B7 /* JSONValue.swift in Sources */,
 				A20CC86A7DC41BD651647882 /* KnownHostsStore.swift in Sources */,
 				B818BFAB2A5008CF865D3422 /* LicenseNotices.swift in Sources */,

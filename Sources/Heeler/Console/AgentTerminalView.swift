@@ -1018,9 +1018,13 @@ struct AgentTerminalView: View {
         .overlay { statusOverlay }
         // Keep the edge gesture below the input chrome and tools dock so
         // its transparent hit region cannot intercept their leading keys.
+        // An iPhone has the system's own swipe instead, which follows the
+        // finger.
         .overlay(alignment: .leading) {
-            AgentEdgeBackGesture {
-                if let revealDetailSidebar { revealDetailSidebar() } else { dismiss() }
+            if !showsBackHeader {
+                AgentEdgeBackGesture {
+                    if let revealDetailSidebar { revealDetailSidebar() } else { dismiss() }
+                }
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -1115,6 +1119,7 @@ struct AgentTerminalView: View {
                 .chromeColorScheme(for: colorScheme),
             for: .navigationBar)
         .navigationBarBackButtonHidden(true)
+        .interactivePopGestureEnabled(showsBackHeader)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         // `toolbarColorScheme` takes effect only while the bar background is
