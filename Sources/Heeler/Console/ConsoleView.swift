@@ -613,6 +613,10 @@ struct ConsoleView: View {
                                 horizontalSizeClass == .regular ? detailTopInset(for: tab) : 0)
                             .environment(\.detailSurfaceEdges, detailSurfaceEdges(for: tab))
                             .environment(\.revealDetailSidebar, sidebarReveal(for: tab))
+                            .environment(
+                                \.showsDetailBackHeader,
+                                !presentation.usesRegularColumns
+                                    && UIDevice.current.userInterfaceIdiom == .phone)
                             .toolbar {
                                 if usesSidebarNavigation,
                                     splitVisibility(for: tab).isSidebarVisible == false
@@ -2245,6 +2249,11 @@ extension EnvironmentValues {
     /// edge swipe calls it in place of going back; nil where the detail has
     /// no sidebar to show.
     @Entry var revealDetailSidebar: (@MainActor @Sendable () -> Void)? = nil
+    /// The detail is pushed over the list on an iPhone, so it shows its own
+    /// floating header with a Back button. False in regular columns,
+    /// including a large iPhone in landscape, and on an iPad, where an edge
+    /// swipe or the sidebar leads back.
+    @Entry var showsDetailBackHeader = false
 }
 
 /// A navigation bar's vertical extent in its column's own coordinates.
