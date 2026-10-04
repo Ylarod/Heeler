@@ -12,7 +12,7 @@ import SwiftUI
 struct AgentDetailHeader: View {
     static let controlSize: CGFloat = 44
     /// How much of the glass shows, the rest letting output through.
-    fileprivate static let glassOpacity: Double = 0.5
+    fileprivate static let glassOpacity: Double = 0.65
     /// Buttons sharing the actions capsule sit closer than standalone ones.
     private static let capsuleButtonWidth: CGFloat = 36
     private static let capsuleInset: CGFloat = (controlSize - capsuleButtonWidth) / 2
