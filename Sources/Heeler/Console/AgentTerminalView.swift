@@ -265,7 +265,7 @@ struct AgentTerminalView: View {
     @Environment(\.sceneWindow) private var sceneWindow
     @Environment(\.detailCrossfade) private var detailCrossfade
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
-    @Environment(\.isDetailPushed) private var isDetailPushed
+    @Environment(\.showsDetailBackHeader) private var showsBackHeader
     @Environment(\.detailNavigationBarBottom) private var navigationBarBottom
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
@@ -1051,17 +1051,13 @@ struct AgentTerminalView: View {
                 costText: sessionUsage.usage.costText,
                 rateText: sessionUsage.showsTokenRate ? sessionUsage.usage.rateText : nil,
                 isReserved: agent.sessionFilePath != nil,
-                palette: themePalette,
-                topClearance: headerClearance)
+                palette: themePalette)
         }
         // The navigation bar remains present as the owner of the status bar
-        // appearance and, on a pushed detail, of the Back button and title.
-        // This inset keeps terminal output below the system clock; a pushed
-        // detail's output runs on under the header's backdrop.
+        // appearance and, on an iPhone, of the Back button and title. This
+        // inset keeps terminal output below the system clock, or below that
+        // header where it shows.
         .padding(.top, terminalTopInset)
-        .overlay(alignment: .top) {
-            if isDetailPushed { headerBackdrop }
-        }
         .onWindowControlsHeightChange { windowControlsHeight = $0 }
         .background {
             // Keyboard geometry and the status bar inset follow this view's
@@ -1086,55 +1082,29 @@ struct AgentTerminalView: View {
             terminal.themes.selection(for: colorScheme)
                 .chromeColorScheme(for: colorScheme),
             for: .navigationBar)
-        // A pushed detail keeps the system Back button: the edge swipe
-        // alone gave no sign of the way back (#396). In regular columns the
-        // list is beside it or behind Show Sidebar instead.
-        .navigationBarBackButtonHidden(!isDetailPushed)
+        // An iPhone keeps the system Back button: the edge swipe alone gave
+        // no sign of the way back (#396). In regular columns the list is
+        // beside the detail or behind Show Sidebar instead.
+        .navigationBarBackButtonHidden(!showsBackHeader)
         .toolbar {
-            if isDetailPushed { headerTitleItem }
+            if showsBackHeader { headerTitleItem }
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         // `toolbarColorScheme` takes effect only while the bar background is
         // visible. A clear visible background keeps the bar visually absent
         // and the terminal unobscured while still applying status-bar contrast.
-        .toolbarBackground(Color.clear, for: .navigationBar)
+        // The back header is the bar itself, so it alone is opaque.
+        .toolbarBackground(
+            showsBackHeader ? AnyShapeStyle(.bar) : AnyShapeStyle(Color.clear),
+            for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar(.visible, for: .navigationBar)
     }
 
     private var terminalTopInset: CGFloat {
-        max(statusBarInset, topChromeInset, windowControlsHeight)
-    }
-
-    /// How far the usage strip drops to clear a pushed detail's header. The
-    /// strip is solid, so it sits below the header rather than under it.
-    private var headerClearance: CGFloat {
-        isDetailPushed ? max(0, navigationBarBottom - terminalTopInset) : 0
-    }
-
-    /// Behind a pushed detail's Back button and title: just enough blur to
-    /// keep the title legible over the output beneath, fading out below the
-    /// bar so the band has no hard edge.
-    private var headerBackdrop: some View {
-        let fade: CGFloat = 16
-        return Rectangle()
-            .fill(.ultraThinMaterial)
-            .mask {
-                LinearGradient(
-                    stops: [
-                        .init(color: .black, location: 0),
-                        .init(color: .black, location: navigationBarBottom / (navigationBarBottom + fade)),
-                        .init(color: .clear, location: 1),
-                    ],
-                    startPoint: .top, endPoint: .bottom)
-            }
-            .frame(height: navigationBarBottom + fade)
-            .environment(
-                \.colorScheme,
-                terminal.themes.selection(for: colorScheme).chromeColorScheme(for: colorScheme))
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+        let inset = max(statusBarInset, topChromeInset, windowControlsHeight)
+        return showsBackHeader ? max(inset, navigationBarBottom) : inset
     }
 
     /// The Agent's name as its row shows it, over the Workspace and Host
@@ -1164,7 +1134,9 @@ struct AgentTerminalView: View {
                 .foregroundStyle(.secondary)
         }
         .lineLimit(1)
-        .frame(maxWidth: 240, alignment: .leading)
+        // A bar item gets only its ideal width, which a truncating title
+        // would shrink to an ellipsis; this fixes the room it may take.
+        .frame(width: 240, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }

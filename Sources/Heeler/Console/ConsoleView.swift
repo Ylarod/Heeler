@@ -613,7 +613,10 @@ struct ConsoleView: View {
                                 horizontalSizeClass == .regular ? detailTopInset(for: tab) : 0)
                             .environment(\.detailSurfaceEdges, detailSurfaceEdges(for: tab))
                             .environment(\.revealDetailSidebar, sidebarReveal(for: tab))
-                            .environment(\.isDetailPushed, !presentation.usesRegularColumns)
+                            .environment(
+                                \.showsDetailBackHeader,
+                                !presentation.usesRegularColumns
+                                    && UIDevice.current.userInterfaceIdiom == .phone)
                             .environment(\.detailNavigationBarBottom, detailBar.bottom)
                             .toolbar {
                                 if usesSidebarNavigation,
@@ -630,7 +633,7 @@ struct ConsoleView: View {
                                     }
                                 }
                             }
-                            // Compact too: a pushed detail clears its Back button.
+                            // Compact too: an iPhone's back header sits under it.
                             .background {
                                 NavigationBarTopReader { detailBar = $0 }
                             }
@@ -2246,12 +2249,13 @@ extension EnvironmentValues {
     /// edge swipe calls it in place of going back; nil where the detail has
     /// no sidebar to show.
     @Entry var revealDetailSidebar: (@MainActor @Sendable () -> Void)? = nil
-    /// The detail is pushed over the list in a collapsed split view, so
-    /// going back pops it. False in regular columns, including a large
-    /// iPhone in landscape, where the detail is a column's root.
-    @Entry var isDetailPushed = false
+    /// The detail is pushed over the list on an iPhone, so it shows a header
+    /// with the system Back button. False in regular columns, including a
+    /// large iPhone in landscape, and on an iPad, where an edge swipe or
+    /// the sidebar leads back.
+    @Entry var showsDetailBackHeader = false
     /// Where the detail's navigation bar ends, in the column's own space. A
-    /// pushed detail that shows the bar's Back button starts below it.
+    /// detail with a back header starts below it.
     @Entry var detailNavigationBarBottom: CGFloat = 0
 }
 
