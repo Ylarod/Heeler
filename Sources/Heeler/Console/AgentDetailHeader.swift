@@ -65,9 +65,9 @@ struct AgentDetailHeader<Actions: View>: View {
     private var foldButton: some View {
         AgentDetailHeaderButton(
             isExpanded ? "Hide Header" : "Show Header",
-            systemImage: isExpanded
-                ? "arrow.down.right.and.arrow.up.left"
-                : "arrow.up.left.and.arrow.down.right"
+            // Points the way the header goes: folding into this button at
+            // the trailing end, or unfolding back out to the leading side.
+            systemImage: isExpanded ? "arrow.right.to.line" : "arrow.left.to.line"
         ) {
             withAnimation(reduceMotion ? nil : .snappy) {
                 isExpanded.toggle()
