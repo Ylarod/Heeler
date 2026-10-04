@@ -2,16 +2,15 @@ import SwiftUI
 
 /// An iPhone's way back from a pushed Agent, which the edge swipe alone
 /// never showed (#396). Separate glass pieces float over the terminal:
-/// Back, the Agent's name, and one capsule of trailing actions that ends in
-/// a fold button, which stays put. Folding leaves only that button, so the
-/// header can cover almost no output.
+/// Back, the Agent's name, any trailing actions in one capsule, and at the
+/// far end a fold button that stays put. Folding leaves only that button,
+/// so the header can cover almost no output.
 ///
 /// Trailing actions are plain values rather than views, so a screen can
 /// leave out the ones it cannot offer and the capsule goes with the last.
 struct AgentDetailHeader: View {
     static let controlSize: CGFloat = 44
-    /// Buttons sharing the trailing capsule sit closer than standalone ones;
-    /// the capsule's own inset brings a lone fold button back to a circle.
+    /// Buttons sharing the actions capsule sit closer than standalone ones.
     private static let capsuleButtonWidth: CGFloat = 36
     private static let capsuleInset: CGFloat = (controlSize - capsuleButtonWidth) / 2
 
@@ -37,20 +36,21 @@ struct AgentDetailHeader: View {
                 .transition(
                     .scale(scale: 0.6, anchor: .trailing).combined(with: .opacity))
             }
-            HStack(spacing: 0) {
-                if isExpanded {
+            if isExpanded, !actions.isEmpty {
+                HStack(spacing: 0) {
                     ForEach(actions) { action in
                         AgentDetailHeaderButton(
                             action.title, systemImage: action.systemImage,
                             width: Self.capsuleButtonWidth, action: action.perform)
                     }
-                    .transition(.opacity)
                 }
-                foldButton
+                .padding(.horizontal, Self.capsuleInset)
+                .fixedSize()
+                .headerGlass(in: .capsule)
+                .transition(
+                    .scale(scale: 0.6, anchor: .trailing).combined(with: .opacity))
             }
-            .padding(.horizontal, Self.capsuleInset)
-            .fixedSize()
-            .headerGlass(in: .capsule)
+            foldButton
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
         .foregroundStyle(palette.foreground)
@@ -63,13 +63,13 @@ struct AgentDetailHeader: View {
             // A window's top bar, which is what this shows and hides: put
             // away while it is out, filled in while it is folded.
             systemImage: isExpanded
-                ? "menubar.arrow.up.rectangle" : "inset.filled.topthird.rectangle",
-            width: Self.capsuleButtonWidth
+                ? "menubar.arrow.up.rectangle" : "inset.filled.topthird.rectangle"
         ) {
             withAnimation(reduceMotion ? nil : .snappy) {
                 isExpanded.toggle()
             }
         }
+        .headerGlass(in: .circle)
     }
 
     /// On glass like the buttons: bare text over output stays unreadable
@@ -77,13 +77,13 @@ struct AgentDetailHeader: View {
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title)
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
             Text(subtitle)
-                .font(.caption)
+                .font(.caption2)
                 .foregroundStyle(palette.foreground.opacity(0.65))
         }
         .lineLimit(1)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 14)
         .frame(height: Self.controlSize)
         .headerGlass(in: .capsule)
         .allowsHitTesting(false)
@@ -102,8 +102,8 @@ struct AgentDetailHeaderAction: Identifiable {
 }
 
 /// An icon button inside `AgentDetailHeader`. It has no surface of its own:
-/// the header puts Back on a glass circle, and its trailing actions and
-/// fold button together on one glass capsule.
+/// the header puts Back and the fold button on glass circles, and its
+/// trailing actions together on one glass capsule.
 struct AgentDetailHeaderButton: View {
     let title: LocalizedStringKey
     let systemImage: String
