@@ -65,9 +65,10 @@ struct AgentDetailHeader<Actions: View>: View {
     private var foldButton: some View {
         AgentDetailHeaderButton(
             isExpanded ? "Hide Header" : "Show Header",
-            // One glyph for both states, like the sidebar toggle: a window
-            // with its top bar, which is what this shows and hides.
-            systemImage: "inset.filled.topthird.rectangle"
+            // A window's top bar, which is what this shows and hides: put
+            // away while it is out, filled in while it is folded.
+            systemImage: isExpanded
+                ? "menubar.arrow.up.rectangle" : "inset.filled.topthird.rectangle"
         ) {
             withAnimation(reduceMotion ? nil : .snappy) {
                 isExpanded.toggle()
