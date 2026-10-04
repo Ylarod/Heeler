@@ -1846,23 +1846,23 @@ private struct AgentEdgeBackGesture: View {
     }
 }
 
-/// The edge swipe made visible (#396): a half disc on the leading edge
+/// The edge swipe made visible (#396): a half ellipse on the leading edge
 /// facing the Workspace drawer's tab, so leaving an Agent no longer depends
-/// on knowing the gesture. A tap or a swipe from it goes back; a long press slides it
-/// along the edge like the drawer's (``EdgeDockLift``).
+/// on knowing the gesture. A tap or a swipe from it goes back; a long press
+/// slides it along the edge like the drawer's (``EdgeDockLift``).
 private struct AgentBackEdgeHandle: View {
     let edgeDock: EdgeDockSettings
     let palette: TerminalThemePalette
     let goBack: @MainActor () -> Void
 
-    /// Docks and lifts like the drawer's tab.
+    /// Docks and lifts like the drawer's tab, and is as tall, so the two
+    /// read as a pair.
     private typealias Tab = WorkspaceTerminalDrawer
-    /// As wide as the drawer's tab, so it covers no more of the output, and
-    /// twice as tall so that width rounds it into a half disc.
-    private static let size = CGSize(
-        width: TerminalEdgeTabBackground.width, height: TerminalEdgeTabBackground.width * 2)
+    /// Narrower than the drawer's tab: it marks a gesture rather than
+    /// opening a panel, so it takes less of the output.
+    private static let width: CGFloat = 24
     /// One accessibility nudge moves the handle by its own height.
-    private static let nudge: CGFloat = size.height
+    private static let nudge: CGFloat = Tab.handleSize.height
     /// Shorter than the edge swipe's: starting on the handle already says
     /// where the swipe is going.
     private static let swipeDistance: CGFloat = 40
@@ -1875,7 +1875,7 @@ private struct AgentBackEdgeHandle: View {
             let height = geometry.size.height
             let top = Tab.handleTop(
                 fraction: edgeDock.fraction(for: .backHandle),
-                liftTravel: liftTravel, height: height, handleHeight: Self.size.height)
+                liftTravel: liftTravel, height: height)
             handle(top: top, height: height)
                 .offset(y: top)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -1884,9 +1884,7 @@ private struct AgentBackEdgeHandle: View {
     }
 
     private func dock(handleTop top: CGFloat, height: CGFloat) {
-        edgeDock.setFraction(
-            Tab.fraction(handleTop: top, height: height, handleHeight: Self.size.height),
-            for: .backHandle)
+        edgeDock.setFraction(Tab.fraction(handleTop: top, height: height), for: .backHandle)
         liftTravel = 0
     }
 
@@ -1894,11 +1892,9 @@ private struct AgentBackEdgeHandle: View {
         Image(systemName: "chevron.backward")
             .font(.system(size: 13, weight: .semibold))
             .opacity(TerminalFloatingButtonStyle.iconOpacity)
-            .frame(width: Self.size.width, height: Self.size.height)
+            .frame(width: Self.width, height: Tab.handleSize.height)
             .background {
-                TerminalEdgeTabBackground(
-                    palette: palette, edge: .leading, radius: Self.size.width,
-                    cornerStyle: .circular)
+                TerminalEdgeTabSurface(outline: LeadingHalfEllipse(), palette: palette)
             }
             .frame(width: Tab.handleHitWidth, alignment: .leading)
             .contentShape(.rect)
@@ -1921,8 +1917,7 @@ private struct AgentBackEdgeHandle: View {
                 onDrop: { travel in
                     dock(handleTop: Tab.handleTop(
                         fraction: edgeDock.fraction(for: .backHandle),
-                        liftTravel: travel, height: height, handleHeight: Self.size.height),
-                        height: height)
+                        liftTravel: travel, height: height), height: height)
                 })
             .hoverEffect(.highlight)
             .accessibilityElement(children: .ignore)
@@ -1935,6 +1930,26 @@ private struct AgentBackEdgeHandle: View {
             .accessibilityAction(named: "Move down") {
                 dock(handleTop: top + Self.nudge, height: height)
             }
+    }
+}
+
+/// The half of an ellipse that bulges out of a leading edge: square against
+/// the edge, its curve spanning the full height.
+private struct LeadingHalfEllipse: InsettableShape {
+    var insetAmount: CGFloat = 0
+
+    func path(in rect: CGRect) -> Path {
+        let ellipse = CGRect(
+            x: rect.minX - rect.width, y: rect.minY,
+            width: rect.width * 2, height: rect.height
+        ).insetBy(dx: insetAmount, dy: insetAmount)
+        return Path(ellipseIn: ellipse).intersection(Path(rect))
+    }
+
+    func inset(by amount: CGFloat) -> Self {
+        var copy = self
+        copy.insetAmount += amount
+        return copy
     }
 }
 

@@ -585,21 +585,13 @@ struct TerminalEdgeTabBackground: View {
     static let width: CGFloat = 30
     static let cornerRadius: CGFloat = 14
 
-    static var shape: UnevenRoundedRectangle { shape(dockedTo: .trailing) }
-
-    /// Rounded on the side facing the terminal, square against `edge`.
-    static func shape(
-        dockedTo edge: HorizontalEdge, radius: CGFloat = cornerRadius,
-        style: RoundedCornerStyle = .continuous
-    ) -> UnevenRoundedRectangle {
-        let leading = edge == .trailing ? radius : 0
-        let trailing = edge == .leading ? radius : 0
-        return UnevenRoundedRectangle(
-            topLeadingRadius: leading,
-            bottomLeadingRadius: leading,
-            bottomTrailingRadius: trailing,
-            topTrailingRadius: trailing,
-            style: style)
+    static var shape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: cornerRadius,
+            bottomLeadingRadius: cornerRadius,
+            bottomTrailingRadius: 0,
+            topTrailingRadius: 0,
+            style: .continuous)
     }
 
     /// A tab over live output is translucent enough that the output stays
@@ -610,18 +602,24 @@ struct TerminalEdgeTabBackground: View {
 
     let palette: TerminalThemePalette
     var fillOpacity: Double = tabFillOpacity
-    var edge: HorizontalEdge = .trailing
-    var radius: CGFloat = cornerRadius
-    /// Circular for a half disc: a continuous curve that spans the whole
-    /// side flattens it.
-    var cornerStyle: RoundedCornerStyle = .continuous
 
     var body: some View {
-        let shape = Self.shape(dockedTo: edge, radius: radius, style: cornerStyle)
-        shape
+        TerminalEdgeTabSurface(outline: Self.shape, palette: palette, fillOpacity: fillOpacity)
+    }
+}
+
+/// An edge tab's fill, border, and shadow, around any outline: the drawer's
+/// rounded tab and the Back handle's half ellipse look like one family.
+struct TerminalEdgeTabSurface<Outline: InsettableShape>: View {
+    let outline: Outline
+    let palette: TerminalThemePalette
+    var fillOpacity: Double = TerminalEdgeTabBackground.tabFillOpacity
+
+    var body: some View {
+        outline
             .fill(palette.background.mix(with: palette.foreground, by: 0.16).opacity(fillOpacity))
             .overlay {
-                shape.strokeBorder(palette.foreground.opacity(0.2), lineWidth: 1)
+                outline.strokeBorder(palette.foreground.opacity(0.2), lineWidth: 1)
             }
             .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
             .allowsHitTesting(false)
