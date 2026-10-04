@@ -14,8 +14,9 @@ Entries reference the issue that motivated them.
   directory navigation. Windows uses herdr's official API bridge and terminal
   controller. Pairing, Changes, Skills, file uploads, and notification
   registration remain unavailable on Windows. (#400)
-- Agent detail shows the system Back button on iPhone and in compact iPad
-  windows, so leaving an Agent no longer depends on an edge swipe. (#409)
+- Agent detail on iPhone and in compact iPad windows has a header with the
+  system Back button and the Agent's name over a light blur, so leaving an
+  Agent no longer depends on an edge swipe. (#409)
 
 ### Fixed
 

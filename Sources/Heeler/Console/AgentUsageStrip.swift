@@ -21,6 +21,8 @@ struct AgentUsageStrip: View {
     /// Whether to hold the row's height while no figure is known yet.
     let isReserved: Bool
     let palette: TerminalThemePalette
+    /// Space above the strip, clear of a header drawn over its top edge.
+    var topClearance: CGFloat = 0
 
     static let preferredHeight: CGFloat = 24
 
@@ -54,6 +56,7 @@ struct AgentUsageStrip: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilityLabel)
             .accessibilityHidden(!hasContent)
+            .padding(.top, topClearance)
         }
     }
 
