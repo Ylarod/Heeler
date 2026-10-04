@@ -269,7 +269,6 @@ struct AgentTerminalView: View {
     /// Whether the back header is out, or folded into its edge handle.
     /// Remembered across Agents: folding it is a reading preference.
     @AppStorage("agent.back-header-expanded") private var isBackHeaderExpanded = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     @Environment(\.detailTopChromeInset) private var topChromeInset
@@ -1062,7 +1061,18 @@ struct AgentTerminalView: View {
         .padding(.top, terminalTopInset)
         .overlay(alignment: .top) {
             if showsBackHeader {
-                backHeader.padding(.top, terminalTopInset)
+                AgentDetailHeader(
+                    title: headerTitle,
+                    subtitle: headerSubtitle,
+                    palette: themePalette,
+                    isExpanded: $isBackHeaderExpanded,
+                    onBack: { dismiss() })
+                .environment(
+                    \.colorScheme,
+                    terminal.themes.selection(for: colorScheme).chromeColorScheme(for: colorScheme))
+                .padding(.trailing, 12)
+                .padding(.top, terminalTopInset + 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .onWindowControlsHeightChange { windowControlsHeight = $0 }
@@ -1104,73 +1114,18 @@ struct AgentTerminalView: View {
         max(statusBarInset, topChromeInset, windowControlsHeight)
     }
 
-    private static let backHeaderHeight: CGFloat = 48
+    /// The Agent's name as its row shows it.
+    private var headerTitle: String {
+        AgentCardPresentation(agent: agent, layout: console.rowLayout(for: agent.hostID))
+            .switcherTitle
+    }
 
-    /// An iPhone's way back from a pushed Agent, which the edge swipe alone
-    /// never showed (#396). It floats over the terminal below the status
-    /// bar, docked to the leading edge: a handle that stays put, and Back
-    /// with the Agent's name, which fold into the handle so the header can
-    /// cover no more output than the Workspace drawer's handle does.
-    private var backHeader: some View {
-        let title = AgentCardPresentation(
-            agent: agent, layout: console.rowLayout(for: agent.hostID)
-        ).switcherTitle
-        let subtitle = [agent.workspaceLabel.flatMap { $0 == title ? nil : $0 }, agent.hostName]
+    /// The Workspace, unless it is already the title, and the Host.
+    private var headerSubtitle: String {
+        let title = headerTitle
+        return [agent.workspaceLabel.flatMap { $0 == title ? nil : $0 }, agent.hostName]
             .compactMap { $0 }
             .joined(separator: " \u{00B7} ")
-        let palette = themePalette
-        return HStack(spacing: 0) {
-            Button {
-                withAnimation(reduceMotion ? nil : .snappy) {
-                    isBackHeaderExpanded.toggle()
-                }
-            } label: {
-                Image(systemName: isBackHeaderExpanded ? "chevron.compact.left" : "chevron.compact.right")
-                    .font(.system(size: 15, weight: .semibold))
-                    .opacity(TerminalFloatingButtonStyle.iconOpacity)
-                    .frame(width: TerminalEdgeTabBackground.width, height: Self.backHeaderHeight)
-                    .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isBackHeaderExpanded ? "Hide Header" : "Show Header")
-            if isBackHeaderExpanded {
-                HStack(spacing: 10) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                            .frame(width: 36, height: 36)
-                            .background(palette.foreground.opacity(0.1), in: .circle)
-                            .contentShape(.circle)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Back")
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(title)
-                            .font(.subheadline.weight(.semibold))
-                        Text(subtitle)
-                            .font(.caption2)
-                            .foregroundStyle(palette.foreground.opacity(0.6))
-                    }
-                    .lineLimit(1)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityAddTraits(.isHeader)
-                }
-                .padding(.trailing, 16)
-                .transition(.move(edge: .leading).combined(with: .opacity))
-            }
-        }
-        .frame(height: Self.backHeaderHeight)
-        .clipShape(LeadingEdgeTabSurface.shape)
-        .background { LeadingEdgeTabSurface(palette: palette) }
-        .foregroundStyle(palette.foreground)
-        .environment(
-            \.colorScheme,
-            terminal.themes.selection(for: colorScheme).chromeColorScheme(for: colorScheme))
-        .padding(.trailing, 12)
-        .padding(.top, 4)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func prepareComposerKeyboardPresentation(
@@ -1895,36 +1850,6 @@ struct AgentTerminalView: View {
 
 /// Preserve edge-swipe navigation after the title bar is removed. Beside
 /// an iPad's sidebar the swipe brings the sidebar out instead of going back.
-/// The back header's surface: the trailing-edge tabs' shape mirrored onto
-/// the leading edge, with their border and shadow over a blur, so output
-/// passing beneath the Agent's name reads as texture instead of text
-/// competing with it.
-private struct LeadingEdgeTabSurface: View {
-    /// Squared off against the screen, rounded on the side facing the terminal.
-    static let shape = UnevenRoundedRectangle(
-        topLeadingRadius: 0,
-        bottomLeadingRadius: 0,
-        bottomTrailingRadius: TerminalEdgeTabBackground.cornerRadius,
-        topTrailingRadius: TerminalEdgeTabBackground.cornerRadius,
-        style: .continuous)
-
-    let palette: TerminalThemePalette
-
-    var body: some View {
-        Self.shape
-            .fill(.ultraThinMaterial)
-            .overlay {
-                Self.shape
-                    .fill(palette.background.mix(with: palette.foreground, by: 0.16).opacity(0.5))
-            }
-            .overlay {
-                Self.shape.strokeBorder(palette.foreground.opacity(0.2), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
-            .allowsHitTesting(false)
-    }
-}
-
 private struct AgentEdgeBackGesture: View {
     let dismiss: @MainActor () -> Void
 
