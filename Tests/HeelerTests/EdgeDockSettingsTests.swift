@@ -16,6 +16,7 @@ struct EdgeDockSettingsTests {
         let settings = EdgeDockSettings(defaults: try makeDefaults())
         #expect(settings.fraction(for: .workspaceDrawer) == 0.5)
         #expect(settings.fraction(for: .messageJump) == 1)
+        #expect(settings.fraction(for: .backHandle) == 0.5)
     }
 
     @Test func remembersWhereEachControlWasDockedAcrossLaunches() throws {

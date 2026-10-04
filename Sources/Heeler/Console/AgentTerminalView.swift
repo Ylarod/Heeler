@@ -856,16 +856,7 @@ struct AgentTerminalView: View {
             onSelect: switchToAgent,
             onTogglePin: { id in
                 console.togglePin(hostID: id.hostID, paneID: id.paneID)
-            },
-            onBack: switcherBack)
-    }
-
-    /// Only a pushed detail has a list to go back to. In regular columns the
-    /// list is beside it or behind the sidebar toggle, and dismiss would not pop.
-    private var switcherBack: (@MainActor () -> Void)? {
-        guard isDetailPushed else { return nil }
-        let dismiss = dismiss
-        return { dismiss() }
+            })
     }
 
     #if DEBUG
@@ -1015,6 +1006,17 @@ struct AgentTerminalView: View {
         .overlay(alignment: .leading) {
             AgentEdgeBackGesture {
                 if let revealDetailSidebar { revealDetailSidebar() } else { dismiss() }
+            }
+        }
+        // Over the edge gesture, whose strip would otherwise take the
+        // handle's taps. Only a pushed detail has a list to go back to: in
+        // regular columns the list is beside it or behind the sidebar
+        // toggle, and dismiss would not pop.
+        .overlay {
+            if isDetailPushed {
+                AgentBackEdgeHandle(edgeDock: terminal.edgeDock, palette: themePalette) {
+                    dismiss()
+                }
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -1841,6 +1843,87 @@ private struct AgentEdgeBackGesture: View {
                         dismiss()
                     })
             .accessibilityHidden(true)
+    }
+}
+
+/// The edge swipe made visible (#396): a handle on the leading edge facing
+/// the Workspace drawer's, so leaving an Agent no longer depends on knowing
+/// the gesture. A tap or a swipe from it goes back; a long press slides it
+/// along the edge like the drawer's (``EdgeDockLift``).
+private struct AgentBackEdgeHandle: View {
+    let edgeDock: EdgeDockSettings
+    let palette: TerminalThemePalette
+    let goBack: @MainActor () -> Void
+
+    /// Same tab as the drawer's, so the two read as a pair.
+    private typealias Tab = WorkspaceTerminalDrawer
+    /// One accessibility nudge moves the handle by its own height.
+    private static let nudge: CGFloat = Tab.handleSize.height
+    /// Shorter than the edge swipe's: starting on the handle already says
+    /// where the swipe is going.
+    private static let swipeDistance: CGFloat = 40
+
+    @State private var isLifted = false
+    @State private var liftTravel: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { geometry in
+            let height = geometry.size.height
+            let top = Tab.handleTop(
+                fraction: edgeDock.fraction(for: .backHandle),
+                liftTravel: liftTravel, height: height)
+            handle(top: top, height: height)
+                .offset(y: top)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .foregroundStyle(palette.foreground)
+    }
+
+    private func dock(handleTop top: CGFloat, height: CGFloat) {
+        edgeDock.setFraction(Tab.fraction(handleTop: top, height: height), for: .backHandle)
+        liftTravel = 0
+    }
+
+    private func handle(top: CGFloat, height: CGFloat) -> some View {
+        Image(systemName: "chevron.backward")
+            .font(.system(size: 13, weight: .semibold))
+            .opacity(TerminalFloatingButtonStyle.iconOpacity)
+            .frame(width: Tab.handleSize.width, height: Tab.handleSize.height)
+            .background { TerminalEdgeTabBackground(palette: palette, edge: .leading) }
+            .frame(width: Tab.handleHitWidth, alignment: .leading)
+            .contentShape(.rect)
+            .onTapGesture {
+                guard !isLifted else { return }
+                goBack()
+            }
+            .gesture(
+                DragGesture(minimumDistance: 12)
+                    .onEnded { value in
+                        let horizontal = value.translation.width
+                        guard !isLifted, horizontal >= Self.swipeDistance,
+                              abs(value.translation.height) <= horizontal * 0.75
+                        else { return }
+                        goBack()
+                    })
+            .edgeDockLift(
+                isLifted: $isLifted,
+                onMove: { liftTravel = $0 },
+                onDrop: { travel in
+                    dock(handleTop: Tab.handleTop(
+                        fraction: edgeDock.fraction(for: .backHandle),
+                        liftTravel: travel, height: height), height: height)
+                })
+            .hoverEffect(.highlight)
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel("Back to Agents")
+            .accessibilityAction { goBack() }
+            .accessibilityAction(named: "Move up") {
+                dock(handleTop: top - Self.nudge, height: height)
+            }
+            .accessibilityAction(named: "Move down") {
+                dock(handleTop: top + Self.nudge, height: height)
+            }
     }
 }
 

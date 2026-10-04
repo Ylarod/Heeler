@@ -419,18 +419,17 @@ struct AgentComposerView: View {
         }
     }
 
-    /// The caller's switcher with only the tap wrapped, so every other
-    /// field, Back included, carries over as given.
     private var focusPreservingSwitcher: TerminalAgentSwitcher {
-        var wrapped = switcher
-        let select = switcher.onSelect
-        wrapped.onSelect = { id in
-            if isInputFocused {
-                keyboardHandoff.arm(for: id)
-            }
-            select(id)
-        }
-        return wrapped
+        TerminalAgentSwitcher(
+            items: switcher.items,
+            selectedID: switcher.selectedID,
+            onSelect: { id in
+                if isInputFocused {
+                    keyboardHandoff.arm(for: id)
+                }
+                switcher.onSelect(id)
+            },
+            onTogglePin: switcher.onTogglePin)
     }
 
     private var latestFailure: (id: AgentComposerStore.Message.ID, detail: String)? {

@@ -30,9 +30,6 @@ struct TerminalAgentSwitcher {
     var selectedID: ConsoleAgent.ID?
     var onSelect: @MainActor (ConsoleAgent.ID) -> Void
     var onTogglePin: @MainActor (ConsoleAgent.ID) -> Void
-    /// Back to the Agent list, shown ahead of the chips. Nil where the detail
-    /// is not pushed over the list, such as in an iPad's regular columns.
-    var onBack: (@MainActor () -> Void)? = nil
 }
 
 /// Carries the user's "I am still typing" intent across the Agent surface
@@ -576,21 +573,6 @@ struct TerminalAgentSwitcherRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // Outside the scroll view like the trailing toggles, so the way
-            // back to the list is visible at rest and never scrolls away.
-            // The leading edge swipe does the same, but nothing shows it.
-            if let onBack = switcher.onBack {
-                iconButton(
-                    systemImage: "chevron.backward",
-                    pointSize: Self.composerGlyphPointSize,
-                    horizontalOffset: 0,
-                    accessibilityLabel: "Back to Agents",
-                    action: onBack)
-                .padding(.leading, 8)
-                Rectangle()
-                    .fill(Color(uiColor: .separator))
-                    .frame(width: hairline, height: 20)
-            }
             StripRepresentable(switcher: switcher)
             // Fences the pinned button off from the strip, so the chips read
             // as a list that ends rather than as one the button belongs to.
@@ -601,7 +583,7 @@ struct TerminalAgentSwitcherRow: View {
                 modeControlView(modeControl)
             }
             if isKeyboardUp, let switchKeyboard {
-                iconButton(
+                trailingIconButton(
                     systemImage: isToolsKeyboardPresented
                         ? "keyboard" : "wrench.and.screwdriver",
                     pointSize: Self.glyphPointSize,
@@ -610,7 +592,7 @@ struct TerminalAgentSwitcherRow: View {
                         ? "Show iOS keyboard" : "Show tools keyboard",
                     action: switchKeyboard)
             }
-            iconButton(
+            trailingIconButton(
                 systemImage: isKeyboardUp
                     ? "keyboard.chevron.compact.down" : "keyboard",
                 pointSize: Self.glyphPointSize,
@@ -632,7 +614,7 @@ struct TerminalAgentSwitcherRow: View {
     private func modeControlView(_ control: TerminalAgentSwitcherModeControl) -> some View {
         switch control {
         case let .button(systemImage, accessibilityLabel, accessibilityHint, action):
-            iconButton(
+            trailingIconButton(
                 systemImage: systemImage,
                 pointSize: Self.composerGlyphPointSize,
                 horizontalOffset: Self.groupedGlyphOffset,
@@ -643,7 +625,7 @@ struct TerminalAgentSwitcherRow: View {
     }
 
     @ViewBuilder
-    private func iconButton(
+    private func trailingIconButton(
         systemImage: String,
         pointSize: CGFloat,
         horizontalOffset: CGFloat,
