@@ -33,6 +33,9 @@ Entries reference the issue that motivated them.
   inherits legacy socket overrides. (#400)
 - Large diffs in Changes no longer wait for the Git timeout when the SSH
   connection briefly cannot send. (#402)
+- After you trust a new Host's key in its detail view, the Host now
+  connects as soon as the checks pass instead of staying failed until you
+  tap Reconnect. (#411)
 
 ## [0.1.12] - 2026-10-02
 
