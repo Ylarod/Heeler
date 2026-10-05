@@ -34,6 +34,41 @@ struct HostDraft: Equatable, Sendable {
         jumpUsername = host.jumpUsername
     }
 
+    /// Prefill for adding a copy of `host`: every field Edit prefills, the
+    /// stored `password` for password authentication, and the next free
+    /// numbered name among `existingNames` (display names).
+    init(duplicating host: Host, password: String?, existingNames: [String]) {
+        self.init(host: host)
+        name = Self.duplicateName(of: host.displayName, existingNames: existingNames)
+        if host.authMethod == .password {
+            self.password = password ?? ""
+        }
+    }
+
+    /// `name 2`, `name 3`, … — the first one not taken. A name that is
+    /// already a numbered copy of an existing name (a plain number from 2)
+    /// continues that count (`box 2` → `box 3`) instead of stacking numbers
+    /// (`box 2 2`).
+    static func duplicateName(of name: String, existingNames: [String]) -> String {
+        let taken = Set(existingNames.map { $0.trimmingCharacters(in: .whitespaces) })
+        var base = name.trimmingCharacters(in: .whitespaces)
+        if let space = base.lastIndex(of: " ") {
+            let number = base[base.index(after: space)...]
+            let stem = String(base[..<space])
+            if number.allSatisfy({ ("0"..."9").contains($0) }),
+               number.first != "0", let value = Int(number), value >= 2,
+               taken.contains(stem)
+            {
+                base = stem
+            }
+        }
+        var count = 2
+        while taken.contains("\(base) \(count)") {
+            count += 1
+        }
+        return "\(base) \(count)"
+    }
+
     var portNumber: Int? {
         guard let value = Int(port), (1...65535).contains(value) else { return nil }
         return value
