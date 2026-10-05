@@ -58,6 +58,9 @@ final class NotificationPreferencesStore {
     /// empty/default setting — leaves each Host's `notify.json` untouched (#76).
     private let relayBaseURL: @MainActor () -> URL?
     private let ceremony: NotificationRegistrationCeremony
+    /// Fires after a registration write the Host confirmed, so Live
+    /// Activity writes that failed for want of an entry can retry.
+    @ObservationIgnored var onRegistered: (@MainActor (Host.ID) -> Void)?
 
     init(
         transports: any NotificationTransportProvider,
@@ -96,7 +99,7 @@ final class NotificationPreferencesStore {
             settings.isRegistered != enabled
         else { return }
         let relay = relayBaseURL()
-        await write(for: host, from: settings) { ceremony, token, transport in
+        await write(for: host, from: settings, registers: enabled) { ceremony, token, transport in
             if enabled {
                 let notify = NotificationTriggerPreferences()
                 try await ceremony.register(
@@ -121,7 +124,7 @@ final class NotificationPreferencesStore {
         let notify = NotificationTriggerPreferences(
             blocked: settings.notify.blocked, done: enabled)
         let relay = relayBaseURL()
-        await write(for: host, from: settings) { ceremony, token, transport in
+        await write(for: host, from: settings, registers: true) { ceremony, token, transport in
             // Re-registration is the flag update: it rewrites this Host's
             // entry reusing the stored Notification Key (#72 idempotence).
             try await ceremony.register(
@@ -140,11 +143,14 @@ final class NotificationPreferencesStore {
         }
         states[host.id] = .loading
         do {
-            let file = try await readFile(for: host.id)
+            var file = try await readFile(for: host.id)
             // Only an entry carrying this Host's Notification Key is its own;
             // another Host of the same remote user shares this file (#412).
-            let preferences = try ceremony.registrationOwner(for: host, deviceToken: token)
-                .flatMap { file.preferences(for: $0) }
+            let owner = try ceremony.registrationOwner(for: host, deviceToken: token)
+            if let owner, file.normalized(for: owner) != file {
+                file = await migrate(host, token: token) ?? file
+            }
+            let preferences = owner.flatMap { file.preferences(for: $0) }
             states[host.id] = .idle(
                 HostSettings(
                     isRegistered: preferences != nil,
@@ -154,12 +160,26 @@ final class NotificationPreferencesStore {
         }
     }
 
+    /// Moves this Host's entry to its current herdr session (an entry an
+    /// older app wrote, or one from before a session edit). Best-effort: a
+    /// failed write leaves the state derived from the plain read, and the
+    /// next refresh retries.
+    private func migrate(
+        _ host: Host, token: APNSDeviceToken
+    ) async -> NotificationRegistrationFile? {
+        let ceremony = ceremony
+        return try? await transports.withNotificationTransport(for: host.id) { transport in
+            try await ceremony.migrate(host: host, deviceToken: token, over: transport)
+        }
+    }
+
     /// Shared write choreography: hold the confirmed settings while the
     /// ceremony runs, publish the new truth on success, snap back with the
     /// error on failure (fail loudly — never a silently divergent toggle).
     private func write(
         for host: Host,
         from settings: HostSettings,
+        registers: Bool,
         _ operation: @escaping @Sendable (
             NotificationRegistrationCeremony, APNSDeviceToken, any Transport
         ) async throws -> HostSettings
@@ -178,6 +198,7 @@ final class NotificationPreferencesStore {
                 try await operation(ceremony, token, transport)
             }
             states[host.id] = .idle(confirmed)
+            if registers { onRegistered?(host.id) }
         } catch {
             states[host.id] = .failed(message: Self.message(for: error), settings: settings)
         }

@@ -92,7 +92,8 @@ struct HostLiveActivityCoordinatorTests {
         defaults: UserDefaults,
         enable: Bool = true,
         pins: PinnedAgentsStore? = nil,
-        otherHosts: [Host] = []
+        otherHosts: [Host] = [],
+        gate: GitExecGate? = nil
     ) -> HostLiveActivityCoordinator {
         let keys = NotificationKeyStore(secrets: secrets)
         let world = world
@@ -106,7 +107,8 @@ struct HostLiveActivityCoordinatorTests {
             preferences: LiveActivityPreferences(defaults: defaults),
             transports: ScriptedTransportProvider(transports: transports),
             keys: keys,
-            ceremony: NotificationRegistrationCeremony(keys: keys, hostSession: { sessions[$0] }),
+            ceremony: NotificationRegistrationCeremony(
+                keys: keys, gate: gate, hostSession: { sessions[$0] }),
             deviceToken: { world.deviceToken },
             knownHostIDs: { world.knownHostIDs },
             hostDisplayName: { world.hostNames[$0] ?? "" },
@@ -763,7 +765,8 @@ struct HostLiveActivityCoordinatorTests {
             let workHost = Host(
                 name: "mbp work", address: "mbp.local", username: "z", sessionName: "work")
             let keys = NotificationKeyStore(secrets: secrets)
-            let ceremony = NotificationRegistrationCeremony(keys: keys)
+            let gate = GitExecGate()
+            let ceremony = NotificationRegistrationCeremony(keys: keys, gate: gate)
             try await ceremony.register(host: host, deviceToken: token, over: transport)
             try await ceremony.register(host: workHost, deviceToken: token, over: transport)
             armWorld()
@@ -772,7 +775,7 @@ struct HostLiveActivityCoordinatorTests {
             world.statuses[workHost.id] = .connected
             let pins = PinnedAgentsStore(defaults: pinDefaults)
             let coordinator = makeCoordinator(
-                defaults: defaults, pins: pins, otherHosts: [workHost])
+                defaults: defaults, pins: pins, otherHosts: [workHost], gate: gate)
             coordinator.setEnabled(true, for: workHost.id)
             func live(_ host: Host) async throws -> LiveActivityRegistration? {
                 let owner = try #require(
@@ -794,10 +797,9 @@ struct HostLiveActivityCoordinatorTests {
                 controller.requestedHandles.first { $0.hostID == host.id }?.id)
             let workID = try #require(
                 controller.requestedHandles.first { $0.hostID == workHost.id }?.id)
+            // Both writers run at once; the shared gate keeps either from
+            // replacing the file with a copy that lacks the other's token.
             controller.emitToken(id: mainID, Data([0xaa]))
-            try await waitUntil("the default Host's token should land") {
-                try await live(host)?.token == "aa"
-            }
             controller.emitToken(id: workID, Data([0xbb]))
             try await waitUntil("each Host's entry should carry its own token") {
                 let main = try await live(host)?.token

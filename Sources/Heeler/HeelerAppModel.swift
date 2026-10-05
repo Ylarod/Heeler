@@ -71,10 +71,14 @@ final class HeelerAppModel {
         // Preference reads/writes borrow the Console's live per-Host SSH
         // connections (#75); the token comes from push bootstrap (#71), and
         // the custom relay URL (#76) rides along into each Host's notify.json.
+        // One gate for every registration-file write: Hosts on several herdr
+        // sessions of one remote user share that file (#412).
+        let registrationGate = GitExecGate()
         let notificationPreferences = NotificationPreferencesStore(
             transports: console,
             deviceToken: { [weak pushRegistration] in pushRegistration?.deviceToken },
-            relayBaseURL: { [weak relaySettings] in relaySettings?.relayURL })
+            relayBaseURL: { [weak relaySettings] in relaySettings?.relayURL },
+            ceremony: NotificationRegistrationCeremony(gate: registrationGate))
         self.notificationPreferences = notificationPreferences
         // The in-app foreground banner (#77): presented-Agent suppression
         // reads the key window's Agent at fire time; the preference gate
@@ -89,15 +93,17 @@ final class HeelerAppModel {
         // of truth while foregrounded; the plugin takes over over APNs
         // after the app suspends. Fail closed on a missing opt-in, key, or
         // device token — the same gates the registration write uses.
-        liveActivities = HostLiveActivityCoordinator(
+        let liveActivities = HostLiveActivityCoordinator(
             controller: ActivityKitLiveActivityController(),
             preferences: LiveActivityPreferences(),
             transports: console,
             // Live Activity writes know a Host by id; its herdr session
             // scopes which registration entry is its own (#412).
-            ceremony: NotificationRegistrationCeremony(hostSession: { [weak hostStore] id in
-                hostStore?.hosts.first(where: { $0.id == id })?.notificationSession
-            }),
+            ceremony: NotificationRegistrationCeremony(
+                gate: registrationGate,
+                hostSession: { [weak hostStore] id in
+                    hostStore?.hosts.first(where: { $0.id == id })?.notificationSession
+                }),
             deviceToken: { [weak pushRegistration] in pushRegistration?.deviceToken },
             knownHostIDs: { [weak hostStore] in Set(hostStore?.hosts.map(\.id) ?? []) },
             hostDisplayName: { [weak hostStore] id in
@@ -113,6 +119,12 @@ final class HeelerAppModel {
                 console?.pins.pinnedPaneIDs(for: id) ?? []
             },
             rowLayout: { [weak console] id in console?.rowLayout(for: id) })
+        self.liveActivities = liveActivities
+        // A Live Activity write that found no entry stays dirty; a fresh
+        // registration is its cue to retry.
+        notificationPreferences.onRegistered = { [weak liveActivities] _ in
+            liveActivities?.connectionsDidChange()
+        }
     }
 
     var terminal: TerminalSettings {

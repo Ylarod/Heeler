@@ -9,8 +9,17 @@ import Foundation
 ///
 /// Every failure is surfaced: a thrown `NotificationRegistrationError` or
 /// `TransportError` means notifications are not armed, never silently broken.
+///
+/// Several Hosts can share one registration file (Hosts on several herdr
+/// sessions of one remote user), so every read-modify-write of it runs under
+/// `gate` when one is given: the app shares one gate between the preference
+/// toggles and the Live Activity writes so neither loses the other's entry.
+/// The gate covers only the `notifications.json` read and replace, taken
+/// inside the borrowed transport's operation (it is not reentrant: callers
+/// never hold it around a ceremony call).
 struct NotificationRegistrationCeremony: Sendable {
     let keys: NotificationKeyStore
+    private let gate: GitExecGate?
     /// The herdr session (see `Host.notificationSession`) of a Host the
     /// Live Activity writes know only by id; nil once the Host left the
     /// catalog. Writes that receive the Host itself ignore it.
@@ -18,9 +27,11 @@ struct NotificationRegistrationCeremony: Sendable {
 
     init(
         keys: NotificationKeyStore = NotificationKeyStore(),
+        gate: GitExecGate? = nil,
         hostSession: @escaping @MainActor @Sendable (Host.ID) -> String? = { _ in nil }
     ) {
         self.keys = keys
+        self.gate = gate
         self.hostSession = hostSession
     }
 
@@ -51,13 +62,15 @@ struct NotificationRegistrationCeremony: Sendable {
     ) async throws -> NotificationKeyRecord {
         let record = try hostRecord(hostID: host.id, hostName: host.displayName)
         try keys.save(record)
-        let file = try NotificationRegistrationFile.decode(
-            try await transport.readNotificationRegistration())
         let entry = NotificationDeviceEntry(
             token: deviceToken, key: record.key, session: host.notificationSession,
             notify: notify)
-        try await transport.replaceNotificationRegistration(
-            try file.registering(entry).encoded())
+        try await exclusively {
+            let file = try NotificationRegistrationFile.decode(
+                try await transport.readNotificationRegistration())
+            try await transport.replaceNotificationRegistration(
+                try file.registering(entry).encoded())
+        }
         if let resolvedRelayURL = NotificationRelayEndpoint.resolve(
             customBaseURL: relayBaseURL)
         {
@@ -91,7 +104,9 @@ struct NotificationRegistrationCeremony: Sendable {
         over transport: any Transport
     ) async throws {
         let owner = try registrationOwner(for: host, deviceToken: deviceToken)
-        if let data = try await transport.readNotificationRegistration(), let owner {
+        try await exclusively {
+            guard let data = try await transport.readNotificationRegistration(), let owner
+            else { return }
             let file = try NotificationRegistrationFile.decode(data)
             let updated = file.removing(owner)
             if updated != file {
@@ -99,6 +114,29 @@ struct NotificationRegistrationCeremony: Sendable {
             }
         }
         try keys.removeRecord(forHost: host.id)
+    }
+
+    /// Writes the normalized registration file (see
+    /// `NotificationRegistrationFile.normalized(for:)`) when the Host's own
+    /// entry predates its current session, and returns the file the Host
+    /// holds afterwards. Re-reads under the gate, so a write that landed
+    /// since the caller's plain read is kept; idempotent.
+    func migrate(
+        host: Host,
+        deviceToken: APNSDeviceToken,
+        over transport: any Transport
+    ) async throws -> NotificationRegistrationFile {
+        let owner = try registrationOwner(for: host, deviceToken: deviceToken)
+        return try await exclusively {
+            let file = try NotificationRegistrationFile.decode(
+                try await transport.readNotificationRegistration())
+            guard let owner else { return file }
+            let normalized = file.normalized(for: owner)
+            if normalized != file {
+                try await transport.replaceNotificationRegistration(try normalized.encoded())
+            }
+            return normalized
+        }
     }
 
     /// Writes this device's Live Activity push token into the Host's own
@@ -187,7 +225,23 @@ struct NotificationRegistrationCeremony: Sendable {
         for owner: NotificationRegistrationOwner?,
         over transport: any Transport,
         diagnose: (@Sendable (String) async -> Void)? = nil,
-        prepare: (NotificationRegistrationFile) -> NotificationRegistrationFile = { $0 },
+        prepare: @escaping @Sendable (NotificationRegistrationFile) -> NotificationRegistrationFile = {
+            $0
+        },
+        change: @escaping @Sendable (NotificationRegistrationFile) throws
+            -> NotificationRegistrationFile
+    ) async throws {
+        try await exclusively {
+            try await rewriteUnderGate(
+                for: owner, over: transport, diagnose: diagnose, prepare: prepare, change: change)
+        }
+    }
+
+    private func rewriteUnderGate(
+        for owner: NotificationRegistrationOwner?,
+        over transport: any Transport,
+        diagnose: (@Sendable (String) async -> Void)?,
+        prepare: (NotificationRegistrationFile) -> NotificationRegistrationFile,
         change: (NotificationRegistrationFile) throws -> NotificationRegistrationFile
     ) async throws {
         try Task.checkCancellation()
@@ -213,6 +267,15 @@ struct NotificationRegistrationCeremony: Sendable {
         try Task.checkCancellation()
         try await transport.replaceNotificationRegistration(contents)
         await diagnose?("registration replaced")
+    }
+
+    /// Runs one registration-file read-modify-write under the shared gate,
+    /// or directly when this ceremony has none.
+    private func exclusively<Value: Sendable>(
+        _ operation: @Sendable () async throws -> Value
+    ) async throws -> Value {
+        guard let gate else { return try await operation() }
+        return try await gate.run(operation)
     }
 
     /// The Host's key record: the existing key when one is stored (the

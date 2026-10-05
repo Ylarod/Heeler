@@ -345,9 +345,10 @@ struct NotificationRegistrationCeremonyTests {
     private let workHost = Host(
         name: "mac-studio work", address: "10.0.0.2", username: "z", sessionName: "work")
 
-    private func sessionCeremony() -> NotificationRegistrationCeremony {
+    private func sessionCeremony(gate: GitExecGate? = nil) -> NotificationRegistrationCeremony {
         let sessions = [host.id: host.notificationSession, workHost.id: workHost.notificationSession]
-        return NotificationRegistrationCeremony(keys: keys, hostSession: { sessions[$0] })
+        return NotificationRegistrationCeremony(
+            keys: keys, gate: gate, hostSession: { sessions[$0] })
     }
 
     private func liveOwner(_ host: Host) throws -> NotificationRegistrationOwner {
@@ -448,5 +449,71 @@ struct NotificationRegistrationCeremonyTests {
             await transport.notificationRegistration)
         #expect(file.liveActivity(for: try liveOwner(workHost)) == nil)
         #expect(file.preferences(for: try liveOwner(workHost)) != nil)
+    }
+
+    // MARK: Serialized writes and migration
+
+    @Test func aSharedGateKeepsBothEntriesOfInterleavedRegistrations() async throws {
+        let transport = ScriptedTransport()
+        let gate = GitExecGate()
+        let first = sessionCeremony(gate: gate)
+        let second = sessionCeremony(gate: gate)
+        let hold = CancellablePhaseGate()
+        await transport.holdNotificationRegistrationWrites(on: hold)
+        let host = host
+        let workHost = workHost
+        let token = token
+
+        let registerDefault = Task {
+            try await first.register(host: host, deviceToken: token, over: transport)
+        }
+        try await hold.waitUntilEntered()
+        let registerWork = Task {
+            try await second.register(host: workHost, deviceToken: token, over: transport)
+        }
+        // The second registration must not read the file the first is
+        // about to replace; it waits for the gate instead.
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await transport.notificationRegistrationReads == 1)
+
+        await hold.release()
+        try await registerDefault.value
+        try await registerWork.value
+
+        #expect(await transport.notificationRegistrationReads == 2)
+        let file = try NotificationRegistrationFile.decode(
+            await transport.notificationRegistration)
+        #expect(file.devices.count == 2)
+        #expect(file.preferences(for: try liveOwner(host)) != nil)
+        #expect(file.preferences(for: try liveOwner(workHost)) != nil)
+    }
+
+    @Test(arguments: [nil, "old"] as [String?])
+    func migrateMovesTheOwnEntryToTheHostsSession(_ stored: String?) async throws {
+        let transport = ScriptedTransport()
+        let key = NotificationKeyStore.generateKey()
+        try keys.save(NotificationKeyRecord(hostID: workHost.id, hostName: "w", key: key))
+        let sessionField = stored.map { #","session":"\#($0)""# } ?? ""
+        await transport.setNotificationRegistration(
+            Data(
+                (#"{"v":1,"devices":[{"token":"\#(token.hex)","key":"\#(key.base64URLEncodedString())","#
+                    + #""env":"sandbox","notify":{"blocked":true,"done":false}"# + sessionField
+                    + #","future_field":"kept"}]}"#).utf8))
+
+        let migrated = try await ceremony.migrate(
+            host: workHost, deviceToken: token, over: transport)
+        let again = try await ceremony.migrate(
+            host: workHost, deviceToken: token, over: transport)
+
+        let file = try NotificationRegistrationFile.decode(
+            await transport.notificationRegistration)
+        #expect(file == migrated)
+        #expect(again == migrated)
+        #expect(await transport.replacedNotificationRegistrations.count == 1)
+        #expect(file.devices.first?["session"]?.stringValue == "work")
+        #expect(file.devices.first?["future_field"]?.stringValue == "kept")
+        #expect(
+            file.preferences(for: try liveOwner(workHost))
+                == NotificationTriggerPreferences(blocked: true, done: false))
     }
 }
