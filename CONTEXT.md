@@ -257,7 +257,7 @@ The symmetric key generated on device and stored on a Host during Notification R
 _Avoid_: shared secret, push key
 
 **Notification Registration**:
-The act of writing the device's push token and Notification Key to a Host over SSH. Per host, repeatable, and independent of Pairing; removing it disables Agent Notifications from that Host.
+The act of writing the device's push token and Notification Key to a Host over SSH, as one entry scoped to the herdr session the Host targets. Per host, repeatable, and independent of Pairing; removing it disables Agent Notifications from that Host. Hosts that resolve to the same remote plugin config directory (one SSH user's config home, whatever the address or herdr session) share one registration file: a Host owns only the entry carrying its own Notification Key, and the plugin delivers an entry only to hooks of that entry's session (session names compare exactly). Two Hosts that target the same herdr session share one entry per device, and the one that registered last receives the notifications.
 _Avoid_: subscribe, enable push
 
 **Transport**:
