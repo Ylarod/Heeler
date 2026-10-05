@@ -44,9 +44,6 @@ enum SettingsAgentListDestination: String, Sendable {
 /// Keeping it a menu means the per-Host notification rows can grow without
 /// pushing the appearance controls out of reach, and vice versa.
 struct SettingsView: View {
-    @AppStorage(ComposerInputPreferences.autocorrectionKey)
-    private var composerAutocorrectionEnabled = false
-
     let terminal: TerminalSettings
     let appearance: AppAppearanceSettings
     let pushRegistration: PushRegistrationStore
@@ -139,15 +136,6 @@ struct SettingsView: View {
                     } label: {
                         Label("Terminal Appearance", systemImage: "paintpalette")
                     }
-                }
-
-                Section {
-                    Toggle("Autocorrect", isOn: $composerAutocorrectionEnabled)
-                        .accessibilityIdentifier("settings.composer.autocorrection")
-                } header: {
-                    Text("Composer")
-                } footer: {
-                    Text("Correct spelling while drafting messages in Composer. Direct Input and shell terminals always keep autocorrect off.")
                 }
 
                 Section {

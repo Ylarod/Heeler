@@ -46,8 +46,3 @@ final class AgentInputModeSettings {
         defaults.set(mode.rawValue, forKey: Self.defaultsKey)
     }
 }
-
-/// Shared storage identity for the Settings toggle and native Composer editor.
-enum ComposerInputPreferences {
-    static let autocorrectionKey = "composer.autocorrection-enabled"
-}

@@ -9,9 +9,8 @@ Entries reference the issue that motivated them.
 
 ### Added
 
-- Optional autocorrect and spell checking for native Composer drafts, enabled
-  under Settings → Composer. Direct Input and shell terminals remain unchanged. (#407)
-
+- Autocorrect and spell checking in native Composer drafts. Direct Input and
+  shell terminals keep them off. (#407)
 - Manual SSH connections to native Windows herdr 0.9.3 or newer, including
   default and named sessions, live Agent and shell terminals, and Windows
   directory navigation. Windows uses herdr's official API bridge and terminal
