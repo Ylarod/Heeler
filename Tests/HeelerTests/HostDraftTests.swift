@@ -168,7 +168,7 @@ struct HostDraftTests {
         #expect(!draft.canSave(editing: keyHost))
     }
 
-    @Test func duplicateCopiesEveryFieldUnderANumberedNameAsANewHost() throws {
+    @Test func duplicateCopiesEveryFieldUnderACopyNameAsANewHost() throws {
         let original = Host(
             id: UUID(), name: "laya-train", address: "100.64.0.7", port: 2201,
             username: "dev", authMethod: .rsaKey, sessionName: "work",
@@ -180,7 +180,7 @@ struct HostDraftTests {
 
         #expect(copy.id != original.id)
         #expect(copy == Host(
-            id: copy.id, name: "laya-train 2", address: "100.64.0.7", port: 2201,
+            id: copy.id, name: "laya-train copy", address: "100.64.0.7", port: 2201,
             username: "dev", authMethod: .rsaKey, sessionName: "work",
             jumpAddress: "jump.example", jumpPort: 2022, jumpUsername: "tunnel"))
         #expect(draft.canSave(editing: nil))
@@ -205,31 +205,35 @@ struct HostDraftTests {
         #expect(keyCopy.password.isEmpty)
     }
 
-    @Test func duplicateNameTakesTheFirstFreeNumber() {
-        #expect(HostDraft.duplicateName(of: "box", existingNames: ["box"]) == "box 2")
+    @Test func duplicateNameFollowsFinder() {
+        #expect(HostDraft.duplicateName(of: "box", existingNames: ["box"]) == "box copy")
         #expect(
-            HostDraft.duplicateName(of: "box", existingNames: ["box", "box 2", "box 4"])
-                == "box 3")
-        // A numbered copy continues its original's count.
+            HostDraft.duplicateName(of: "box", existingNames: ["box", "box copy"])
+                == "box copy 2")
         #expect(
-            HostDraft.duplicateName(of: "box 2", existingNames: ["box", "box 2"]) == "box 3")
-        // A number that is part of the name itself stays.
+            HostDraft.duplicateName(
+                of: "box", existingNames: ["box", "box copy", "box copy 2", "box copy 4"])
+                == "box copy 3")
+        // Duplicating a copy continues its series.
         #expect(
-            HostDraft.duplicateName(of: "ubuntu 22", existingNames: ["ubuntu 22"])
-                == "ubuntu 22 2")
-        // Only a plain number from 2 can be a copy number.
-        #expect(HostDraft.duplicateName(of: "box 1", existingNames: ["box", "box 1"]) == "box 1 2")
+            HostDraft.duplicateName(of: "box copy", existingNames: ["box", "box copy"])
+                == "box copy 2")
         #expect(
-            HostDraft.duplicateName(of: "box 02", existingNames: ["box", "box 02"]) == "box 02 2")
+            HostDraft.duplicateName(
+                of: "box copy 2", existingNames: ["box", "box copy", "box copy 2"])
+                == "box copy 3")
+        // A number without the copy marker belongs to the name.
+        #expect(HostDraft.duplicateName(of: "ubuntu 22", existingNames: []) == "ubuntu 22 copy")
+        #expect(HostDraft.duplicateName(of: "copy", existingNames: []) == "copy copy")
     }
 
-    @Test func duplicateOfAnUnnamedHostNumbersItsDisplayName() throws {
+    @Test func duplicateOfAnUnnamedHostCopiesItsDisplayName() throws {
         let original = Host.fixture(name: "", address: "box.example", username: "dev")
 
         let draft = HostDraft(
             duplicating: original, password: nil,
             existingNames: [original.displayName])
 
-        #expect(try #require(draft.makeHost()).displayName == "dev@box.example 2")
+        #expect(try #require(draft.makeHost()).displayName == "dev@box.example copy")
     }
 }

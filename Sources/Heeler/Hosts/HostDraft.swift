@@ -36,7 +36,7 @@ struct HostDraft: Equatable, Sendable {
 
     /// Prefill for adding a copy of `host`: every field Edit prefills, the
     /// stored `password` for password authentication, and the next free
-    /// numbered name among `existingNames` (display names).
+    /// copy name among `existingNames` (display names).
     init(duplicating host: Host, password: String?, existingNames: [String]) {
         self.init(host: host)
         name = Self.duplicateName(of: host.displayName, existingNames: existingNames)
@@ -45,28 +45,37 @@ struct HostDraft: Equatable, Sendable {
         }
     }
 
-    /// `name 2`, `name 3`, … — the first one not taken. A name that is
-    /// already a numbered copy of an existing name (a plain number from 2)
-    /// continues that count (`box 2` → `box 3`) instead of stacking numbers
-    /// (`box 2 2`).
+    /// Names a copy the way Finder does: `name copy`, then `name copy 2`,
+    /// `name copy 3`, … — the first one not taken. Duplicating a copy
+    /// continues its series (`box copy` → `box copy 2`) instead of stacking
+    /// (`box copy copy`).
     static func duplicateName(of name: String, existingNames: [String]) -> String {
         let taken = Set(existingNames.map { $0.trimmingCharacters(in: .whitespaces) })
-        var base = name.trimmingCharacters(in: .whitespaces)
-        if let space = base.lastIndex(of: " ") {
-            let number = base[base.index(after: space)...]
-            let stem = String(base[..<space])
-            if number.allSatisfy({ ("0"..."9").contains($0) }),
-               number.first != "0", let value = Int(number), value >= 2,
-               taken.contains(stem)
-            {
-                base = stem
-            }
-        }
+        let first = "\(copyStem(of: name.trimmingCharacters(in: .whitespaces))) copy"
+        guard taken.contains(first) else { return first }
         var count = 2
-        while taken.contains("\(base) \(count)") {
+        while taken.contains("\(first) \(count)") {
             count += 1
         }
-        return "\(base) \(count)"
+        return "\(first) \(count)"
+    }
+
+    /// `box` for `box copy` and `box copy 3`; any other name is its own stem.
+    private static func copyStem(of name: String) -> String {
+        let suffix = " copy"
+        var stem = Substring(name)
+        if let space = stem.lastIndex(of: " ") {
+            let number = stem[stem.index(after: space)...]
+            if !number.isEmpty, number.allSatisfy({ ("0"..."9").contains($0) }),
+               stem[..<space].hasSuffix(suffix)
+            {
+                stem = stem[..<space]
+            }
+        }
+        if stem.hasSuffix(suffix) {
+            stem = stem.dropLast(suffix.count)
+        }
+        return String(stem)
     }
 
     var portNumber: Int? {

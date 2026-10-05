@@ -21,9 +21,10 @@ Entries reference the issue that motivated them.
   single button and stay shown once the user opens them. Swiping back from
   either follows the finger like any other screen. (#409)
 - Duplicate a Host from its long-press menu in Hosts. The add form opens
-  with every field filled in from that Host, including its password, under
-  a numbered name such as "laya-train 2", and saving adds a new Host that
-  goes through onboarding like any other. (#411)
+  with every field filled in from that Host, including its password, named
+  the way Finder names copies ("laya-train copy", then "laya-train copy 2"),
+  and saving adds a new Host that goes through onboarding like any other.
+  (#411)
 
 ### Fixed
 
