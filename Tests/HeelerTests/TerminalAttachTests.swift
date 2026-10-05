@@ -2146,6 +2146,41 @@ struct TerminalAttachTests {
         #expect(inset.lastPresentedHeight == 402)
     }
 
+    /// Composer autocorrect raises a candidate bar that Direct Input never
+    /// shows, so the keyboard changes height while it changes hands. Its
+    /// resized frame lands inside the freeze and is dropped; the settle must
+    /// adopt the keyboard the window measures, or the input chrome keeps the
+    /// candidate bar's gap (or sits under the taller keyboard) until the next
+    /// presentation. A matching keyboard keeps the frozen height.
+    @MainActor
+    @Test(arguments: [CGFloat(375), 402, 429])
+    func endingAHandoffAdoptsTheSettledKeyboardHeight(measured: CGFloat) async throws {
+        let center = NotificationCenter()
+        let inset = TerminalKeyboardInset(notificationCenter: center) { _ in 402 }
+        inset.destinationResponderHandoffFallbackDelay = .seconds(60)
+        center.post(
+            name: UIResponder.keyboardWillShowNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 554, width: 440, height: 436)])
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(inset.height == 402)
+
+        let handoffID = inset.beginDestinationOwnedResponderHandoff()
+        center.post(
+            name: UIResponder.keyboardWillChangeFrameNotification, object: nil,
+            userInfo: [UIResponder.keyboardFrameEndUserInfoKey: CGRect(
+                x: 0, y: 581, width: 440, height: 409)])
+        #expect(inset.height == 402)
+
+        inset.endResponderHandoff(handoffID, currentHeight: { measured })
+        #expect(!inset.isHoldingHandoffHeight)
+        #expect(inset.height == measured)
+        #expect(inset.lastPresentedHeight == measured)
+        #expect(!inset.isConfirmingDismissal)
+        #expect(!inset.isSoftwareKeyboardDismissed)
+        #expect(Self.systemContentInset(inset) == measured)
+    }
+
     /// A scene transition can emit will-hide without a matching did-frame.
     /// The safety leash must release the hold, notify its owner, and reconcile
     /// a hide that never received a destination frame.
