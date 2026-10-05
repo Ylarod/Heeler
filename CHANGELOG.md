@@ -24,7 +24,7 @@ Entries reference the issue that motivated them.
   with every field filled in from that Host, including its password, named
   the way Finder names copies ("laya-train copy", then "laya-train copy 2"),
   and saving adds a new Host that goes through onboarding like any other.
-  (#411)
+  (#413)
 
 ### Fixed
 
@@ -40,7 +40,7 @@ Entries reference the issue that motivated them.
   connection briefly cannot send. (#402)
 - After you trust a new Host's key in its detail view, the Host now
   connects as soon as the checks pass instead of staying failed until you
-  tap Reconnect. (#411)
+  tap Reconnect. (#413)
 
 ## [0.1.12] - 2026-10-02
 
