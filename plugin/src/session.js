@@ -6,8 +6,9 @@
 // session it was written for (`session`, README.md), and each hook delivers
 // only to entries of its own session plus legacy entries without one.
 //
-// The session comes from HERDR_SOCKET_PATH (observed on herdr 0.9.3;
-// HERDR_SESSION is not reliable in hook processes). herdr places sockets at
+// The session comes from HERDR_SOCKET_PATH (observed on herdr 0.9.3), not
+// HERDR_SESSION, which hooks inherit from the server's environment and can
+// be stale under a socket override. herdr places sockets at
 // `<config>/herdr/herdr.sock` for the default session and
 // `<config>/herdr/sessions/<name>/herdr.sock` for a named one.
 
