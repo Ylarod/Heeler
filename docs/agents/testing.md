@@ -129,7 +129,9 @@ python3 scripts/isolated-herdr-backend.py start --sessions default,work --plugin
 python3 scripts/isolated-herdr-backend.py stop
 ```
 
-Its `--help` covers `status`, `run`, and `authorize`.
+Its `--help` covers `status`, `run`, and `authorize`. Isolation relies on the
+app deriving the socket from the remote `$HOME`; the sshd allows streamlocal
+forwarding to any socket the user can open, the live herdr included.
 
 For Changes reads on Linux, with Docker running:
 

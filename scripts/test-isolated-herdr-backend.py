@@ -185,6 +185,27 @@ class StateAndHostTests(unittest.TestCase):
             self.assertTrue((Path(directory) / "precious.txt").exists())
 
 
+class ExecutableTests(unittest.TestCase):
+    def test_a_version_manager_shim_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="heeler-iso-test-") as directory:
+            manager = Path(directory) / "mise"
+            manager.write_text("#!/bin/sh\n")
+            manager.chmod(0o755)
+            shim = Path(directory) / "herdr"
+            shim.symlink_to(manager)
+            with self.assertRaisesRegex(MODULE.BackendError, "not herdr; use --herdr"):
+                MODULE.resolve_executable(str(shim), "herdr")
+
+    def test_a_real_binary_resolves_through_symlinks(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="heeler-iso-test-") as directory:
+            binary = Path(directory) / "node-22"
+            binary.write_text("#!/bin/sh\n")
+            link = Path(directory) / "node"
+            link.symlink_to(binary)
+            self.assertEqual(MODULE.resolve_executable(str(link), "node"),
+                             os.path.realpath(binary))
+
+
 class RelayTests(unittest.TestCase):
     def test_relay_records_posts_and_answers_410_for_listed_tokens(self) -> None:
         with socket.socket() as probe:

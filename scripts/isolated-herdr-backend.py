@@ -422,7 +422,15 @@ def processes_mentioning(text: str) -> List[str]:
 
 def resolve_executable(explicit: Optional[str], name: str) -> Optional[str]:
     candidate = explicit or shutil.which(name)
-    return os.path.realpath(candidate) if candidate else None
+    if not candidate:
+        return None
+    resolved = os.path.realpath(candidate)
+    # A version-manager shim (mise, asdf) resolves to the manager itself, which
+    # cannot pick a version inside the isolated HOME.
+    if not os.path.basename(resolved).startswith(name):
+        option = "--herdr" if name == "herdr" else f"a real {name} earlier on PATH"
+        raise BackendError(f"{candidate} resolves to {resolved}, not {name}; use {option}")
+    return resolved
 
 
 def current_user() -> str:
@@ -466,7 +474,7 @@ def start_relay(state: State, port: int) -> None:
     pid = spawn([sys.executable, str(Path(__file__).resolve()), "--root", str(root),
                  "relay-serve", "--port", str(port)],
                 env=isolated_env(root, state.user), cwd=root, log=log)
-    state.relay = ProcessRecord(pid=pid, marker="relay-serve", log=str(log))
+    state.relay = ProcessRecord(pid=pid, marker=f"--root {root} relay-serve", log=str(log))
     state.relay_port = port
     save_state(state)
     if not wait_until(lambda: port_accepts(port), 10):
@@ -706,14 +714,17 @@ def terminate(record: ProcessRecord, label: str) -> None:
 
 
 def stop_processes(state: State) -> List[int]:
-    """Stop recorded processes; return descendants that outlived them."""
+    """Stop recorded processes and their descendants; return any that survive."""
     tracked = [record.pid for record in state.records() if is_ours(record)]
     children = descendants(tracked)
     for session, record in state.servers.items():
         if not is_ours(record):
             continue
-        stopped = herdr_command(state, session, ["server", "stop"], timeout=20)
-        if stopped.returncode or not wait_for_exit(record.pid, 10):
+        try:
+            stopped = herdr_command(state, session, ["server", "stop"], timeout=20).returncode == 0
+        except subprocess.TimeoutExpired:
+            stopped = False
+        if not stopped or not wait_for_exit(record.pid, 10):
             print(f"herdr server stop did not end session {session!r}; signalling pid {record.pid}",
                   file=sys.stderr)
             terminate(record, f"herdr session {session}")
@@ -722,6 +733,14 @@ def stop_processes(state: State) -> List[int]:
     if state.relay:
         terminate(state.relay, "relay")
     wait_until(lambda: all(process_command(pid) is None for pid in children), 5)
+    # Children of our processes are ours too (an SSH login, herdr's own curl).
+    for pid in children:
+        if process_command(pid) is not None:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+    wait_until(lambda: all(process_command(pid) is None for pid in children), 3)
     return [pid for pid in children if process_command(pid) is not None]
 
 
@@ -733,13 +752,18 @@ def command_stop(args: argparse.Namespace) -> int:
     survivors = stop_processes(state) if state else []
     leftovers = [record.pid for record in (state.records() if state else []) if is_ours(record)]
     mentioning = processes_mentioning(str(root) + "/")
-    if survivors or leftovers or mentioning:
+    # A process executing from the root is ours; one that only names a path in
+    # it (`tail -f <root>/relay.jsonl`) is reported but does not block removal.
+    running = [line for line in mentioning if line.split(None, 1)[1].startswith(str(root) + "/")]
+    if survivors or leftovers or running:
         print("Still running after stop (root kept for inspection):", file=sys.stderr)
         for pid in sorted(set(survivors + leftovers)):
             print(f"  {pid} {process_command(pid)}", file=sys.stderr)
-        for line in mentioning:
+        for line in running:
             print(f"  {line}", file=sys.stderr)
         return 1
+    for line in mentioning:
+        print(f"Note: still references {root}: {line}", file=sys.stderr)
     if args.keep:
         print(f"Stopped; kept {root}")
     else:
