@@ -51,7 +51,7 @@ Entries reference the issue that motivated them.
   share one registration, held by whichever turned notifications on last.
   Update the Heeler plugin to 0.6.0 on each Host: with an older plugin,
   Hosts on different sessions can still receive each other's notifications,
-  which open the wrong pane, and one event can arrive twice. (#412)
+  which open the wrong pane, and one event can arrive twice. (#416)
 
 ## [0.1.12] - 2026-10-02
 
