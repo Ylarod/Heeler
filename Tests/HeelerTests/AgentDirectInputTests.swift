@@ -1694,6 +1694,7 @@ struct AgentDirectInputTests {
         private(set) var willChangeFrameCount = 0
         private(set) var observedInsetHeights: [CGFloat] = []
         private(set) var chromeSamples: [KeyboardChromeSample] = []
+        private var chromeSampleTimes: [CFTimeInterval] = []
 
         init(
             notificationCenter: NotificationCenter,
@@ -1741,6 +1742,7 @@ struct AgentDirectInputTests {
             willChangeFrameCount = 0
             observedInsetHeights = []
             chromeSamples = []
+            chromeSampleTimes = []
             captureChromeSample()
             let displayLink = CADisplayLink(target: self, selector: #selector(sampleDisplayFrame))
             displayLink.add(to: .main, forMode: .common)
@@ -1755,6 +1757,7 @@ struct AgentDirectInputTests {
         func captureChromeSample() {
             if let chromeSample {
                 chromeSamples.append(chromeSample())
+                chromeSampleTimes.append(CACurrentMediaTime())
             }
         }
 
@@ -1762,12 +1765,25 @@ struct AgentDirectInputTests {
             captureChromeSample()
         }
 
-        func hasStableTail(frameCount: Int = 4) -> Bool {
-            guard chromeSamples.count >= frameCount,
-                  let baseline = chromeSamples.last,
-                  baseline.switcherBottom != nil
+        /// Whether the chrome has rested on the current inset for longer
+        /// than the inset's settle animation. A frame-count tail can pass
+        /// in the gap between the handoff releasing the inset and the next
+        /// display frame, before the switcher has started to move (seen on
+        /// slower hosted runners, where the handoff outlasts the window).
+        func hasStableTail(
+            frameCount: Int = 4, duration: CFTimeInterval = 0.35
+        ) -> Bool {
+            guard let baseline = chromeSamples.last,
+                  let lastTime = chromeSampleTimes.last,
+                  let firstTime = chromeSampleTimes.first,
+                  baseline.switcherBottom != nil,
+                  abs(baseline.insetHeight - insetHeight()) <= 1,
+                  lastTime - firstTime >= duration
             else { return false }
-            return chromeSamples.suffix(frameCount).allSatisfy { sample in
+            let tail = zip(chromeSamples, chromeSampleTimes)
+                .filter { lastTime - $0.1 <= duration }
+                .map(\.0)
+            return tail.count >= frameCount && tail.allSatisfy { sample in
                 abs(sample.insetHeight - baseline.insetHeight) <= 1
                     && Self.close(sample.switcherBottom, baseline.switcherBottom)
             }
