@@ -100,12 +100,11 @@ final class NotificationPreferencesStore {
             if enabled {
                 let notify = NotificationTriggerPreferences()
                 try await ceremony.register(
-                    hostID: host.id, hostName: host.displayName,
-                    deviceToken: token, notify: notify, relayBaseURL: relay, over: transport)
+                    host: host, deviceToken: token, notify: notify, relayBaseURL: relay,
+                    over: transport)
                 return HostSettings(isRegistered: true, notify: notify)
             } else {
-                try await ceremony.remove(
-                    hostID: host.id, deviceToken: token, over: transport)
+                try await ceremony.remove(host: host, deviceToken: token, over: transport)
                 return HostSettings(
                     isRegistered: false, notify: NotificationTriggerPreferences())
             }
@@ -123,11 +122,11 @@ final class NotificationPreferencesStore {
             blocked: settings.notify.blocked, done: enabled)
         let relay = relayBaseURL()
         await write(for: host, from: settings) { ceremony, token, transport in
-            // Re-registration is the flag update: it upserts this device's
+            // Re-registration is the flag update: it rewrites this Host's
             // entry reusing the stored Notification Key (#72 idempotence).
             try await ceremony.register(
-                hostID: host.id, hostName: host.displayName,
-                deviceToken: token, notify: notify, relayBaseURL: relay, over: transport)
+                host: host, deviceToken: token, notify: notify, relayBaseURL: relay,
+                over: transport)
             return HostSettings(isRegistered: true, notify: notify)
         }
     }
@@ -142,7 +141,10 @@ final class NotificationPreferencesStore {
         states[host.id] = .loading
         do {
             let file = try await readFile(for: host.id)
-            let preferences = file.preferences(token: token.hex)
+            // Only an entry carrying this Host's Notification Key is its own;
+            // another Host of the same remote user shares this file (#412).
+            let preferences = try ceremony.registrationOwner(for: host, deviceToken: token)
+                .flatMap { file.preferences(for: $0) }
             states[host.id] = .idle(
                 HostSettings(
                     isRegistered: preferences != nil,

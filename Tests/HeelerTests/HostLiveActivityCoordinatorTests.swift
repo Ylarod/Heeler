@@ -91,17 +91,22 @@ struct HostLiveActivityCoordinatorTests {
     private func makeCoordinator(
         defaults: UserDefaults,
         enable: Bool = true,
-        pins: PinnedAgentsStore? = nil
+        pins: PinnedAgentsStore? = nil,
+        otherHosts: [Host] = []
     ) -> HostLiveActivityCoordinator {
         let keys = NotificationKeyStore(secrets: secrets)
         let world = world
         let pinStore = pins
+        let hosts = [host] + otherHosts
+        let sessions = Dictionary(uniqueKeysWithValues: hosts.map { ($0.id, $0.notificationSession) })
+        let transports = Dictionary(
+            uniqueKeysWithValues: hosts.map { ($0.id, transport as any Transport) })
         let coordinator = HostLiveActivityCoordinator(
             controller: controller,
             preferences: LiveActivityPreferences(defaults: defaults),
-            transports: ScriptedTransportProvider(transports: [host.id: transport]),
+            transports: ScriptedTransportProvider(transports: transports),
             keys: keys,
-            ceremony: NotificationRegistrationCeremony(keys: keys),
+            ceremony: NotificationRegistrationCeremony(keys: keys, hostSession: { sessions[$0] }),
             deviceToken: { world.deviceToken },
             knownHostIDs: { world.knownHostIDs },
             hostDisplayName: { world.hostNames[$0] ?? "" },
@@ -136,14 +141,19 @@ struct HostLiveActivityCoordinatorTests {
     private func registerDevice() async throws {
         let keys = NotificationKeyStore(secrets: secrets)
         try await NotificationRegistrationCeremony(keys: keys).register(
-            hostID: host.id, hostName: "mbp", deviceToken: token, over: transport)
+            host: host, deviceToken: token, over: transport)
+    }
+
+    /// This Host's own entry in the registration file, found by its key.
+    private func owner() throws -> NotificationRegistrationOwner {
+        NotificationRegistrationOwner(deviceToken: token.hex, key: try notificationKey(), session: "")
     }
 
     private func agent(
-        _ paneID: String, _ status: AgentStatus, title: String = "Task"
+        _ paneID: String, _ status: AgentStatus, title: String = "Task", hostID: Host.ID? = nil
     ) -> ConsoleAgent {
         ConsoleAgent(
-            hostID: host.id, hostName: "mbp",
+            hostID: hostID ?? host.id, hostName: "mbp",
             agent: Agent(.fixture(paneID: paneID, status: status, title: title)),
             workspaceLabel: nil, repositoryCheckout: nil)
     }
@@ -168,12 +178,12 @@ struct HostLiveActivityCoordinatorTests {
 
     private func liveActivityToken() async throws -> String? {
         try NotificationRegistrationFile.decode(await transport.notificationRegistration)
-            .liveActivity(forDeviceToken: token.hex)?.token
+            .liveActivity(for: try owner())?.token
     }
 
     private func filePinnedPaneIDs() async throws -> [String]? {
         try NotificationRegistrationFile.decode(await transport.notificationRegistration)
-            .liveActivity(forDeviceToken: token.hex)?.pinnedPaneIDs
+            .liveActivity(for: try owner())?.pinnedPaneIDs
     }
 
     private func notificationKey() throws -> Data {
@@ -741,6 +751,75 @@ struct HostLiveActivityCoordinatorTests {
                 let pins = try await filePinnedPaneIDs()
                 return token == "bb" && pins == ["w:p-work"]
             }
+        }
+    }
+
+    // MARK: Hosts on several herdr sessions of one remote user (#412)
+
+    @Test func hostsOnDifferentSessionsWriteOnlyTheirOwnLiveActivityFields() async throws {
+        try await withFixture { defaults in
+            let (pinDefaults, pinCleanup) = try makeDefaults()
+            defer { pinCleanup() }
+            let workHost = Host(
+                name: "mbp work", address: "mbp.local", username: "z", sessionName: "work")
+            let keys = NotificationKeyStore(secrets: secrets)
+            let ceremony = NotificationRegistrationCeremony(keys: keys)
+            try await ceremony.register(host: host, deviceToken: token, over: transport)
+            try await ceremony.register(host: workHost, deviceToken: token, over: transport)
+            armWorld()
+            world.knownHostIDs.insert(workHost.id)
+            world.hostNames[workHost.id] = "mbp work"
+            world.statuses[workHost.id] = .connected
+            let pins = PinnedAgentsStore(defaults: pinDefaults)
+            let coordinator = makeCoordinator(
+                defaults: defaults, pins: pins, otherHosts: [workHost])
+            coordinator.setEnabled(true, for: workHost.id)
+            func live(_ host: Host) async throws -> LiveActivityRegistration? {
+                let owner = try #require(
+                    try ceremony.registrationOwner(for: host, deviceToken: token))
+                return try NotificationRegistrationFile.decode(
+                    await transport.notificationRegistration
+                ).liveActivity(for: owner)
+            }
+
+            coordinator.start()
+            coordinator.agentsDidChange([
+                agent("w:p-main", .working),
+                agent("w:p-work", .working, hostID: workHost.id),
+            ])
+            try await waitUntil("both Hosts should start an activity") {
+                controller.requestedHandles.count == 2
+            }
+            let mainID = try #require(
+                controller.requestedHandles.first { $0.hostID == host.id }?.id)
+            let workID = try #require(
+                controller.requestedHandles.first { $0.hostID == workHost.id }?.id)
+            controller.emitToken(id: mainID, Data([0xaa]))
+            try await waitUntil("the default Host's token should land") {
+                try await live(host)?.token == "aa"
+            }
+            controller.emitToken(id: workID, Data([0xbb]))
+            try await waitUntil("each Host's entry should carry its own token") {
+                let main = try await live(host)?.token
+                let work = try await live(workHost)?.token
+                return main == "aa" && work == "bb"
+            }
+
+            pins.togglePin(hostID: workHost.id, paneID: "w:p-work")
+            coordinator.pinsDidChange()
+            try await waitUntil("the pin should land on the work Host's entry") {
+                try await live(workHost)?.pinnedPaneIDs == ["w:p-work"]
+            }
+            #expect(try await live(host)?.pinnedPaneIDs == [])
+
+            controller.emitState(id: mainID, .dismissed)
+            try await waitUntil("dismissal should clear only the default Host's field") {
+                try await live(host) == nil
+            }
+            #expect(try await live(workHost)?.token == "bb")
+            let file = try NotificationRegistrationFile.decode(
+                await transport.notificationRegistration)
+            #expect(file.devices.count == 2)
         }
     }
 }

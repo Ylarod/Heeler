@@ -11,34 +11,53 @@ import Foundation
 /// `TransportError` means notifications are not armed, never silently broken.
 struct NotificationRegistrationCeremony: Sendable {
     let keys: NotificationKeyStore
+    /// The herdr session (see `Host.notificationSession`) of a Host the
+    /// Live Activity writes know only by id; nil once the Host left the
+    /// catalog. Writes that receive the Host itself ignore it.
+    private let hostSession: @MainActor @Sendable (Host.ID) -> String?
 
-    init(keys: NotificationKeyStore = NotificationKeyStore()) {
+    init(
+        keys: NotificationKeyStore = NotificationKeyStore(),
+        hostSession: @escaping @MainActor @Sendable (Host.ID) -> String? = { _ in nil }
+    ) {
         self.keys = keys
+        self.hostSession = hostSession
+    }
+
+    /// Who this device's entry belongs to on `host`, or nil when no
+    /// Notification Key is stored for it — then no entry on the Host can be
+    /// its own, and the Host reads as unregistered.
+    func registrationOwner(
+        for host: Host, deviceToken: APNSDeviceToken
+    ) throws -> NotificationRegistrationOwner? {
+        guard let key = try keys.record(forHost: host.id)?.key else { return nil }
+        return NotificationRegistrationOwner(
+            deviceToken: deviceToken.hex, key: key, session: host.notificationSession)
     }
 
     /// Registers this device for Agent Notifications from one Host. The
     /// Notification Key is saved locally before the remote write: a write
     /// that fails after that leaves a key the retry reuses, whereas the
     /// reverse order could put a key on the Host that this device can no
-    /// longer decrypt with. Re-registration with the same token is
-    /// idempotent — the file keeps one entry per device token.
+    /// longer decrypt with. Re-registration is idempotent — the Host keeps
+    /// one entry, scoped to the herdr session it targets.
     @discardableResult
     func register(
-        hostID: UUID,
-        hostName: String,
+        host: Host,
         deviceToken: APNSDeviceToken,
         notify: NotificationTriggerPreferences = NotificationTriggerPreferences(),
         relayBaseURL: URL? = nil,
         over transport: any Transport
     ) async throws -> NotificationKeyRecord {
-        let record = try hostRecord(hostID: hostID, hostName: hostName)
+        let record = try hostRecord(hostID: host.id, hostName: host.displayName)
         try keys.save(record)
         let file = try NotificationRegistrationFile.decode(
             try await transport.readNotificationRegistration())
         let entry = NotificationDeviceEntry(
-            token: deviceToken, key: record.key, notify: notify)
+            token: deviceToken, key: record.key, session: host.notificationSession,
+            notify: notify)
         try await transport.replaceNotificationRegistration(
-            try file.upserting(entry).encoded())
+            try file.registering(entry).encoded())
         if let resolvedRelayURL = NotificationRelayEndpoint.resolve(
             customBaseURL: relayBaseURL)
         {
@@ -60,38 +79,116 @@ struct NotificationRegistrationCeremony: Sendable {
         try await transport.replaceNotificationConfig(try updated.encoded())
     }
 
-    /// Revokes this device on one Host: its entry leaves the registration
-    /// file, then the local Notification Key record is dropped — in that
-    /// order, so a failed remote removal keeps the key that still-armed
-    /// pushes need. Removing a device that was never registered is a no-op.
+    /// Revokes this device on one Host: the Host's entries (this device
+    /// token with the Host's Notification Key) leave the registration file,
+    /// then the local Notification Key record is dropped — in that order, so
+    /// a failed remote removal keeps the key that still-armed pushes need.
+    /// Other Hosts' entries of this device stay. Removing a device that was
+    /// never registered is a no-op.
     func remove(
-        hostID: UUID,
+        host: Host,
         deviceToken: APNSDeviceToken,
         over transport: any Transport
     ) async throws {
-        if let data = try await transport.readNotificationRegistration() {
+        let owner = try registrationOwner(for: host, deviceToken: deviceToken)
+        if let data = try await transport.readNotificationRegistration(), let owner {
             let file = try NotificationRegistrationFile.decode(data)
-            if file.containsDevice(token: deviceToken.hex) {
-                try await transport.replaceNotificationRegistration(
-                    try file.removing(token: deviceToken.hex).encoded())
+            let updated = file.removing(owner)
+            if updated != file {
+                try await transport.replaceNotificationRegistration(try updated.encoded())
             }
         }
-        try keys.removeRecord(forHost: hostID)
+        try keys.removeRecord(forHost: host.id)
     }
 
-    /// Writes this device's Live Activity push token into the matching
-    /// registration entry. The device must already be registered — there is
-    /// no entry to hang the token on otherwise, and inventing one would
-    /// omit the Notification Key the plugin still needs for alerts.
+    /// Writes this device's Live Activity push token into the Host's own
+    /// registration entry, first dropping that token from every other entry.
+    /// The Host must already be registered — there is no entry to hang the
+    /// token on otherwise, and inventing one would omit the Notification
+    /// Key the plugin still needs for alerts.
     func setLiveActivityToken(
         tokenHex: String,
         startedAt: Date,
+        hostID: Host.ID,
         deviceToken: APNSDeviceToken,
         pinnedPaneIDs: [String] = [],
         rowLayout: AgentRowLayout? = nil,
         hostName: String? = nil,
         over transport: any Transport,
         diagnose: (@Sendable (String) async -> Void)? = nil
+    ) async throws {
+        let owner = try await liveActivityOwner(hostID: hostID, deviceToken: deviceToken)
+        try await rewrite(
+            for: owner, over: transport, diagnose: diagnose,
+            prepare: { $0.strippingLiveActivity(token: tokenHex, keepingOwnEntryOf: owner) }
+        ) { file in
+            guard let owner else { throw NotificationRegistrationError.deviceNotRegistered }
+            return try file.settingLiveActivity(
+                token: tokenHex, startedAt: startedAt, for: owner,
+                pinnedPaneIDs: pinnedPaneIDs, rowLayout: rowLayout, hostName: hostName)
+        }
+    }
+
+    /// Updates `pinned_pane_ids` (and the row layout, when given) on the
+    /// Host's own `live_activity` object. No-op while that field is absent;
+    /// throws `deviceNotRegistered` when the Host has no entry.
+    func setLiveActivityPinnedPaneIDs(
+        _ pinnedPaneIDs: [String],
+        rowLayout: AgentRowLayout? = nil,
+        hostName: String? = nil,
+        hostID: Host.ID,
+        deviceToken: APNSDeviceToken,
+        over transport: any Transport
+    ) async throws {
+        guard let owner = try await liveActivityOwner(hostID: hostID, deviceToken: deviceToken)
+        else { throw NotificationRegistrationError.deviceNotRegistered }
+        try await rewrite(for: owner, over: transport) { file in
+            var updated = try file.settingLiveActivityPinnedPaneIDs(pinnedPaneIDs, for: owner)
+            if let rowLayout {
+                updated = try updated.settingLiveActivityRowLayout(
+                    rowLayout, hostName: hostName, for: owner)
+            }
+            return updated
+        }
+    }
+
+    /// Drops `live_activity` from the Host's own entry, leaving the rest of
+    /// the object (alert token, key, notify flags, unknown fields) intact.
+    /// `liveActivityToken` is the token last written for this Host, when
+    /// known: it limits the own-entry clear to that token, and without an
+    /// own entry it finds the stale copy. An unregistered Host is a no-op.
+    func clearLiveActivityToken(
+        _ liveActivityToken: String?,
+        hostID: Host.ID,
+        deviceToken: APNSDeviceToken,
+        over transport: any Transport
+    ) async throws {
+        let owner = try await liveActivityOwner(hostID: hostID, deviceToken: deviceToken)
+        try await rewrite(for: owner, over: transport) { file in
+            file.clearingLiveActivity(token: liveActivityToken, for: owner)
+        }
+    }
+
+    /// The owner the Live Activity writes act for, resolved by Host id.
+    private func liveActivityOwner(
+        hostID: Host.ID, deviceToken: APNSDeviceToken
+    ) async throws -> NotificationRegistrationOwner? {
+        guard let key = try keys.record(forHost: hostID)?.key else { return nil }
+        return NotificationRegistrationOwner(
+            deviceToken: deviceToken.hex, key: key, session: await hostSession(hostID))
+    }
+
+    /// One read-modify-write of the registration file: normalizes the Host's
+    /// own entry toward its session, applies `prepare` then `change`, and
+    /// replaces the file only when the result differs from what was read. A
+    /// `change` that throws still persists the normalized, prepared file
+    /// when that differs, then rethrows.
+    private func rewrite(
+        for owner: NotificationRegistrationOwner?,
+        over transport: any Transport,
+        diagnose: (@Sendable (String) async -> Void)? = nil,
+        prepare: (NotificationRegistrationFile) -> NotificationRegistrationFile = { $0 },
+        change: (NotificationRegistrationFile) throws -> NotificationRegistrationFile
     ) async throws {
         try Task.checkCancellation()
         await diagnose?("registration read started")
@@ -100,52 +197,22 @@ struct NotificationRegistrationCeremony: Sendable {
         try Task.checkCancellation()
         let file = try NotificationRegistrationFile.decode(registration)
         await diagnose?("registration decoded")
-        guard file.containsDevice(token: deviceToken.hex) else {
-            throw NotificationRegistrationError.deviceNotRegistered
+        let base = prepare(owner.map { file.normalized(for: $0) } ?? file)
+        let updated: NotificationRegistrationFile
+        do {
+            updated = try change(base)
+        } catch {
+            if base != file {
+                try await transport.replaceNotificationRegistration(try base.encoded())
+            }
+            throw error
         }
-        let contents = try file.settingLiveActivity(
-            token: tokenHex, startedAt: startedAt, forDeviceToken: deviceToken.hex,
-            pinnedPaneIDs: pinnedPaneIDs, rowLayout: rowLayout, hostName: hostName
-        ).encoded()
+        guard updated != file else { return }
+        let contents = try updated.encoded()
         await diagnose?("registration encoded")
         try Task.checkCancellation()
         try await transport.replaceNotificationRegistration(contents)
         await diagnose?("registration replaced")
-    }
-
-    /// Updates `pinned_pane_ids` on this device's existing `live_activity`
-    /// object. No-op when the device is unregistered or the field is absent.
-    func setLiveActivityPinnedPaneIDs(
-        _ pinnedPaneIDs: [String],
-        rowLayout: AgentRowLayout? = nil,
-        hostName: String? = nil,
-        deviceToken: APNSDeviceToken,
-        over transport: any Transport
-    ) async throws {
-        guard let data = try await transport.readNotificationRegistration() else { return }
-        let file = try NotificationRegistrationFile.decode(data)
-        var updated = file.settingLiveActivityPinnedPaneIDs(
-            pinnedPaneIDs, forDeviceToken: deviceToken.hex)
-        if let rowLayout {
-            updated = updated.settingLiveActivityRowLayout(
-                rowLayout, hostName: hostName, forDeviceToken: deviceToken.hex)
-        }
-        guard updated != file else { return }
-        try await transport.replaceNotificationRegistration(try updated.encoded())
-    }
-
-    /// Drops `live_activity` from this device's entry, leaving the rest of
-    /// the object (alert token, key, notify flags, unknown fields) intact.
-    /// An unregistered device is a no-op, matching `remove`.
-    func clearLiveActivityToken(
-        deviceToken: APNSDeviceToken,
-        over transport: any Transport
-    ) async throws {
-        guard let data = try await transport.readNotificationRegistration() else { return }
-        let file = try NotificationRegistrationFile.decode(data)
-        let updated = file.clearingLiveActivity(forDeviceToken: deviceToken.hex)
-        guard updated != file else { return }
-        try await transport.replaceNotificationRegistration(try updated.encoded())
     }
 
     /// The Host's key record: the existing key when one is stored (the
@@ -155,5 +222,17 @@ struct NotificationRegistrationCeremony: Sendable {
     private func hostRecord(hostID: UUID, hostName: String) throws -> NotificationKeyRecord {
         let key = try keys.record(forHost: hostID)?.key ?? NotificationKeyStore.generateKey()
         return NotificationKeyRecord(hostID: hostID, hostName: hostName, key: key)
+    }
+}
+
+extension Host {
+    /// The herdr session value a registration entry carries for this Host:
+    /// "" for the default session, otherwise the session name. A fixed
+    /// socket path (test fixtures only) counts as the default session.
+    var notificationSession: String {
+        switch socketLocation {
+        case .defaultSession, .absolutePath: ""
+        case .namedSession(let name): name
+        }
     }
 }

@@ -93,6 +93,11 @@ final class HeelerAppModel {
             controller: ActivityKitLiveActivityController(),
             preferences: LiveActivityPreferences(),
             transports: console,
+            // Live Activity writes know a Host by id; its herdr session
+            // scopes which registration entry is its own (#412).
+            ceremony: NotificationRegistrationCeremony(hostSession: { [weak hostStore] id in
+                hostStore?.hosts.first(where: { $0.id == id })?.notificationSession
+            }),
             deviceToken: { [weak pushRegistration] in pushRegistration?.deviceToken },
             knownHostIDs: { [weak hostStore] in Set(hostStore?.hosts.map(\.id) ?? []) },
             hostDisplayName: { [weak hostStore] id in
