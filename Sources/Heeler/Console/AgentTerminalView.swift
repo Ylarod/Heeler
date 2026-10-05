@@ -436,8 +436,9 @@ struct AgentTerminalView: View {
         screen.keyboardControl = keyboardControl
         screen.scrollControl = messageJump.scrollControl
         // Agent input is natural-language authored text in both Composer and
-        // Direct Input. Matching traits lets UIKit retain one Apple keyboard
-        // context across the responder transfer; Shell terminals keep the
+        // Direct Input. Matching the Composer's sentence case lets UIKit
+        // retain one Apple keyboard context across the responder transfer
+        // (only the Composer autocorrects); Shell terminals keep the
         // command-oriented defaults.
         screen.textInputStyle = .naturalLanguage
         screen.initialKeyboardMode = usesDirectToolsKeyboard ? .controls : .text
