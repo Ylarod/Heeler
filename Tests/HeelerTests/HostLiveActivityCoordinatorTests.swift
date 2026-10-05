@@ -456,6 +456,41 @@ struct HostLiveActivityCoordinatorTests {
         }
     }
 
+    @Test func endingAfterAFailedRotationThatLandedClearsTheLandedToken() async throws {
+        try await withFixture { defaults in
+            try await registerDevice()
+            armWorld()
+            let coordinator = makeCoordinator(defaults: defaults)
+            coordinator.start()
+            coordinator.agentsDidChange([agent(observedPaneID, .working)])
+            try await waitUntil("the activity should start") { !controller.requestedHandles.isEmpty }
+            let activityID = try #require(controller.requestedHandles.first?.id)
+
+            controller.emitToken(id: activityID, Data([0xaa]))
+            try await waitUntil("the first token should be written") {
+                try await liveActivityToken() == "aa"
+            }
+
+            // The rotated token reaches the Host but the write still reports
+            // failure, so the coordinator cannot know which token is there.
+            await transport.setNotificationRegistrationWriteFailsAfterLanding(
+                .writeFailed(detail: "exit status lost"))
+            controller.emitToken(id: activityID, Data([0xbb]))
+            try await waitUntil("the rotated write should land and then fail") {
+                world.trace.contains {
+                    $0.hasSuffix("writer completed success=false pending=true dirty=true")
+                }
+            }
+            #expect(try await liveActivityToken() == "bb")
+
+            await transport.setNotificationRegistrationWriteFailure(nil)
+            controller.emitState(id: activityID, .ended)
+            try await waitUntil("ending should drop the token that landed") {
+                try await liveActivityToken() == nil
+            }
+        }
+    }
+
     @Test func switchingThePreferenceOffEndsAndClears() async throws {
         try await withFixture { defaults in
             try await registerDevice()

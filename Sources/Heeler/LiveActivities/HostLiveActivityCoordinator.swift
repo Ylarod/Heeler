@@ -33,7 +33,9 @@ final class HostLiveActivityCoordinator {
     @ObservationIgnored private var pipes: [Host.ID: TokenPipe] = [:]
     @ObservationIgnored private var writerTasks: [Host.ID: Task<Void, Never>] = [:]
     /// The Live Activity push token last written to each Host's entry, so a
-    /// clear removes that token and nothing another Host wrote.
+    /// clear removes that token and nothing another Host wrote. Nil when no
+    /// token is known, including after a failed token write that may still
+    /// have landed; a clear then drops whatever token the own entry holds.
     @ObservationIgnored private var writtenLiveActivityTokens: [Host.ID: String] = [:]
     @ObservationIgnored var onDiagnostic: (@MainActor (Host.ID, String) -> Void)?
 
@@ -543,6 +545,7 @@ final class HostLiveActivityCoordinator {
             }
             return true
         } catch {
+            if case .set = job { writtenLiveActivityTokens[hostID] = nil }
             onDiagnostic?(hostID, "writer error category=\(Self.errorCategory(error))")
             return false
         }

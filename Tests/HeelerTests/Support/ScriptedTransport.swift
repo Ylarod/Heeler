@@ -113,6 +113,7 @@ final actor ScriptedTransport: Transport {
     private(set) var notificationRegistrationReads = 0
     private var notificationRegistrationReadFailure: NotificationRegistrationError?
     private var notificationRegistrationWriteFailure: NotificationRegistrationError?
+    private var notificationRegistrationWriteFailsAfterLanding = false
     private var notificationRegistrationWriteGate: CancellablePhaseGate?
     private(set) var notificationRegistrationWriteIsBlocked = false
     /// The Host's current `notify.json` bytes; nil scripts "no config yet".
@@ -373,6 +374,15 @@ final actor ScriptedTransport: Transport {
     /// Makes every subsequent registration replace throw `failure`.
     func setNotificationRegistrationWriteFailure(_ failure: NotificationRegistrationError?) {
         notificationRegistrationWriteFailure = failure
+        notificationRegistrationWriteFailsAfterLanding = false
+    }
+
+    /// Makes every subsequent registration replace land on the Host and then
+    /// throw `failure`, like a write whose exit status is lost after the
+    /// atomic rename. Pass nil to restore normal writes.
+    func setNotificationRegistrationWriteFailsAfterLanding(_ failure: NotificationRegistrationError?) {
+        notificationRegistrationWriteFailure = failure
+        notificationRegistrationWriteFailsAfterLanding = failure != nil
     }
 
     func holdNotificationRegistrationWrites(on gate: CancellablePhaseGate) {
@@ -720,9 +730,14 @@ final actor ScriptedTransport: Transport {
             notificationRegistrationWriteIsBlocked = false
         }
         try Task.checkCancellation()
-        if let failure = notificationRegistrationWriteFailure { throw failure }
+        if let failure = notificationRegistrationWriteFailure,
+            !notificationRegistrationWriteFailsAfterLanding
+        {
+            throw failure
+        }
         notificationRegistration = contents
         replacedNotificationRegistrations.append(contents)
+        if let failure = notificationRegistrationWriteFailure { throw failure }
     }
 
     func readNotificationConfig() async throws -> Data? {
