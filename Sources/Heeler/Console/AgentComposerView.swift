@@ -747,6 +747,7 @@ final class AgentComposerUITextView: UITextView {
     private var keyboardPresentation: AgentComposerKeyboardPresentation = .hidden
     var onKeyboardHandoffSettled: ((UUID) -> Void)?
     private var activeKeyboardHandoffID: UUID?
+    private var isRequestingKeyboardHandoff = false
     /// Focus requested before the view is in a window. The keyboard is then
     /// taken over in the same pass the view is inserted — while the surface
     /// it inherits from is still first responder — so UIKit moves it between
@@ -816,14 +817,26 @@ final class AgentComposerUITextView: UITextView {
         else { return }
         guard let activeKeyboardHandoffID else { return }
         self.activeKeyboardHandoffID = nil
-        onKeyboardHandoffSettled?(activeKeyboardHandoffID)
+        guard isRequestingKeyboardHandoff else {
+            onKeyboardHandoffSettled?(activeKeyboardHandoffID)
+            return
+        }
+        // iOS 26 publishes the settled frame from inside
+        // `becomeFirstResponder`, before the requester has learned the
+        // request succeeded; reporting it now would be discarded as unknown
+        // and leave the handoff to its fallback.
+        DispatchQueue.main.async { [weak self] in
+            self?.onKeyboardHandoffSettled?(activeKeyboardHandoffID)
+        }
     }
 
     @discardableResult
     func requestKeyboardHandoff(id: UUID) -> Bool {
         guard window != nil else { return false }
         activeKeyboardHandoffID = id
+        isRequestingKeyboardHandoff = true
         let accepted = becomeFirstResponder()
+        isRequestingKeyboardHandoff = false
         if !accepted {
             activeKeyboardHandoffID = nil
         }

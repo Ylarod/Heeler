@@ -2005,6 +2005,51 @@ struct TerminalAttachTests {
         #expect((TerminalKeyboardInset.layoutGuideHeight(in: window) ?? 0) > 0)
     }
 
+    /// iOS 26 publishes the settled frame from inside `becomeFirstResponder`
+    /// when the keyboard changes hands. The requester only records the
+    /// handoff once the request returns, so the settle must reach it after.
+    @MainActor
+    @Test func aSettleRaisedInsideTheComposersRequestIsReportedAfterItReturns()
+        async throws
+    {
+        let controller = UIViewController()
+        let previousOwner = UITextField(frame: CGRect(x: 20, y: 20, width: 240, height: 44))
+        let composer = AgentComposerUITextView(
+            frame: CGRect(x: 20, y: 80, width: 240, height: 44))
+        composer.updateKeyboard(presentation: .system)
+        controller.view.addSubview(previousOwner)
+        controller.view.addSubview(composer)
+        let window = try await makeTestWindow(
+            frame: UIScreen.main.bounds, rootViewController: controller)
+        defer {
+            composer.resignFirstResponder()
+            previousOwner.resignFirstResponder()
+            window.isHidden = true
+        }
+        previousOwner.becomeFirstResponder()
+        try #require(await Self.eventually {
+            (TerminalKeyboardInset.layoutGuideHeight(in: window) ?? 0) > 0
+        })
+        let guideFrame = try #require(TerminalKeyboardInset.keyboardLayoutGuideFrame(in: window))
+        let settledFrame = window.convert(guideFrame, to: window.screen.coordinateSpace)
+        let observer = NotificationCenter.default.addObserver(
+            forName: UITextView.textDidBeginEditingNotification, object: composer, queue: nil
+        ) { _ in
+            NotificationCenter.default.post(
+                name: UIResponder.keyboardDidChangeFrameNotification, object: nil,
+                userInfo: [UIResponder.keyboardFrameEndUserInfoKey: settledFrame])
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        var settledIDs: [UUID] = []
+        composer.onKeyboardHandoffSettled = { settledIDs.append($0) }
+
+        let id = UUID()
+        #expect(composer.requestKeyboardHandoff(id: id))
+        #expect(settledIDs.isEmpty)
+        try #require(await Self.eventually { !settledIDs.isEmpty })
+        #expect(settledIDs == [id])
+    }
+
     /// Focusing the Composer with a hardware keyboard attached, as the iPad
     /// simulator publishes it: a zero-height frame at the bottom edge, then
     /// will-hide, confirmed.
