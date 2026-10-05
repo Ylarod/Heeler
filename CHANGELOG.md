@@ -43,6 +43,15 @@ Entries reference the issue that motivated them.
 - After you trust a new Host's key in its detail view, the Host now
   connects as soon as the checks pass instead of staying failed until you
   tap Reconnect. (#413)
+- Hosts that reach the same remote user no longer mix up their notification
+  registrations. A Host's Notifications toggle shows only its own
+  registration, and turning notifications off on one Host no longer stops
+  another. Hosts on different herdr sessions get notifications and Live
+  Activity updates only from their own session; Hosts on the same session
+  share one registration, held by whichever turned notifications on last.
+  Update the Heeler plugin to 0.6.0 on each Host: with an older plugin,
+  Hosts on different sessions can still receive each other's notifications,
+  which open the wrong pane, and one event can arrive twice. (#416)
 
 ## [0.1.12] - 2026-10-02
 

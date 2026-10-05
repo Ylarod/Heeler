@@ -79,7 +79,10 @@ Relay** empty to use the production endpoint at
 `https://heeler-apns.bybee.dev`.
 
 To update an installed GitHub-managed plugin, run the same `plugin install`
-command again. To inspect notification or pairing failures:
+command again. Plugin 0.6.0 scopes notifications to the herdr session they
+come from; update it on every Host along with the app (see
+[Updating to 0.6.0](#updating-to-060)). To inspect notification or pairing
+failures:
 
 ```bash
 herdr plugin log list --plugin heeler --limit 20
@@ -340,8 +343,8 @@ SSH during Notification Registration; the notify hook reads it and POSTs one
 push per device entry. It lives at `notifications.json` inside this plugin's
 config directory (the app resolves that directory via
 `herdr plugin config-dir`). Writers replace the whole file atomically
-(temp file + rename), keyed one entry per device token; removing an entry
-revokes that device.
+(temp file + rename). The app keeps at most one entry per device token and
+herdr session; removing an entry revokes that device for that session.
 
 ```json
 {
@@ -351,6 +354,7 @@ revokes that device.
       "token": "a1b2c3...",
       "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
       "env": "production",
+      "session": "",
       "notify": { "blocked": true, "done": true },
       "live_activity": { "token": "c4d5e6...", "started_at": "2026-01-01T00:00:00Z" }
     }
@@ -362,8 +366,9 @@ revokes that device.
 | ---------------- | ------- | ------- |
 | `v`              | integer | File format version. This document specifies version `1`; a reader finding any other value must treat the file as absent (send nothing) rather than guess. |
 | `devices`        | array   | One entry per registered device. Empty means no notifications. |
-| `token`          | string  | The device's APNs device token, lowercase hex. Unique within the file. |
+| `token`          | string  | The device's APNs device token, lowercase hex. Unique within the file per `session`: a device with Hosts on several herdr sessions of this user has one entry per session. |
 | `key`            | string  | Raw 32-byte Notification Key, unpadded base64url. Generated on the device, per Host. |
+| `session`        | string  | The herdr session the entry was registered for: `""` for the default session (never the literal `"default"`), otherwise the session name. See [herdr sessions](#herdr-sessions). Entries without a string `session` were written by older apps and receive every session's deliveries. |
 | `env`            | string  | `production` or `sandbox`: which APNs environment the token belongs to, following the app build that registered it. |
 | `notify.blocked` | boolean | Send a push when an Agent becomes Blocked. |
 | `notify.done`    | boolean | Send a push when an Agent reaches Done. A missing flag means do not send (fail closed). |
@@ -374,6 +379,55 @@ revokes that device.
 
 Readers ignore unknown fields (additive v1 metadata); breaking changes bump
 `v`, honored by plugin and app together.
+
+### herdr sessions
+
+Every herdr session of one remote user runs this plugin's hooks with the same
+config and state directories, so all sessions read the same
+`notifications.json`, and pane ids repeat across sessions. Each hook process
+derives its own session from `HERDR_SOCKET_PATH` (`src/session.js`), checked in
+this order:
+
+1. Unset or empty: the default session (`""`).
+2. Ends with `/herdr/sessions/<name>/herdr.sock` and `<name>` is a valid herdr
+   session name (1 to 64 bytes of ASCII letters, digits, `.`, `_` and `-`,
+   not `.` or `..`): that name. This comes first, so a session named `herdr`
+   is not mistaken for the default.
+3. Ends with `/herdr/herdr.sock`: the default session (`""`).
+4. Anything else (for example a custom socket override): unknown.
+
+A hook delivers alerts and Live Activity updates only to entries whose
+`session` equals its own, plus legacy entries without a string `session`,
+which every session delivers to as before. A hook whose session is unknown
+delivers to legacy entries only. Names compare exactly (case-sensitive), and
+the name `default` gets no special treatment. The delivery check also runs
+before the debounce, so a session with no entries to deliver to neither sleeps
+nor calls herdr to send anything.
+
+Per-session hook state lives under `HERDR_PLUGIN_STATE_DIR/sessions/<name>/`
+for a named session (`notify/` dedupe markers, `activity/claim.json`,
+`activity/last-state.json`), so one session's dedupe, debounce claim, or ended
+Live Activity never affects another. The default and unknown sessions keep
+the paths earlier plugin versions used, directly under
+`HERDR_PLUGIN_STATE_DIR`. A `410 Unregistered` still prunes by token across
+every session (see the hook sections below).
+
+`test-vectors/notification-session-v1.json` pins the name rule, the socket
+path derivation, and the delivery rule; the Node tests here and the Swift
+tests in the app both read it.
+
+### Updating to 0.6.0
+
+- A 0.6.0 plugin with an app that does not write `session` behaves as before:
+  every entry is legacy and every session delivers to it.
+- An app that writes `session` with a plugin older than 0.6.0: the old plugin
+  ignores `session` and delivers every entry from every session, so Hosts on
+  different herdr sessions of the same remote user receive each other's
+  notifications (opening the wrong pane), and one event can arrive as two
+  notifications. Update the plugin on each Host to fix this.
+- Downgrading the app on a device after upgrading mixes up notifications of
+  Hosts that share a server; after upgrading again, re-check each Host's
+  Notifications toggle.
 
 ## Sidebar layout snapshot (v1)
 
@@ -502,16 +556,19 @@ Anti-noise, in order:
    through `HERDR_BIN_PATH` (`herdr agent get <pane>`), and aborts if the
    status moved on (or the agent is gone).
 2. **Dedupe**: the last notified status is recorded per pane under
-   `HERDR_PLUGIN_STATE_DIR/notify/`; a same-status repeat sends nothing. A
-   *different* status that survives its own debounce re-arms the pane.
+   `HERDR_PLUGIN_STATE_DIR/notify/` (`HERDR_PLUGIN_STATE_DIR/sessions/<name>/notify/`
+   for a named [herdr session](#herdr-sessions)); a same-status repeat sends
+   nothing. A *different* status that survives its own debounce re-arms the
+   pane.
 
 Each eligible device gets one `POST https://heeler-apns.bybee.dev/push` by
 default (see `relay/README.md`), carrying the encrypted envelope and an opaque
 per-pane `collapse` key (derived from the device's Notification Key and the
 pane id, so the relay cannot guess the pane while newer statuses still replace
 older notifications). Transient failures (network errors, 429, 5xx) are
-retried up to 3 attempts; a `410 Unregistered` verdict prunes that token from
-`notifications.json` (preserving any fields this plugin does not understand);
+retried up to 3 attempts; a `410 Unregistered` verdict prunes every entry
+with that token from `notifications.json`, whatever its session (preserving
+any fields this plugin does not understand);
 other 4xx verdicts are final.
 
 Plugin-side settings live in `notify.json` next to the registration file in
@@ -548,7 +605,9 @@ The second manifest `[[events]]` hook on `pane.agent_status_changed` runs
 this command and `src/notify-hook.js` for the same event (verified on
 0.8.0); there is no in-plugin dispatcher. It is independent of the alert
 notify hook: `notify` flags do not gate it, and a Host with no
-`live_activity` registration sends nothing.
+`live_activity` registration delivered to this hook's
+[herdr session](#herdr-sessions) sends nothing. The `activity/` paths below
+are relative to the session's state directory.
 
 The hook lists the Host's agents through `HERDR_BIN_PATH` (`herdr agent list`),
 resolves workspace labels best-effort through `herdr workspace list`, and drives

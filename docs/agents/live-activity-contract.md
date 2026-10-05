@@ -173,6 +173,21 @@ device entry's alert `token`, `key`, `notify`, and unknown fields. A user
 dismissing the activity while the app is dead self-heals through that 410
 on the next push.
 
+Hosts on several herdr sessions of one remote user share one
+`notifications.json`, so the field lives on the Host's **own** device entry:
+the one carrying this device token and the Host's Notification Key. That
+entry also carries `session` (`""` for the default session, otherwise the
+session name; see [plugin/README.md](../../plugin/README.md#herdr-sessions)),
+and the app keeps at most one entry per device token and session. Before
+writing a token the app strips `live_activity` holding that same token from
+every other entry; pin and layout writes touch only the own entry and fail
+with `deviceNotRegistered` when there is none. A clear removes the field
+from the own entry, or, without one, from whichever entry holds that token;
+another Host's `live_activity` with a different token is never touched. The
+activity hook in each session pushes only to entries of its own session plus
+legacy entries without a string `session`, and keeps its claim and last
+state per session, so two sessions never drive the same activity.
+
 `pinned_pane_ids` is this Host's pin recency list: pane-id strings,
 most-recently-pinned first. The app writes it whenever it writes
 `live_activity` and pushes an update when the pin set changes while the

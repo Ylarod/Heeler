@@ -72,6 +72,33 @@ struct NotificationPreferencesStoreTests {
         return store
     }
 
+    /// A registration file holding this Host's entry (this device token with
+    /// the Host's stored key) as an older app wrote it: no `session` field
+    /// unless one is given.
+    private func ownEntryFile(
+        for host: Host? = nil, notify: String, session: String? = nil
+    ) throws -> Data {
+        Data(#"{"v":1,"devices":[\#(try ownEntry(for: host, notify: notify, session: session))]}"#.utf8)
+    }
+
+    /// One device entry of that file, saving the Host's key when needed.
+    private func ownEntry(
+        for host: Host? = nil, notify: String, session: String? = nil
+    ) throws -> String {
+        let host = host ?? self.host
+        let key = try keys.record(forHost: host.id)?.key ?? NotificationKeyStore.generateKey()
+        try keys.save(NotificationKeyRecord(hostID: host.id, hostName: host.displayName, key: key))
+        let sessionField = session.map { #","session":"\#($0)""# } ?? ""
+        return #"{"token":"\#(token.hex)","key":"\#(key.base64URLEncodedString())","#
+            + #""env":"sandbox","notify":\#(notify)"# + sessionField + "}"
+    }
+
+    private func owner(_ host: Host? = nil) throws -> NotificationRegistrationOwner {
+        try #require(
+            try NotificationRegistrationCeremony(keys: keys)
+                .registrationOwner(for: host ?? self.host, deviceToken: token))
+    }
+
     // MARK: Reflecting the Host's truth
 
     @Test func refreshReflectsAnUnregisteredHost() async throws {
@@ -88,9 +115,7 @@ struct NotificationPreferencesStoreTests {
     @Test func refreshReflectsThisDevicesEntryFlags() async throws {
         let transport = ScriptedTransport()
         await transport.setNotificationRegistration(
-            Data(
-                (#"{"v":1,"devices":[{"token":"\#(token.hex)","key":"kk","env":"sandbox","#
-                    + #""notify":{"blocked":true,"done":false}}]}"#).utf8))
+            try ownEntryFile(notify: #"{"blocked":true,"done":false}"#))
         let store = makeStore(transport: transport)
 
         await store.refresh()
@@ -164,8 +189,7 @@ struct NotificationPreferencesStoreTests {
                     .init(isRegistered: true, notify: NotificationTriggerPreferences())))
         let file = try NotificationRegistrationFile.decode(
             await transport.notificationRegistration)
-        #expect(file.containsDevice(token: token.hex))
-        #expect(try keys.record(forHost: host.id) != nil)
+        #expect(file.preferences(for: try owner()) == NotificationTriggerPreferences())
     }
 
     @Test func disablingRemovesTheDeviceEntryAndTheKey() async throws {
@@ -182,7 +206,7 @@ struct NotificationPreferencesStoreTests {
                     .init(isRegistered: false, notify: NotificationTriggerPreferences())))
         let file = try NotificationRegistrationFile.decode(
             await transport.notificationRegistration)
-        #expect(!file.containsDevice(token: token.hex))
+        #expect(!file.devices.contains { $0["token"]?.stringValue == token.hex })
         #expect(try keys.record(forHost: host.id) == nil)
     }
 
@@ -348,9 +372,7 @@ struct NotificationPreferencesStoreTests {
     @Test func confirmedTriggersOfARegisteredHostAreItsFlags() async throws {
         let transport = ScriptedTransport()
         await transport.setNotificationRegistration(
-            Data(
-                (#"{"v":1,"devices":[{"token":"\#(token.hex)","key":"kk","env":"sandbox","#
-                    + #""notify":{"blocked":true,"done":false}}]}"#).utf8))
+            try ownEntryFile(notify: #"{"blocked":true,"done":false}"#))
         let store = makeStore(transport: transport)
         await store.refresh()
 
@@ -394,5 +416,168 @@ struct NotificationPreferencesStoreTests {
         #expect(
             store.confirmedTriggers(for: host.id)
                 == NotificationTriggerPreferences(blocked: true, done: true))
+    }
+
+    // MARK: Hosts on several herdr sessions of one remote user (#412)
+
+    private let workHost = Host(
+        name: "mac-studio work", address: "10.0.0.2", username: "z", sessionName: "work")
+
+    @Test func anotherHostsEntryForThisDeviceDoesNotReadAsRegistered() async throws {
+        let transport = ScriptedTransport()
+        await transport.setNotificationRegistration(
+            try ownEntryFile(for: workHost, notify: #"{"blocked":true,"done":true}"#, session: "work"))
+        let store = makeStore(transport: transport)
+
+        await store.refresh()
+
+        #expect(
+            store.states[host.id]
+                == .idle(.init(isRegistered: false, notify: NotificationTriggerPreferences())))
+    }
+
+    @Test func hostsOnDifferentSessionsToggleIndependently() async throws {
+        let transport = ScriptedTransport()
+        let store = NotificationPreferencesStore(
+            transports: ScriptedTransportProvider(
+                transports: [host.id: transport, workHost.id: transport]),
+            deviceToken: { self.token },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+        store.setHosts([host, workHost])
+        await store.refresh()
+
+        await store.setNotificationsEnabled(true, for: host)
+        await store.setNotificationsEnabled(true, for: workHost)
+        await store.setDoneEnabled(false, for: workHost)
+        await store.setNotificationsEnabled(false, for: host)
+        await store.refresh()
+
+        #expect(
+            store.states[host.id]
+                == .idle(.init(isRegistered: false, notify: NotificationTriggerPreferences())))
+        #expect(
+            store.states[workHost.id]
+                == .idle(
+                    .init(
+                        isRegistered: true,
+                        notify: NotificationTriggerPreferences(blocked: true, done: false))))
+        let file = try NotificationRegistrationFile.decode(
+            await transport.notificationRegistration)
+        #expect(file.devices.count == 1)
+        #expect(file.devices.first?["session"]?.stringValue == "work")
+    }
+
+    @Test func registeringOnAnOccupiedSessionTurnsTheDisplacedHostOff() async throws {
+        let transport = ScriptedTransport()
+        let tailscale = Host(name: "mac-studio ts", address: "100.64.0.2", username: "z")
+        let store = NotificationPreferencesStore(
+            transports: ScriptedTransportProvider(
+                transports: [host.id: transport, tailscale.id: transport]),
+            deviceToken: { self.token },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+        store.setHosts([host, tailscale])
+        await store.refresh()
+        await store.setNotificationsEnabled(true, for: host)
+
+        await store.setNotificationsEnabled(true, for: tailscale)
+
+        #expect(
+            store.states[host.id]
+                == .idle(.init(isRegistered: false, notify: NotificationTriggerPreferences())))
+        #expect(
+            store.states[tailscale.id]
+                == .idle(.init(isRegistered: true, notify: NotificationTriggerPreferences())))
+    }
+
+    // MARK: Migration on load and the registration cue
+
+    private func makeWorkStore(transport: ScriptedTransport) -> NotificationPreferencesStore {
+        let store = NotificationPreferencesStore(
+            transports: ScriptedTransportProvider(transports: [workHost.id: transport]),
+            deviceToken: { self.token },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+        store.setHosts([workHost])
+        return store
+    }
+
+    @Test(arguments: [nil, "old"] as [String?])
+    func loadMovesTheEntryToTheHostsCurrentSession(_ stored: String?) async throws {
+        let transport = ScriptedTransport()
+        await transport.setNotificationRegistration(
+            try ownEntryFile(
+                for: workHost, notify: #"{"blocked":true,"done":false}"#, session: stored))
+        let store = makeWorkStore(transport: transport)
+
+        await store.refresh()
+        await store.refresh()
+
+        let registered = NotificationPreferencesStore.HostSettings(
+            isRegistered: true, notify: NotificationTriggerPreferences(blocked: true, done: false))
+        #expect(store.states[workHost.id] == .idle(registered))
+        #expect(await transport.replacedNotificationRegistrations.count == 1)
+        let file = try NotificationRegistrationFile.decode(
+            await transport.notificationRegistration)
+        #expect(file.devices.first?["session"]?.stringValue == "work")
+    }
+
+    @Test func aFailedMigrationKeepsTheReadStateAndRetriesOnTheNextRefresh() async throws {
+        let transport = ScriptedTransport()
+        let legacy = try ownEntryFile(for: workHost, notify: #"{"blocked":true,"done":true}"#)
+        await transport.setNotificationRegistration(legacy)
+        await transport.setNotificationRegistrationWriteFailure(.writeFailed(detail: "read-only"))
+        let store = makeWorkStore(transport: transport)
+
+        await store.refresh()
+
+        let registered = NotificationPreferencesStore.HostSettings(isRegistered: true, notify: NotificationTriggerPreferences())
+        #expect(store.states[workHost.id] == .idle(registered))
+        #expect(await transport.notificationRegistration == legacy)
+
+        await transport.setNotificationRegistrationWriteFailure(nil)
+        await store.refresh()
+
+        #expect(store.states[workHost.id] == .idle(registered))
+        let file = try NotificationRegistrationFile.decode(
+            await transport.notificationRegistration)
+        #expect(file.devices.first?["session"]?.stringValue == "work")
+    }
+
+    @Test func aLegacyEntryInAnotherHostsSlotReadsAsUnregisteredAfterMigration() async throws {
+        let transport = ScriptedTransport()
+        let theirs = try ownEntry(
+            for: host, notify: #"{"blocked":true,"done":true}"#, session: "work")
+        let mine = try ownEntry(for: workHost, notify: #"{"blocked":true,"done":true}"#)
+        await transport.setNotificationRegistration(
+            Data(#"{"v":1,"devices":[\#(theirs),\#(mine)]}"#.utf8))
+        let store = makeWorkStore(transport: transport)
+
+        await store.refresh()
+
+        #expect(
+            store.states[workHost.id]
+                == .idle(.init(isRegistered: false, notify: NotificationTriggerPreferences())))
+        let file = try NotificationRegistrationFile.decode(
+            await transport.notificationRegistration)
+        #expect(file.devices.count == 1)
+        #expect(file.preferences(for: try owner(host)) != nil)
+    }
+
+    @Test func onRegisteredFiresOnceForAConfirmedRegistration() async throws {
+        let transport = ScriptedTransport()
+        let store = makeStore(transport: transport)
+        var registered: [Host.ID] = []
+        store.onRegistered = { registered.append($0) }
+        await store.refresh()
+
+        await transport.setNotificationRegistrationWriteFailure(.writeFailed(detail: "disk full"))
+        await store.setNotificationsEnabled(true, for: host)
+        #expect(registered.isEmpty)
+
+        await transport.setNotificationRegistrationWriteFailure(nil)
+        await store.setNotificationsEnabled(true, for: host)
+        #expect(registered == [host.id])
+
+        await store.setNotificationsEnabled(false, for: host)
+        #expect(registered == [host.id])
     }
 }

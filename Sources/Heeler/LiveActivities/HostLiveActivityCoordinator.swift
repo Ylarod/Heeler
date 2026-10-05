@@ -32,6 +32,11 @@ final class HostLiveActivityCoordinator {
     @ObservationIgnored private var sessions: [Host.ID: ActivitySession] = [:]
     @ObservationIgnored private var pipes: [Host.ID: TokenPipe] = [:]
     @ObservationIgnored private var writerTasks: [Host.ID: Task<Void, Never>] = [:]
+    /// The Live Activity push token last written to each Host's entry, so a
+    /// clear removes that token and nothing another Host wrote. Nil when no
+    /// token is known, including after a failed token write that may still
+    /// have landed; a clear then drops whatever token the own entry holds.
+    @ObservationIgnored private var writtenLiveActivityTokens: [Host.ID: String] = [:]
     @ObservationIgnored var onDiagnostic: (@MainActor (Host.ID, String) -> Void)?
 
     var areActivitiesEnabled: Bool { controller.areEnabled }
@@ -54,6 +59,7 @@ final class HostLiveActivityCoordinator {
         sessions.removeAll()
         writerTasks.removeAll()
         pipes.removeAll()
+        writtenLiveActivityTokens.removeAll()
         applied.removeAll()
         for task in tasks { await task.value }
     }
@@ -510,6 +516,7 @@ final class HostLiveActivityCoordinator {
         let pins = pinnedPaneIDs(hostID)
         let layout = rowLayout(hostID)
         let hostName = resolvedHostName(hostID, agents: latestAgents[hostID] ?? [])
+        let writtenToken = writtenLiveActivityTokens[hostID]
         let diagnose = onDiagnostic
         do {
             try await transports.withNotificationTransport(for: hostID) { [ceremony] transport in
@@ -518,20 +525,27 @@ final class HostLiveActivityCoordinator {
                 switch job {
                 case .set(let hex, let startedAt):
                     try await ceremony.setLiveActivityToken(
-                        tokenHex: hex, startedAt: startedAt, deviceToken: token,
+                        tokenHex: hex, startedAt: startedAt, hostID: hostID, deviceToken: token,
                         pinnedPaneIDs: pins, rowLayout: layout, hostName: hostName,
                         over: transport,
                         diagnose: { event in await diagnose?(hostID, event) })
                 case .setPreferences:
                     try await ceremony.setLiveActivityPinnedPaneIDs(
-                        pins, rowLayout: layout, hostName: hostName, deviceToken: token, over: transport)
+                        pins, rowLayout: layout, hostName: hostName, hostID: hostID,
+                        deviceToken: token, over: transport)
                 case .clear:
                     try await ceremony.clearLiveActivityToken(
-                        deviceToken: token, over: transport)
+                        writtenToken, hostID: hostID, deviceToken: token, over: transport)
                 }
+            }
+            switch job {
+            case .set(let hex, _): writtenLiveActivityTokens[hostID] = hex
+            case .clear: writtenLiveActivityTokens[hostID] = nil
+            case .setPreferences: break
             }
             return true
         } catch {
+            if case .set = job { writtenLiveActivityTokens[hostID] = nil }
             onDiagnostic?(hostID, "writer error category=\(Self.errorCategory(error))")
             return false
         }

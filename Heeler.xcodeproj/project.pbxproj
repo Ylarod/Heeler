@@ -296,6 +296,7 @@
 		8668C3C60FB9539A7DD1A4EC /* Base64URL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32413805C1AA874DBEE37547 /* Base64URL.swift */; };
 		86EA13918F2EE2103B2DEFB3 /* AgentLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A9489C21BDCFA7616782BF /* AgentLiveActivityWidget.swift */; };
 		8893F7C54FA49133EF850EB2 /* SidebarLayoutVectorFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88DA44F3EA811A40E96E06F2 /* SidebarLayoutVectorFile.swift */; };
+		88B077F195BA4B6B46FD330C /* notification-session-v1.json in Resources */ = {isa = PBXBuildFile; fileRef = CC9851A5A6E65C7F52290A20 /* notification-session-v1.json */; };
 		88C55182255106627222F533 /* HostKeyFingerprint.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4EA32065B4A00D219B301CF /* HostKeyFingerprint.swift */; };
 		8911EB7CDDCA09EDE76C721E /* AgentNotificationIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 401F5B396F9F00568A4FFF88 /* AgentNotificationIdentity.swift */; };
 		8985893366A5DA338007D1A0 /* AgentActivityEnvelope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69EBBC2C99AA84420FDF600A /* AgentActivityEnvelope.swift */; };
@@ -380,6 +381,7 @@
 		B577EA28AB0BD24EB1ECA036 /* HeelerNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 59A749D2AF2390BCACBADED3 /* HeelerNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B5BF158F1DCA20F1B7AA12B0 /* TerminalMessageJumpController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 698E712B4BE15626800C366F /* TerminalMessageJumpController.swift */; };
 		B5FAB69CD004D2A4EF9BF494 /* AgentRowChanges.swift in Sources */ = {isa = PBXBuildFile; fileRef = 401B06FA1073EFC5F056E941 /* AgentRowChanges.swift */; };
+		B6287EF0E34FB1C194A08B7D /* NotificationSessionVectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CCDACE4C07BA8A814AA6829 /* NotificationSessionVectorTests.swift */; };
 		B71854386F1CF79B863F15FE /* HostOnboardingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E9D993852C5C7BFE8515A46 /* HostOnboardingStore.swift */; };
 		B787DA8CB25A81E3914F8638 /* AttachmentStaging.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB47B059A9FC5B8A63C834F2 /* AttachmentStaging.swift */; };
 		B7C3D46ED9FE621924D10C7D /* HostListViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEABDC4E573B0F9EA67F64F1 /* HostListViewTests.swift */; };
@@ -521,6 +523,7 @@
 		F4FE604E1C96A711618231CE /* AgentActivityDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B60468938DA99734F4DCBBEC /* AgentActivityDecryptor.swift */; };
 		F61261FF8A17C9C754B99ED9 /* ConsoleHostStatusPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 512561E4D83FFB6575A1A8A5 /* ConsoleHostStatusPresentationTests.swift */; };
 		F6A1A833DFFB748716D13EA9 /* PairingScanStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D026719294E631141C3A59F9 /* PairingScanStoreTests.swift */; };
+		F7140E9E09D6FE6096FD4F2B /* NotificationSessionVectorFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 277D66B22B73144FF5ADAED0 /* NotificationSessionVectorFile.swift */; };
 		F71F183E690597E106438E55 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C34D3B8FB6A7196FC48562D4 /* ContentView.swift */; };
 		F7BEF300908EDFA47E9540A7 /* AgentUsageStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 029887EC83335A8AED8C8ABC /* AgentUsageStrip.swift */; };
 		F8D65F54BA2C27606B01EE73 /* RenameSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C82C6169E59B0000AA3FF5CC /* RenameSheetView.swift */; };
@@ -617,6 +620,7 @@
 		0BD94049BF2E77711F6CA376 /* ChangesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangesView.swift; sourceTree = "<group>"; };
 		0C833B5BA50276247A54258B /* FilePreparerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreparerTests.swift; sourceTree = "<group>"; };
 		0CBB19433AC9C494DFDC36FE /* AgentDirectInputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDirectInputTests.swift; sourceTree = "<group>"; };
+		0CCDACE4C07BA8A814AA6829 /* NotificationSessionVectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSessionVectorTests.swift; sourceTree = "<group>"; };
 		0CD8A096E577BF34431CFF3D /* ConsoleCommandAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsoleCommandAvailability.swift; sourceTree = "<group>"; };
 		0CF5CC35768C765BC278C61E /* RemoteDirectoryBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDirectoryBrowserView.swift; sourceTree = "<group>"; };
 		0DAC3DCDEF81B14A2019DDBE /* TerminalStatusDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalStatusDialog.swift; sourceTree = "<group>"; };
@@ -669,6 +673,7 @@
 		247FF74AD248F26A072EA263 /* TerminalKeyboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalKeyboard.swift; sourceTree = "<group>"; };
 		2594CA106FA6BF61036A50CF /* ChangesManualSleeper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangesManualSleeper.swift; sourceTree = "<group>"; };
 		276B4E744F8A3BF386189D8A /* AgentComposerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentComposerStore.swift; sourceTree = "<group>"; };
+		277D66B22B73144FF5ADAED0 /* NotificationSessionVectorFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSessionVectorFile.swift; sourceTree = "<group>"; };
 		2782D0CCB8DD0CC97AF6932C /* AcknowledgementsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcknowledgementsView.swift; sourceTree = "<group>"; };
 		281FC10F8501F05C6D4D3C8D /* SideBySideDiffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SideBySideDiffTests.swift; sourceTree = "<group>"; };
 		2905384D9D07E0D9AAA247B2 /* ChangesFieldHostE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChangesFieldHostE2ETests.swift; sourceTree = "<group>"; };
@@ -1006,6 +1011,7 @@
 		CC27CC486359B99A90601F9C /* RemoteHostEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteHostEnvironmentTests.swift; sourceTree = "<group>"; };
 		CC2E07D2395573D9EF9DE8B9 /* StartAgentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartAgentView.swift; sourceTree = "<group>"; };
 		CC67B000BBBD99D10CB7A30E /* SnippetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetTests.swift; sourceTree = "<group>"; };
+		CC9851A5A6E65C7F52290A20 /* notification-session-v1.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "notification-session-v1.json"; sourceTree = "<group>"; };
 		CD163326F33D84419346620D /* CheckoutChanges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckoutChanges.swift; sourceTree = "<group>"; };
 		CDC5FC371E96C4EF1E3F1039 /* SkillSuggestionTriggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillSuggestionTriggerTests.swift; sourceTree = "<group>"; };
 		CDFC6DF70F79FC87DCC2ECE0 /* HerdrSidebarSnapshotStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HerdrSidebarSnapshotStoreTests.swift; sourceTree = "<group>"; };
@@ -1277,6 +1283,7 @@
 				078D357A959644457EA59E43 /* NotificationRegistrationCeremonyTests.swift */,
 				297D9D4C1F200A21A2A0AA64 /* NotificationRegistrationFileTests.swift */,
 				B5D958EC1516F09B78E346C6 /* NotificationRelaySettingsTests.swift */,
+				0CCDACE4C07BA8A814AA6829 /* NotificationSessionVectorTests.swift */,
 				702DF66CBA3DE023470DBA1F /* PairingCeremonyE2ETests.swift */,
 				1F0763484EE05424146492C1 /* PairingCeremonyTests.swift */,
 				D419158B027AF5F38B73AD8B /* PairingCodeTests.swift */,
@@ -1684,6 +1691,7 @@
 			children = (
 				9ED544C5E701A1ACD12C6F79 /* live-activity-content-v1.json */,
 				EEB863EF2AD319A412DB564A /* notification-payload-v1.json */,
+				CC9851A5A6E65C7F52290A20 /* notification-session-v1.json */,
 				F9EF9F515ABC98C4B0B483C0 /* pairing-code-v1.json */,
 				ACD367936A5F42F20E8CBB3B /* sidebar-layout-v1.json */,
 			);
@@ -1779,6 +1787,7 @@
 				0B8E41CE87F3866C108A6357 /* LinuxHostFixture.swift */,
 				C5469F0188E985276A49871C /* LiveActivityVectorFile.swift */,
 				4F172C9E024F73AD2DD96288 /* LocalSSHTestEnvironment.swift */,
+				277D66B22B73144FF5ADAED0 /* NotificationSessionVectorFile.swift */,
 				B2DAE3FAB8786392318939A6 /* NotificationVectorFile.swift */,
 				7461B7A0FD2A4CDF34352D45 /* PairingCodeVectorFile.swift */,
 				31B3368D352EFC805C2534F9 /* RealSSHFixture.swift */,
@@ -2035,8 +2044,8 @@
 			targets = (
 				081A3B29EFF2C7B2FCAA3248 /* Heeler */,
 				DFFB82C74B73FA5CBCE6D5D2 /* HeelerNotificationService */,
-				134E6CD1AC1396155DAB93E2 /* HeelerWidgets */,
 				9806EA6C63028F1217417282 /* HeelerTests */,
+				134E6CD1AC1396155DAB93E2 /* HeelerWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -2048,6 +2057,7 @@
 			files = (
 				F179667CF0A3DAD2F3F796E6 /* live-activity-content-v1.json in Resources */,
 				21EA3C700022C6362774EF1A /* notification-payload-v1.json in Resources */,
+				88B077F195BA4B6B46FD330C /* notification-session-v1.json in Resources */,
 				DFB9F3DD64996FFAF4E519EC /* pairing-code-v1.json in Resources */,
 				9F495C6368D1C8754903D457 /* sidebar-layout-v1.json in Resources */,
 			);
@@ -2545,6 +2555,8 @@
 				FE166661ED7A958DBE0F48B7 /* NotificationRegistrationCeremonyTests.swift in Sources */,
 				C345ECAFFFA3CBDC2C4B2BB7 /* NotificationRegistrationFileTests.swift in Sources */,
 				3D9E40D07D129463A5580CDD /* NotificationRelaySettingsTests.swift in Sources */,
+				F7140E9E09D6FE6096FD4F2B /* NotificationSessionVectorFile.swift in Sources */,
+				B6287EF0E34FB1C194A08B7D /* NotificationSessionVectorTests.swift in Sources */,
 				629B85E9314A5CBA36B66DBD /* NotificationVectorFile.swift in Sources */,
 				7FD7DF4CAB9F62BC5014F563 /* PairingCeremonyE2ETests.swift in Sources */,
 				CBAEF7D1E91053F0B15E2F31 /* PairingCeremonyTests.swift in Sources */,
