@@ -168,8 +168,9 @@ struct NotificationRegistrationCeremony: Sendable {
     }
 
     /// Updates `pinned_pane_ids` (and the row layout, when given) on the
-    /// Host's own `live_activity` object. No-op while that field is absent;
-    /// throws `deviceNotRegistered` when the Host has no entry.
+    /// Host's own `live_activity` object. No-op while that field is absent
+    /// or the Host has no entry: the next token write carries the current
+    /// preferences anyway.
     func setLiveActivityPinnedPaneIDs(
         _ pinnedPaneIDs: [String],
         rowLayout: AgentRowLayout? = nil,
@@ -179,7 +180,7 @@ struct NotificationRegistrationCeremony: Sendable {
         over transport: any Transport
     ) async throws {
         guard let owner = try await liveActivityOwner(hostID: hostID, deviceToken: deviceToken)
-        else { throw NotificationRegistrationError.deviceNotRegistered }
+        else { return }
         try await rewrite(for: owner, over: transport) { file in
             var updated = try file.settingLiveActivityPinnedPaneIDs(pinnedPaneIDs, for: owner)
             if let rowLayout {

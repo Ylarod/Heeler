@@ -329,13 +329,11 @@ struct NotificationRegistrationCeremonyTests {
         #expect(live.pinnedPaneIDs == ["w1:p9"])
     }
 
-    @Test func setLiveActivityPinnedPaneIDsFailsClosedWhenUnregistered() async throws {
+    @Test func setLiveActivityPinnedPaneIDsIsANoOpWhenUnregistered() async throws {
         let transport = ScriptedTransport()
 
-        await #expect(throws: NotificationRegistrationError.deviceNotRegistered) {
-            try await ceremony.setLiveActivityPinnedPaneIDs(
-                ["w1:p1"], hostID: hostID, deviceToken: token, over: transport)
-        }
+        try await ceremony.setLiveActivityPinnedPaneIDs(
+            ["w1:p1"], hostID: hostID, deviceToken: token, over: transport)
 
         #expect(await transport.replacedNotificationRegistrations.isEmpty)
     }
