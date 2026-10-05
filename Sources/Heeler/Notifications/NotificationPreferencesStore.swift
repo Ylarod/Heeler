@@ -198,9 +198,26 @@ final class NotificationPreferencesStore {
                 try await operation(ceremony, token, transport)
             }
             states[host.id] = .idle(confirmed)
-            if registers { onRegistered?(host.id) }
+            if registers {
+                onRegistered?(host.id)
+                await reloadRegisteredHosts(except: host.id)
+            }
         } catch {
             states[host.id] = .failed(message: Self.message(for: error), settings: settings)
+        }
+    }
+
+    /// A registration takes over its herdr session's entry, so another Host
+    /// of the same remote user on that session may have just lost its own
+    /// (#412). Only Hosts that read registered can be affected.
+    private func reloadRegisteredHosts(except hostID: Host.ID) async {
+        let affected = hosts.filter { host in
+            host.id != hostID && confirmedSettings(for: host.id)?.isRegistered == true
+        }
+        await withTaskGroup { group in
+            for host in affected {
+                group.addTask { await self.load(host) }
+            }
         }
     }
 

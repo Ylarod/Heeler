@@ -467,6 +467,28 @@ struct NotificationPreferencesStoreTests {
         #expect(file.devices.first?["session"]?.stringValue == "work")
     }
 
+    @Test func registeringOnAnOccupiedSessionTurnsTheDisplacedHostOff() async throws {
+        let transport = ScriptedTransport()
+        let tailscale = Host(name: "mac-studio ts", address: "100.64.0.2", username: "z")
+        let store = NotificationPreferencesStore(
+            transports: ScriptedTransportProvider(
+                transports: [host.id: transport, tailscale.id: transport]),
+            deviceToken: { self.token },
+            ceremony: NotificationRegistrationCeremony(keys: keys))
+        store.setHosts([host, tailscale])
+        await store.refresh()
+        await store.setNotificationsEnabled(true, for: host)
+
+        await store.setNotificationsEnabled(true, for: tailscale)
+
+        #expect(
+            store.states[host.id]
+                == .idle(.init(isRegistered: false, notify: NotificationTriggerPreferences())))
+        #expect(
+            store.states[tailscale.id]
+                == .idle(.init(isRegistered: true, notify: NotificationTriggerPreferences())))
+    }
+
     // MARK: Migration on load and the registration cue
 
     private func makeWorkStore(transport: ScriptedTransport) -> NotificationPreferencesStore {
