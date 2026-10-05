@@ -215,6 +215,9 @@ targets:
       # Shared sidebar layout snapshot vectors, consumed by Node and Swift.
       - path: plugin/test-vectors/sidebar-layout-v1.json
         buildPhase: resources
+      # Shared notification session vectors (#412), consumed by Node and Swift.
+      - path: plugin/test-vectors/notification-session-v1.json
+        buildPhase: resources
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
