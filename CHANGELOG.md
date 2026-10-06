@@ -27,6 +27,9 @@ Entries reference the pull request that made the change.
   the way Finder names copies ("laya-train copy", then "laya-train copy 2"),
   and saving adds a new Host that goes through onboarding like any other.
   (#413)
+- Settings › About has a Star on GitHub row, replacing the plain GitHub
+  link. Version shows an icon, and external links read like the other rows
+  with a trailing arrow instead of blue text.
 
 ### Fixed
 
