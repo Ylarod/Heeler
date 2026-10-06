@@ -62,6 +62,9 @@ Entries reference the issue that motivated them.
   now use the terminal theme's foreground and background colors instead of
   its blue, which in light-accent themes such as the default Vesper left
   white labels on pale lavender.
+- Widening an iPad window while an Agent or terminal is open no longer
+  brings back the tab bar beside the sidebar, and narrowing it back to a
+  list no longer leaves the list without its tab bar.
 
 ## [0.1.12] - 2026-10-02
 

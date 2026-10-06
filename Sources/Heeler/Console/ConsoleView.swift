@@ -124,6 +124,7 @@ struct ConsoleView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.sceneWindow) private var sceneWindow
     @State private var detailCrossfade = DetailCrossfade()
+    @State private var tabBarRequest = ConsoleTabBarBridge.Request()
     @Environment(\.openWindow) private var openWindow
     @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
     /// The window-aware entry into navigation; nil outside a scene root.
@@ -137,7 +138,14 @@ struct ConsoleView: View {
             Tab(value: ConsoleTab.terminals) {
                 // Beside an iPad's sidebar the Terminals list shows in the
                 // Agents tab's split view; see `tabViewSelection`.
-                if !usesSidebarNavigation { splitView(for: .terminals) }
+                if !usesSidebarNavigation {
+                    splitView(for: .terminals)
+                } else {
+                    // Still asking for the bar hidden: a tab's request
+                    // vanishing reads to SwiftUI as asking for the bar, and
+                    // one left by a compact detail would bring it back.
+                    Color.clear.toolbarVisibility(.hidden, for: .tabBar)
+                }
             } label: {
                 // The tab bar fills symbols; filled, this one is a solid
                 // block beside the other tabs' line icons.
@@ -670,7 +678,8 @@ struct ConsoleView: View {
         .ignoresSafeArea(.container, edges: horizontalSizeClass == .regular ? .top : [])
         // In every width, so a window turning compact drops the style.
         .background {
-            ConsoleTabBarBridge(chromeScheme: tabBarChromeScheme, hidesBar: hidesTabBar)
+            ConsoleTabBarBridge(
+                chromeScheme: tabBarChromeScheme, hidesBar: hidesTabBar, request: tabBarRequest)
         }
         .toolbarVisibility(hidesTabBar ? .hidden : .automatic, for: .tabBar)
     }
