@@ -98,6 +98,10 @@ struct HostListView: View {
     @State private var collapsedGroups: Set<HostHealthGroup>
     @State private var isScanningToPair = false
     @State private var manualFallbackRequested = false
+    @State private var isShowingSetupGuide: Bool
+    /// What the Setup Guide asked for; started once its sheet is gone, so
+    /// the two sheets never overlap.
+    @State private var pendingSetupGuideAction: HostSetupGuideAction?
     /// Stashed while a Host form / Pairing scan sheet dismisses; navigation
     /// waits for `onDismiss` so the TOFU alert is not suppressed mid-transition
     /// (#359).
@@ -108,6 +112,7 @@ struct HostListView: View {
     init(
         store: HostStore,
         initialHostID: Host.ID? = nil,
+        showsSetupGuide: Bool = false,
         connectionStatuses: [Host.ID: EventsSessionStatus] = [:],
         standingFailures: [Host.ID: TransportError] = [:],
         latencies: [Host.ID: Duration] = [:],
@@ -119,6 +124,7 @@ struct HostListView: View {
     ) {
         self.store = store
         self.initialHostID = initialHostID
+        _isShowingSetupGuide = State(initialValue: showsSetupGuide)
         self.connectionStatuses = connectionStatuses
         self.standingFailures = standingFailures
         self.latencies = latencies
@@ -158,6 +164,7 @@ struct HostListView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         Button("Add Manually") { isAddingHost = true }
+                        Button("Setup Guide") { isShowingSetupGuide = true }
                     }
                 } else {
                     List {
@@ -245,6 +252,26 @@ struct HostListView: View {
                     pendingOnboardingHostID = paired.id
                 } onAddManually: {
                     manualFallbackRequested = true
+                }
+            }
+            .sheet(
+                isPresented: $isShowingSetupGuide,
+                onDismiss: {
+                    switch pendingSetupGuideAction {
+                    case .scanToPair: isScanningToPair = true
+                    case .addManually: isAddingHost = true
+                    case nil: break
+                    }
+                    pendingSetupGuideAction = nil
+                }
+            ) {
+                NavigationStack {
+                    HostSetupGuideView { action in
+                        pendingSetupGuideAction = action
+                        isShowingSetupGuide = false
+                    } onClose: {
+                        isShowingSetupGuide = false
+                    }
                 }
             }
             .sheet(item: $editingHost) { host in

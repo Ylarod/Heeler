@@ -301,7 +301,7 @@ struct ConsoleView: View {
             guard usesSidebar else { return }
             if isHostsTabSelected {
                 hostsTabRequest = hostsTabRequest.map {
-                    HostsTabRequest(hostID: $0.hostID, origin: nil)
+                    HostsTabRequest(hostID: $0.hostID, showsSetupGuide: $0.showsSetupGuide, origin: nil)
                 }
                 isShowingHostsSheet = true
                 isHostsTabSelected = false
@@ -377,6 +377,7 @@ struct ConsoleView: View {
         HostListView(
             store: hosts,
             initialHostID: hostsTabRequest?.hostID,
+            showsSetupGuide: hostsTabRequest?.showsSetupGuide ?? false,
             connectionStatuses: console.hostStatuses,
             standingFailures: console.hostStandingFailures,
             latencies: console.hostLatencies,
@@ -1343,6 +1344,8 @@ struct ConsoleView: View {
             Button("Add Host") { presentHosts() }
                 .buttonStyle(.borderedProminent)
                 .hoverEffect(.highlight)
+            Button("Setup Guide") { presentHostSetupGuide() }
+                .hoverEffect(.highlight)
         }
     }
 
@@ -1654,7 +1657,9 @@ struct ConsoleView: View {
 
     private struct HostsTabRequest {
         let id = UUID()
-        let hostID: Host.ID
+        var hostID: Host.ID?
+        /// Opens the Setup Guide over the Host list.
+        var showsSetupGuide = false
         /// The tab the Host was opened from; its back button returns there.
         /// Nil when opened from the Hosts tab itself.
         let origin: ConsoleTab?
@@ -1756,6 +1761,13 @@ struct ConsoleView: View {
                 hostID: id,
                 origin: usesSidebarNavigation || currentTab == .hosts ? nil : currentTab)
         }
+        showHosts()
+    }
+
+    /// Hosts with the Setup Guide over it, so the guide's Scan to Pair and
+    /// Add Manually run where every new Host is added.
+    private func presentHostSetupGuide() {
+        hostsTabRequest = HostsTabRequest(showsSetupGuide: true, origin: nil)
         showHosts()
     }
 

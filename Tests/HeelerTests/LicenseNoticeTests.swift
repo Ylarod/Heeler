@@ -486,10 +486,10 @@ struct AcknowledgementsRouteIdentityTests {
             destination.destinationTypeName
                 == String(reflecting: AcknowledgementsView.self))
 
-        // Sibling About rows do not push a SettingsAboutDestination; a decoy
-        // version/star/privacy row cannot satisfy the mapping.
+        // Sibling About rows never resolve to the Acknowledgements route; a
+        // decoy version/star/privacy row cannot satisfy the mapping.
         for row in SettingsView.aboutRows where row != .acknowledgements {
-            #expect(SettingsView.aboutDestination(for: row) == nil)
+            #expect(SettingsView.aboutDestination(for: row) != .acknowledgements)
         }
         #expect(SettingsView.aboutDestination(for: .version) == nil)
         #expect(SettingsView.aboutDestination(for: .starOnGitHub) == nil)

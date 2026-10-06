@@ -7,12 +7,15 @@ import SwiftUI
 /// `destinationTypeName` so a decoy `LabeledContent` (or any other view) cannot
 /// keep the route green while unlinking `AcknowledgementsView` (#161 / #135).
 enum SettingsAboutDestination: String, Equatable, CaseIterable, Sendable {
+    case setupGuide = "settings.about.setupGuide"
     case acknowledgements = "settings.about.acknowledgements"
 
     /// Metatype of the view this route constructs. The only allowed
     /// destination for `.acknowledgements` is `AcknowledgementsView`.
     var destinationTypeName: String {
         switch self {
+        case .setupGuide:
+            String(reflecting: HostSetupGuideView.self)
         case .acknowledgements:
             String(reflecting: AcknowledgementsView.self)
         }
@@ -21,6 +24,9 @@ enum SettingsAboutDestination: String, Equatable, CaseIterable, Sendable {
     @ViewBuilder
     var destinationView: some View {
         switch self {
+        case .setupGuide:
+            // Reference only: Hosts owns Pairing and the add form.
+            HostSetupGuideView()
         case .acknowledgements:
             AcknowledgementsView()
         }
@@ -71,7 +77,7 @@ struct SettingsView: View {
     /// list; the Acknowledgements entry is a navigation destination, not a
     /// static label, and its id is `acknowledgementsRouteID`.
     static var aboutRows: [AboutRow] {
-        var rows: [AboutRow] = [.version]
+        var rows: [AboutRow] = [.version, .setupGuide]
         if repositoryURL != nil {
             rows.append(.starOnGitHub)
         }
@@ -86,6 +92,7 @@ struct SettingsView: View {
     /// not `.acknowledgements`.
     enum AboutRow: Equatable, Identifiable {
         case version
+        case setupGuide
         case starOnGitHub
         case acknowledgements
         case privacyPolicy
@@ -93,6 +100,7 @@ struct SettingsView: View {
         var id: String {
             switch self {
             case .version: "settings.about.version"
+            case .setupGuide: SettingsAboutDestination.setupGuide.rawValue
             case .acknowledgements: SettingsView.acknowledgementsRouteID
             case .starOnGitHub: "settings.about.starOnGitHub"
             case .privacyPolicy: "settings.about.privacyPolicy"
@@ -105,6 +113,8 @@ struct SettingsView: View {
     /// `NavigationLink` is built only through this mapping.
     static func aboutDestination(for row: AboutRow) -> SettingsAboutDestination? {
         switch row {
+        case .setupGuide:
+            .setupGuide
         case .acknowledgements:
             .acknowledgements
         case .version, .starOnGitHub, .privacyPolicy:
@@ -174,6 +184,15 @@ struct SettingsView: View {
             } label: {
                 Label("Version", systemImage: "info.circle")
             }
+        case .setupGuide:
+            if let destination = Self.aboutDestination(for: row) {
+                NavigationLink {
+                    destination.destinationView
+                } label: {
+                    Label("Setup Guide", systemImage: "book")
+                }
+                .accessibilityIdentifier(destination.rawValue)
+            }
         case .starOnGitHub:
             if let repositoryURL = Self.repositoryURL {
                 ExternalLinkRow("Star on GitHub", systemImage: "star", destination: repositoryURL)
@@ -225,7 +244,7 @@ struct SettingsView: View {
 /// A Settings row that leaves the app. The title stays primary like its
 /// navigation siblings; a default `Link` would tint the whole row as a button.
 /// The trailing arrow says the row opens outside Heeler.
-private struct ExternalLinkRow: View {
+struct ExternalLinkRow: View {
     let title: LocalizedStringKey
     let systemImage: String
     let destination: URL

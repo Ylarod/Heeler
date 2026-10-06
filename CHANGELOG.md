@@ -30,6 +30,10 @@ Entries reference the pull request that made the change.
 - Settings › About has a Star on GitHub row, replacing the plain GitHub
   link. Version shows an icon, and external links read like the other rows
   with a trailing arrow instead of blue text.
+- A Setup Guide walks through preparing a macOS, Linux, or Windows machine
+  and adding it as a Host, with copyable pairing commands. Open it from the
+  empty Agents and Hosts screens, where it ends in Scan to Pair or Add
+  Manually, or from Settings › About.
 
 ### Fixed
 
