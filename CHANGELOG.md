@@ -29,15 +29,15 @@ Entries reference the pull request that made the change.
   (#413)
 - Settings › About has a Star on GitHub row, replacing the plain GitHub
   link. Version shows an icon, and external links read like the other rows
-  with a trailing arrow instead of blue text.
+  with a trailing arrow instead of blue text. (#421)
 - A Setup Guide walks through preparing a macOS, Linux, or Windows machine
   and adding it as a Host, with copyable pairing commands. Open it from the
   empty Agents and Hosts screens, where it ends in Scan to Pair or Add
-  Manually, or from Settings › About.
+  Manually, or from Settings › About. (#421)
 - Agent and terminal screens beside the iPad sidebar have the floating glass
   buttons for the Workspace's terminals and an Agent's Changes, folding
   like on iPhone. They leave out Back, since the list is already beside
-  them.
+  them. (#421)
 
 ### Fixed
 
@@ -81,6 +81,7 @@ Entries reference the pull request that made the change.
   sidebar, the Side by Side / Unified control showed neither choice and
   could not be switched; it now works there and in portrait, and lost the
   extra rings around it. A window too narrow for Side by Side hides it.
+  (#421)
 
 ## [0.1.12] - 2026-10-02
 
