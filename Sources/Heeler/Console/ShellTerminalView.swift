@@ -532,10 +532,10 @@ struct ShellTerminalView: View {
                     dimsBackground: presentation.dimsBackground
                 ) {
                     Button("Reattach") { store.retryTerminal() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.terminalStatusPrimary)
                     if !managesLifecycle {
                         Button("Take Over") { store.takeOverTerminal() }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.terminalStatusSecondary)
                             .accessibilityHint("Disconnects another client's attachment to this terminal")
                     }
                 }

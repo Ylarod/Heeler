@@ -67,7 +67,7 @@ struct WorkspaceTerminalDetailView: View {
                         dimsBackground: false
                     ) {
                         Button("Back to Console") { onBack() }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.terminalStatusSecondary)
                     }
                 }
             } else if let entry, console.terminalConnections.entries[poolKey] === entry {
@@ -97,9 +97,9 @@ struct WorkspaceTerminalDetailView: View {
                         dimsBackground: false
                     ) {
                         Button("Try Again") { retryID += 1 }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.terminalStatusPrimary)
                         Button("Back to Console") { onBack() }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.terminalStatusSecondary)
                     }
                 }
             } else {

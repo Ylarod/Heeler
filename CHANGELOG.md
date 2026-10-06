@@ -55,6 +55,10 @@ Entries reference the issue that motivated them.
 - In a narrow iPad window, Agent and terminal screens now show the same
   floating Back button as on iPhone. The edge swipe was the only way back to
   the list there, and the window's resize edge took it.
+- Buttons on terminal status cards (Couldn't Open Terminal, Session Ended)
+  now use the terminal theme's foreground and background colors instead of
+  its blue, which in light-accent themes such as the default Vesper left
+  white labels on pale lavender.
 
 ## [0.1.12] - 2026-10-02
 

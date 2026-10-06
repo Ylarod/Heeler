@@ -1771,7 +1771,7 @@ struct AgentTerminalView: View {
                     Button(LiveInAnotherWindowPresentation.takeOverTitle) {
                         sceneRouting?.takeOverTerminal(for: agent.hostID)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.terminalStatusPrimary)
                 }
             }
         } else if let presentation = TerminalStatusPresentation(status: attach.terminalStatus) {
@@ -1793,7 +1793,7 @@ struct AgentTerminalView: View {
                     dimsBackground: presentation.dimsBackground
                 ) {
                     Button("Reattach") { attach.retryTerminal() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.terminalStatusPrimary)
                 }
             }
         } else {
