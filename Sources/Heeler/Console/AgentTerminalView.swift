@@ -265,7 +265,7 @@ struct AgentTerminalView: View {
     @Environment(\.sceneWindow) private var sceneWindow
     @Environment(\.detailCrossfade) private var detailCrossfade
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
-    @Environment(\.showsDetailBackHeader) private var showsBackHeader
+    @Environment(\.showsDetailBackButton) private var showsBackButton
     /// Whether the back header is out, or folded into its one button.
     /// Folded until the user shows it, so it covers no output by default,
     /// then remembered across Agents as a reading preference.
@@ -1008,7 +1008,7 @@ struct AgentTerminalView: View {
                 let drawer = keyboardCarryingDrawer(workspaceDrawer).palette(themePalette)
                 // The back header's button stands in for the edge handle
                 // while the header is out; folded, the handle comes back.
-                if showsBackHeader, isBackHeaderExpanded {
+                if isBackHeaderExpanded {
                     drawer.openedFromHeader(
                         $isHeaderDrawerOpen,
                         panelTop: backHeaderTop + AgentDetailHeader.controlSize + 8)
@@ -1023,7 +1023,7 @@ struct AgentTerminalView: View {
         // A detail pushed over the list has the back header and the
         // system's own swipe instead, which follows the finger.
         .overlay(alignment: .leading) {
-            if !showsBackHeader {
+            if !showsBackButton {
                 AgentEdgeBackGesture {
                     if let revealDetailSidebar { revealDetailSidebar() } else { dismiss() }
                 }
@@ -1078,20 +1078,18 @@ struct AgentTerminalView: View {
         // terminal output below the system clock.
         .padding(.top, terminalTopInset)
         .overlay(alignment: .top) {
-            if showsBackHeader {
-                AgentDetailHeader(
-                    palette: themePalette,
-                    isExpanded: $isBackHeaderExpanded,
-                    onBack: { dismiss() },
-                    actions: backHeaderActions)
-                .environment(
-                    \.colorScheme,
-                    terminal.themes.selection(for: colorScheme).chromeColorScheme(for: colorScheme))
-                .padding(.horizontal, 12)
-                .padding(.top, backHeaderTop)
-                .onChange(of: isBackHeaderExpanded) { _, expanded in
-                    if !expanded { isHeaderDrawerOpen = false }
-                }
+            AgentDetailHeader(
+                palette: themePalette,
+                isExpanded: $isBackHeaderExpanded,
+                onBack: showsBackButton ? { dismiss() } : nil,
+                actions: backHeaderActions)
+            .environment(
+                \.colorScheme,
+                terminal.themes.selection(for: colorScheme).chromeColorScheme(for: colorScheme))
+            .padding(.horizontal, 12)
+            .padding(.top, backHeaderTop)
+            .onChange(of: isBackHeaderExpanded) { _, expanded in
+                if !expanded { isHeaderDrawerOpen = false }
             }
         }
         .onWindowControlsHeightChange { windowControlsHeight = $0 }
@@ -1119,7 +1117,7 @@ struct AgentTerminalView: View {
                 .chromeColorScheme(for: colorScheme),
             for: .navigationBar)
         .navigationBarBackButtonHidden(true)
-        .interactivePopGestureEnabled(showsBackHeader)
+        .interactivePopGestureEnabled(showsBackButton)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         // `toolbarColorScheme` takes effect only while the bar background is

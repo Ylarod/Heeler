@@ -34,6 +34,10 @@ Entries reference the pull request that made the change.
   and adding it as a Host, with copyable pairing commands. Open it from the
   empty Agents and Hosts screens, where it ends in Scan to Pair or Add
   Manually, or from Settings › About.
+- Agent and terminal screens beside the iPad sidebar have the floating glass
+  buttons for the Workspace's terminals and an Agent's Changes, folding
+  like on iPhone. They leave out Back, since the list is already beside
+  them.
 
 ### Fixed
 
