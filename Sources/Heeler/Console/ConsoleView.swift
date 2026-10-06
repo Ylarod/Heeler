@@ -847,7 +847,7 @@ struct ConsoleView: View {
                     shown: tab, lists: [.agents, .terminals],
                     isPresented: $isShowingListMenu, frame: $listMenuTitleFrame)
             }
-            .sidebarItemBackground(.hidden)
+            .toolbarItemBackground(.hidden)
         }
         // A sidebar keeps its list menus at its foot.
         if !usesSidebarNavigation, filtersByHost, !foldsHostFilter {
@@ -877,7 +877,7 @@ struct ConsoleView: View {
                 }
                 .buttonStyle(SidebarIconButtonStyle())
             }
-            .sidebarItemBackground(.hidden)
+            .toolbarItemBackground(.hidden)
         } else if !hosts.hosts.isEmpty {
             ToolbarItem(placement: .primaryAction) {
                 newItemButton(for: tab).hoverEffect(.highlight)
@@ -1779,11 +1779,11 @@ struct ConsoleView: View {
     }
 }
 
-private extension ToolbarContent {
+extension ToolbarContent {
     /// The glass a toolbar item shares with its neighbors; before iOS 26
     /// items draw none.
     @ToolbarContentBuilder
-    func sidebarItemBackground(_ visibility: Visibility) -> some ToolbarContent {
+    func toolbarItemBackground(_ visibility: Visibility) -> some ToolbarContent {
         if #available(iOS 26.0, *) {
             sharedBackgroundVisibility(visibility)
         } else {

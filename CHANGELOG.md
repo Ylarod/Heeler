@@ -77,6 +77,10 @@ Entries reference the pull request that made the change.
 - Widening an iPad window while an Agent or terminal is open no longer
   brings back the tab bar beside the sidebar, and narrowing it back to a
   list no longer leaves the list without its tab bar. (#420)
+- Diffs in Changes open Unified by default. On an 11-inch iPad beside the
+  sidebar, the Side by Side / Unified control showed neither choice and
+  could not be switched; it now works there and in portrait, and lost the
+  extra rings around it. A window too narrow for Side by Side hides it.
 
 ## [0.1.12] - 2026-10-02
 
