@@ -51,6 +51,7 @@ struct ShellTerminalView: View {
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     @Environment(\.detailTopChromeInset) private var topChromeInset
+    @Environment(\.detailBarRow) private var barRow
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
     @Environment(\.revealDetailSidebar) private var revealDetailSidebar
     @Environment(\.showsDetailBackButton) private var showsBackButton
@@ -387,7 +388,9 @@ struct ShellTerminalView: View {
         max(statusBarInset, topChromeInset, windowControlsHeight)
     }
 
-    private var backHeaderTop: CGFloat { terminalTopInset + 4 }
+    private var backHeaderTop: CGFloat {
+        AgentDetailHeader.top(outputTop: terminalTopInset, barRow: barRow)
+    }
 
     /// A terminal pushed over the Console list goes back the system's way,
     /// following the finger. One opened from an Agent stands in for that

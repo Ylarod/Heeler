@@ -21,6 +21,17 @@ struct AgentDetailHeader: View {
     private static let capsuleButtonWidth: CGFloat = 36
     private static let capsuleInset: CGFloat = (controlSize - capsuleButtonWidth) / 2
 
+    /// Where the header's top edge sits. Beside an iPad's sidebar it lines
+    /// up with the detail column's bar, level with the sidebar's buttons and
+    /// Show Sidebar, even while output starts below the bar; elsewhere it
+    /// rides just below the output's top. A bar's buttons fill a control's
+    /// height from its top edge, with the bar's remaining height below
+    /// them, so the header starts at that edge rather than centering.
+    static func top(outputTop: CGFloat, barRow: NavigationBarBand?) -> CGFloat {
+        guard let barRow, barRow.bottom - barRow.top >= controlSize else { return outputTop + 4 }
+        return barRow.top
+    }
+
     let palette: TerminalThemePalette
     @Binding var isExpanded: Bool
     /// Nil where the detail stands beside the list rather than over it.

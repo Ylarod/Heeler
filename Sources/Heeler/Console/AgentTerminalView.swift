@@ -276,6 +276,7 @@ struct AgentTerminalView: View {
     /// This view's own window, for hosts without a scene root.
     @State private var mountedWindow = WindowReference()
     @Environment(\.detailTopChromeInset) private var topChromeInset
+    @Environment(\.detailBarRow) private var barRow
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
     /// The window's own controls over this screen's top-leading corner, on
     /// a windowed iPad; see `onWindowControlsHeightChange`.
@@ -1132,7 +1133,9 @@ struct AgentTerminalView: View {
         max(statusBarInset, topChromeInset, windowControlsHeight)
     }
 
-    private var backHeaderTop: CGFloat { terminalTopInset + 4 }
+    private var backHeaderTop: CGFloat {
+        AgentDetailHeader.top(outputTop: terminalTopInset, barRow: barRow)
+    }
 
     /// The Workspace's terminals, then Changes at the far end; each only
     /// where this screen can offer it.

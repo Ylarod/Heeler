@@ -620,6 +620,8 @@ struct ConsoleView: View {
                             .environment(
                                 \.detailTopChromeInset,
                                 horizontalSizeClass == .regular ? detailTopInset(for: tab) : 0)
+                            .environment(
+                                \.detailBarRow, horizontalSizeClass == .regular ? detailBar : nil)
                             .environment(\.detailSurfaceEdges, detailSurfaceEdges(for: tab))
                             .environment(\.revealDetailSidebar, sidebarReveal(for: tab))
                             .environment(
@@ -2266,6 +2268,9 @@ extension EnvironmentValues {
     /// column's top edge to clear the chrome above its navigation bar. Zero
     /// in compact width; the screens still clear the status bar themselves.
     @Entry var detailTopChromeInset: CGFloat = 0
+    /// The detail column's navigation bar row in regular width, in the same
+    /// coordinates as `detailTopChromeInset`; nil in compact width.
+    @Entry var detailBarRow: NavigationBarBand? = nil
     /// The edges a detail screen's full-bleed surface fills past the safe
     /// area. Beside an opaque sidebar the leading one lies under the
     /// sidebar; every other edge, an iPhone's landscape insets included, is
