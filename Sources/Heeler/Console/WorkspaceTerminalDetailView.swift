@@ -24,6 +24,8 @@ struct WorkspaceTerminalDetailView: View {
     @State private var retryID = 0
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.detailSurfaceEdges) private var surfaceEdges
+    /// This window, so a remount of this screen takes its terminal over.
+    @Environment(\.agentSceneRouting) private var sceneRouting
 
     private var identity: ShellTerminalIdentity {
         ShellTerminalIdentity(paneID: terminal.paneID, tabID: terminal.tabID, terminalID: terminal.terminalID)
@@ -67,7 +69,7 @@ struct WorkspaceTerminalDetailView: View {
                         dimsBackground: false
                     ) {
                         Button("Back to Console") { onBack() }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.terminalStatusSecondary)
                     }
                 }
             } else if let entry, console.terminalConnections.entries[poolKey] === entry {
@@ -97,9 +99,9 @@ struct WorkspaceTerminalDetailView: View {
                         dimsBackground: false
                     ) {
                         Button("Try Again") { retryID += 1 }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.terminalStatusPrimary)
                         Button("Back to Console") { onBack() }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.terminalStatusSecondary)
                     }
                 }
             } else {
@@ -224,6 +226,7 @@ struct WorkspaceTerminalDetailView: View {
         guard entry == nil, !isMissing else { return }
         entry = console.terminalConnections.reclaim(
             hostID: terminal.hostID, identity: identity, ownerID: ownerID,
+            sceneID: sceneRouting?.sceneID,
             generation: console.hostConnectionGenerations[terminal.hostID],
             isPresented: { isSelected() })
     }
@@ -239,6 +242,7 @@ struct WorkspaceTerminalDetailView: View {
         do {
             let selected = try await console.terminalConnections.select(
                 hostID: terminal.hostID, identity: identity, ownerID: ownerID,
+                sceneID: sceneRouting?.sceneID,
                 generation: console.hostConnectionGenerations[terminal.hostID],
                 isPresented: { isSelected() },
                 runTerminal: console.terminalRunner(for: terminal.hostID))

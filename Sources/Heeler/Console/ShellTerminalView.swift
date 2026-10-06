@@ -390,10 +390,10 @@ struct ShellTerminalView: View {
 
     private var backHeaderTop: CGFloat { terminalTopInset + 4 }
 
-    /// An iPhone's terminal pushed over the Console list goes back the
-    /// system's way, following the finger. One opened from an Agent stands
-    /// in for that Agent on the same screen, so a system swipe there would
-    /// leave the Agent too; it keeps the edge gesture that returns to it.
+    /// A terminal pushed over the Console list goes back the system's way,
+    /// following the finger. One opened from an Agent stands in for that
+    /// Agent on the same screen, so a system swipe there would leave the
+    /// Agent too; it keeps the edge gesture that returns to it.
     private var usesSystemBackSwipe: Bool {
         showsBackHeader && !backReturnsToAgent
     }
@@ -532,10 +532,10 @@ struct ShellTerminalView: View {
                     dimsBackground: presentation.dimsBackground
                 ) {
                     Button("Reattach") { store.retryTerminal() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.terminalStatusPrimary)
                     if !managesLifecycle {
                         Button("Take Over") { store.takeOverTerminal() }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.terminalStatusSecondary)
                             .accessibilityHint("Disconnects another client's attachment to this terminal")
                     }
                 }
