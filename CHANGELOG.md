@@ -54,17 +54,18 @@ Entries reference the pull request that made the change.
   which open the wrong pane, and one event can arrive twice. (#416)
 - In a narrow iPad window, Agent and terminal screens now show the same
   floating Back button as on iPhone. The edge swipe was the only way back to
-  the list there, and the window's resize edge took it.
+  the list there, and the window's resize edge took it. (#420)
 - A shell terminal stays open when an iPad window is resized between
   narrow and wide. It used to fail with "This terminal is already open in
   another window", and Try Again kept failing until Heeler restarted.
+  (#420)
 - Buttons on terminal status cards (Couldn't Open Terminal, Session Ended)
   now use the terminal theme's foreground and background colors instead of
   its blue, which in light-accent themes such as the default Vesper left
-  white labels on pale lavender.
+  white labels on pale lavender. (#420)
 - Widening an iPad window while an Agent or terminal is open no longer
   brings back the tab bar beside the sidebar, and narrowing it back to a
-  list no longer leaves the list without its tab bar.
+  list no longer leaves the list without its tab bar. (#420)
 
 ## [0.1.12] - 2026-10-02
 
