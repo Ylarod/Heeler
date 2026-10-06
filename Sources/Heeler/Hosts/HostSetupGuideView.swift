@@ -71,13 +71,16 @@ struct HostSetupGuideView: View {
                 }
             }
         }
+        // The picker is the page's first row; a grouped Form would otherwise
+        // open with a header-sized gap above it.
+        .contentMargins(.top, 12, for: .scrollContent)
         .readableColumnPage()
         .navigationTitle("Setup Guide")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let onClose {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close", action: onClose)
+                    Button("Done", action: onClose)
                 }
             }
         }
@@ -145,10 +148,13 @@ struct HostSetupGuideView: View {
                     : "Windows Hosts are added by hand with their address and login."
             ) {
                 if let onAction {
-                    Button("Add Manually", systemImage: "plus") {
+                    Button {
                         onAction(.addManually)
+                    } label: {
+                        Label("Add Manually", systemImage: "plus")
+                            .foregroundStyle(.white)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.borderedProminent)
                 }
             }
         }
@@ -162,6 +168,7 @@ private struct SetupStep<Content: View>: View {
     let title: LocalizedStringKey
     let detail: LocalizedStringKey
     @ViewBuilder var content: Content
+    @ScaledMetric(relativeTo: .subheadline) private var badgeSize: CGFloat = 26
 
     init(
         number: Int, title: LocalizedStringKey, detail: LocalizedStringKey,
@@ -178,9 +185,10 @@ private struct SetupStep<Content: View>: View {
             Text(number, format: .number)
                 .font(.subheadline.weight(.semibold).monospacedDigit())
                 .foregroundStyle(.tint)
-                .frame(width: 26, height: 26)
+                // The frame keeps the number's baseline, so the badge sits on
+                // the title's line at every text size.
+                .frame(width: badgeSize, height: badgeSize)
                 .background(.tint.opacity(0.15), in: .circle)
-                .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 7 }
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -192,6 +200,7 @@ private struct SetupStep<Content: View>: View {
                 }
                 content
             }
+            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .contain)
@@ -199,18 +208,32 @@ private struct SetupStep<Content: View>: View {
 }
 
 /// A shell command with a Copy button, so it can be pasted into the
-/// machine's terminal.
+/// machine's terminal. It stays on one line and scrolls, as in a terminal:
+/// a wrapped command reads as two when typed by hand.
 private struct CommandBlock: View {
     let command: String
     @State private var copied = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text(command)
-                .font(.footnote.monospaced())
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
+        HStack(spacing: 0) {
+            ScrollView(.horizontal) {
+                Text(command)
+                    .font(.footnote.monospaced())
+                    .textSelection(.enabled)
+                    .fixedSize()
+                    .padding(.leading, 10)
+                    .padding(.trailing, 20)
+                    .padding(.vertical, 10)
+            }
+            .scrollIndicators(.hidden)
+            // A fade, not a hard cut, says the command runs on past the edge.
+            .mask {
+                HStack(spacing: 0) {
+                    Rectangle()
+                    LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 20)
+                }
+            }
             Button {
                 UIPasteboard.general.string = command
                 copied = true
@@ -218,15 +241,14 @@ private struct CommandBlock: View {
                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
                     .font(.footnote.weight(.semibold))
                     .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 28, height: 28)
+                    .frame(width: 44, height: 44)
                     .contentShape(.rect)
             }
             .buttonStyle(.borderless)
+            // Full 44-point target without making the block that tall.
+            .padding(.vertical, -6)
             .accessibilityLabel(copied ? "Copied" : "Copy Command")
         }
-        .padding(.leading, 10)
-        .padding(.vertical, 6)
-        .padding(.trailing, 4)
         .background(Color(uiColor: .tertiarySystemFill), in: .rect(cornerRadius: 8))
         .task(id: copied) {
             guard copied else { return }
