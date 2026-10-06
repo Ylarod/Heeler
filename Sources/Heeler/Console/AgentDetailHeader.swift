@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// An iPhone's way back from a pushed Agent, which the edge swipe alone
-/// never showed (#396). Separate glass pieces float over the terminal:
-/// Back at the leading end, any trailing actions in one capsule, and at the
-/// far end a fold button that stays put. The room between them is left to
-/// the terminal, and folding leaves only that button, so the header can
-/// cover almost no output.
+/// The way back from a pushed Agent, on an iPhone or in a compact iPad
+/// window, which the edge swipe alone never showed (#396). Separate glass
+/// pieces float over the terminal: Back at the leading end, any trailing
+/// actions in one capsule, and at the far end a fold button that stays put.
+/// The room between them is left to the terminal, and folding leaves only
+/// that button, so the header can cover almost no output.
 ///
 /// Trailing actions are plain values rather than views, so a screen can
 /// leave out the ones it cannot offer and the capsule goes with the last.

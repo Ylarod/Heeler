@@ -1020,8 +1020,8 @@ struct AgentTerminalView: View {
         .overlay { statusOverlay }
         // Keep the edge gesture below the input chrome and tools dock so
         // its transparent hit region cannot intercept their leading keys.
-        // An iPhone has the system's own swipe instead, which follows the
-        // finger.
+        // A detail pushed over the list has the back header and the
+        // system's own swipe instead, which follows the finger.
         .overlay(alignment: .leading) {
             if !showsBackHeader {
                 AgentEdgeBackGesture {
