@@ -46,7 +46,8 @@ driver. Package changes need the package lane, even when app tests pass.
 The Agent menu enters [AgentChangesPresentation](../../Sources/Heeler/Changes/AgentChangesPresentation.swift).
 It builds [ChangesStore](../../Sources/Heeler/Changes/ChangesStore.swift) through
 `ConsoleStore`, sharing a [GitExecGate](../../Sources/Heeler/Changes/GitExecGate.swift)
-per Host. `Transport.readChanges`, `readFilePatch`, and `listUntrackedDirectory`
+per Host. One app-wide `GitExecGate` also serializes Notification Registration
+writes, so a change to the gate affects both. `Transport.readChanges`, `readFilePatch`, and `listUntrackedDirectory`
 reach `HeelerSSHTransport.runGitScript`; the watchdog and admission lifetime live
 there. [GitProbe](../../Sources/Heeler/Changes/GitProbe.swift) and its neighboring
 extensions build POSIX scripts and parse byte-framed output.
@@ -87,6 +88,12 @@ from live Host reads.
   [The shared contract](live-activity-contract.md) and vectors own their wire
   agreement; [ADRs 0008](../adr/0008-agent-notifications-via-plugin-hooks-and-push-relay.md)
   and [0014](../adr/0014-lock-screen-live-activities.md) explain the boundaries.
+  Registration state: [NotificationRegistrationFile](../../Sources/Heeler/Notifications/NotificationRegistrationFile.swift)
+  models `notifications.json`, [NotificationRegistrationCeremony](../../Sources/Heeler/Notifications/NotificationRegistrationCeremony.swift)
+  reads and replaces it over SSH, and [NotificationPreferencesStore](../../Sources/Heeler/Notifications/NotificationPreferencesStore.swift)
+  owns the Settings toggles. Entries are scoped to a herdr session and owned by
+  a Host's Notification Key ([ADR 0020](../adr/0020-session-scoped-notification-registrations.md));
+  the plugin side is `plugin/src/session.js`.
 
 ## Sibling deliverables and generated files
 
