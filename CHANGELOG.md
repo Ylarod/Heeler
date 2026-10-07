@@ -36,8 +36,8 @@ Entries reference the pull request that made the change.
   Manually, or from Settings › About. (#421)
 - Host details show the installed Heeler plugin version. When the plugin is
   missing, disabled, installed under its old name, or older than the version
-  this app ships with, they say how to fix it, with copyable commands unless
-  the plugin is linked from a local checkout. Notification and Agent List
+  this app ships with, the version carries an icon that opens how to fix it,
+  with copyable commands unless the plugin is linked from a local checkout. Notification and Agent List
   Fields settings say which features a Host's older plugin lacks, such as
   notification session isolation before plugin 0.6.0.
 - Agent and terminal screens beside the iPad sidebar have the floating glass

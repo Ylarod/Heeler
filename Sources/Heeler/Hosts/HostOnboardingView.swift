@@ -22,6 +22,7 @@ struct HostOnboardingView: View {
     /// A passing preflight not yet acted on: it may restart the Console's
     /// connection once (see `HostOnboardingConsoleRecovery`).
     @State private var isConsoleRecoveryArmed = false
+    @State private var isShowingPluginNotice = false
 
     init(
         host: Host,
@@ -55,8 +56,7 @@ struct HostOnboardingView: View {
                 LabeledContent(
                     "Auth",
                     value: authenticationLabel)
-                LabeledContent("Heeler Plugin", value: pluginPresentation.value)
-                    .accessibilityIdentifier("hosts.detail.plugin.version")
+                pluginRow
             }
 
             if retryConnection != nil {
@@ -127,8 +127,6 @@ struct HostOnboardingView: View {
                 }
             }
 
-            pluginNoticeSection
-
             availableSessionsSection
 
             Section {
@@ -160,6 +158,17 @@ struct HostOnboardingView: View {
         }
         .sheet(isPresented: $isEditing) {
             HostFormView(store: catalog, editing: store.host)
+        }
+        .sheet(isPresented: $isShowingPluginNotice) {
+            if let notice = pluginPresentation.notice {
+                PluginNoticeSheet(notice: notice) {
+                    isShowingPluginNotice = false
+                    Task { await store.runChecks() }
+                }
+            }
+        }
+        .onChange(of: pluginPresentation.notice == nil) { _, resolved in
+            if resolved { isShowingPluginNotice = false }
         }
         .alert(
             "Trust this Host?",
@@ -280,43 +289,33 @@ struct HostOnboardingView: View {
         HeelerPluginPresentation(store.pluginStatus)
     }
 
-    /// Shown only when the user has something to do on the Host: install,
-    /// update, enable, or replace the plugin.
+    /// The installed version. When the user has something to do on the Host
+    /// (install, update, enable, or replace the plugin) the row carries an
+    /// icon and opens the details.
     @ViewBuilder
-    private var pluginNoticeSection: some View {
-        if let notice = pluginPresentation.notice {
-            Section {
-                VStack(alignment: .leading, spacing: 10) {
-                    Label {
-                        Text(notice.message)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } icon: {
-                        switch notice.tone {
-                        case .warning:
-                            PluginWarningIcon()
-                        case .info:
-                            Image(systemName: "puzzlepiece.extension")
-                                .foregroundStyle(.secondary)
-                        }
+    private var pluginRow: some View {
+        let presentation = pluginPresentation
+        if let notice = presentation.notice {
+            Button {
+                isShowingPluginNotice = true
+            } label: {
+                LabeledContent {
+                    HStack(spacing: 6) {
+                        Text(presentation.value)
+                        PluginNoticeIcon(tone: notice.tone)
                     }
-                    .accessibilityIdentifier("hosts.detail.plugin.notice")
-                    ForEach(notice.commands, id: \.self) { command in
-                        CommandBlock(command: command)
-                    }
-                }
-                .padding(.vertical, 4)
-            } header: {
-                Text("Heeler Plugin")
-            } footer: {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(notice.notes, id: \.self) { note in
-                        Text(note)
-                    }
-                    if !notice.commands.isEmpty {
-                        Text("Then tap Run Checks Again.")
-                    }
+                } label: {
+                    // Not the button tint: the row reads like its neighbors.
+                    Text("Heeler Plugin")
+                        .foregroundStyle(Color.primary)
                 }
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityHint(notice.message)
+            .accessibilityIdentifier("hosts.detail.plugin.version")
+        } else {
+            LabeledContent("Heeler Plugin", value: presentation.value)
+                .accessibilityIdentifier("hosts.detail.plugin.version")
         }
     }
 

@@ -24,3 +24,73 @@ struct PluginRequirementNote: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+/// The icon on a Host's plugin row when there is something to do: the
+/// warning glyph, or an info glyph for a Host that has no plugin yet.
+struct PluginNoticeIcon: View {
+    let tone: HeelerPluginPresentation.Notice.Tone
+
+    var body: some View {
+        switch tone {
+        case .warning:
+            PluginWarningIcon()
+        case .info:
+            Image(systemName: "info.circle")
+                .foregroundStyle(.tint)
+        }
+    }
+}
+
+/// What to run on the Host to install, update, enable, or replace the
+/// plugin, opened from the Host page's plugin row.
+struct PluginNoticeSheet: View {
+    let notice: HeelerPluginPresentation.Notice
+    let runChecks: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label {
+                            Text(notice.message)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            PluginNoticeIcon(tone: notice.tone)
+                        }
+                        .accessibilityIdentifier("hosts.detail.plugin.notice")
+                        ForEach(notice.commands, id: \.self) { command in
+                            CommandBlock(command: command)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                } footer: {
+                    if !notice.notes.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(notice.notes, id: \.self) { note in
+                                Text(note)
+                            }
+                        }
+                    }
+                }
+
+                if !notice.commands.isEmpty {
+                    Section {
+                        Button("Run Checks Again", systemImage: "arrow.clockwise", action: runChecks)
+                    } footer: {
+                        Text("After running the commands on the Host.")
+                    }
+                }
+            }
+            .navigationTitle("Heeler Plugin")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
