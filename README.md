@@ -122,14 +122,16 @@ Another app can open an Agent in Heeler with a link:
 heeler://agent?host=my-mac&session=work&pane=w1%3Ap1
 ```
 
-- `host` is the address of a saved Host, or its name when no Host has that
-  address. Case is ignored.
+- `host` names a saved Host on that session: its address, or its name when
+  no Host on the session has that address. Case is ignored.
 - `session` is the herdr session name. Leave it out, or pass `default`, for
   the default session.
 - `pane` is herdr's pane id. Leave it out to open the Console.
 
-Percent-encode each value. When no saved Host on that session matches, or
-more than one does, the link opens the Console.
+Percent-encode each value, with `%20` for a space: a `+` stays a plus sign,
+so form encoding (such as JavaScript's `URLSearchParams`) misses a name like
+`Build Box`. When no saved Host on that session matches, or more than one
+does, the link opens the Console.
 
 ## Stack
 

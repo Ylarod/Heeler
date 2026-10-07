@@ -30,6 +30,8 @@ struct AgentActivityLinkTests {
         "heeler://agent?session=work&pane=w1%3Ap1",
         "heeler://agent?host=&pane=w1%3Ap1",
         "heeler://agent?host=studio.local&host=build.local&pane=w1%3Ap1",
+        "heeler://agent?host=studio.local&session=work&session=default&pane=w1%3Ap1",
+        "heeler://agent?host=studio.local&pane=w1%3Ap1&pane=w1%3Ap2",
     ])
     func rejectsForeignOrMalformedURLs(_ raw: String) throws {
         let url = try #require(URL(string: raw))
@@ -63,6 +65,13 @@ struct AgentLinkHostLookupTests {
         return try #require(AgentActivityLink.target(from: url)).agent(in: hosts)
     }
 
+    /// The Live Activity's Console links carry an id but no pane.
+    @Test func heelerConsoleLinksOpenTheConsole() throws {
+        let url = try #require(AgentActivityLink.consoleURL(hostID: Self.studio.id.uuidString))
+
+        #expect(try opened(url.absoluteString) == nil)
+    }
+
     @Test func heelerLinksOpenTheirHostByID() throws {
         let url = try #require(
             AgentActivityLink.agentURL(hostID: Self.studioWork.id.uuidString, paneID: "w1:p1"))
@@ -94,6 +103,30 @@ struct AgentLinkHostLookupTests {
         #expect(
             try opened("heeler://agent?host=build%20box&pane=w1%3Ap1")
                 == AgentNotificationTarget(hostID: Self.buildBox.id, paneID: "w1:p1"))
+    }
+
+    /// `+` is not a space in a query item, so a form-encoded name misses.
+    @Test func plusIsNotASpace() throws {
+        #expect(try opened("heeler://agent?host=build+box&pane=w1%3Ap1") == nil)
+    }
+
+    @Test func nameIsLookedUpOnTheLinksSession() throws {
+        let workMac = Host(name: "Mac", address: "10.0.0.20", username: "dev", sessionName: "work")
+        let hosts = [workMac, Self.studio]
+
+        #expect(try opened("heeler://agent?host=mac&pane=w1%3Ap1", in: hosts) == nil)
+        #expect(
+            try opened("heeler://agent?host=mac&session=work&pane=w1%3Ap1", in: hosts)
+                == AgentNotificationTarget(hostID: workMac.id, paneID: "w1:p1"))
+    }
+
+    @Test func twoHostsSharingANameOpenTheConsole() throws {
+        let hosts = [
+            Host(name: "Lab", address: "10.0.0.30", username: "dev"),
+            Host(name: "lab", address: "10.0.0.31", username: "dev"),
+        ]
+
+        #expect(try opened("heeler://agent?host=Lab&pane=w1%3Ap1", in: hosts) == nil)
     }
 
     @Test func addressOutranksAnotherHostsName() throws {
