@@ -43,7 +43,7 @@ Entries reference the pull request that made the change.
   link. Heeler looks for the saved Host with that address, or else that
   name, on that herdr session; leaving out `session` means the default one.
   Without a pane, or when no single Host matches, the link opens the
-  Console. (refs #419)
+  Console. (#423)
 
 ### Fixed
 
