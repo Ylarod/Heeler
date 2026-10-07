@@ -34,6 +34,13 @@ Entries reference the pull request that made the change.
   and adding it as a Host, with copyable pairing commands. Open it from the
   empty Agents and Hosts screens, where it ends in Scan to Pair or Add
   Manually, or from Settings › About. (#421)
+- Host details show the installed Heeler plugin version. When the plugin is
+  missing, disabled, installed under its old name, or older than the version
+  this app ships with, the version carries an icon that opens how to fix it,
+  with copyable commands unless the plugin is linked from a local checkout.
+  Notification and Agent List Fields settings say which features a Host's
+  older plugin lacks, such as notification session isolation before plugin
+  0.6.0. (#422)
 - Agent and terminal screens beside the iPad sidebar have the floating glass
   buttons for the Workspace's terminals and an Agent's Changes, folding
   like on iPhone. They leave out Back, since the list is already beside

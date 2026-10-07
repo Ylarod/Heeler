@@ -90,6 +90,7 @@ struct HostListView: View {
     /// where it is a tab.
     private let onDone: (@MainActor () -> Void)?
     @State private var removal: HostRemovalStore
+    @Environment(\.hostOnboardingDependencies) private var onboardingDependencies
     @State private var isAddingHost = false
     @State private var editingHost: Host?
     @State private var duplicateRequest: HostDuplicateRequest?
@@ -215,7 +216,8 @@ struct HostListView: View {
                         standingFailure: standingFailures[id],
                         syncIssue: syncIssues[id],
                         isManualReconnectInFlight: manualReconnectInFlightHostIDs.contains(id),
-                        retryConnection: retryAction(for: id))
+                        retryConnection: retryAction(for: id),
+                        dependencies: onboardingDependencies)
                         .id(host)
                         .modifier(ReturnToOrigin(origin: route.isRequested ? origin : nil))
                 } else {
