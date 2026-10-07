@@ -94,6 +94,12 @@ from live Host reads.
   owns the Settings toggles. Entries are scoped to a herdr session and owned by
   a Host's Notification Key ([ADR 0020](../adr/0020-session-scoped-notification-registrations.md));
   the plugin side is `plugin/src/session.js`.
+- **Deep links:** `ContentView.onOpenURL` parses `heeler://agent` links with
+  [AgentActivityLink](../../Sources/HeelerActivityCore/AgentActivityLink.swift),
+  which also builds the Live Activity's links. Another app's link names its
+  Host by address or name, and [AgentActivityLink+Hosts](../../Sources/Heeler/Notifications/AgentActivityLink+Hosts.swift)
+  resolves it against the saved Hosts before `AgentSceneDirectory` routes it.
+  Start with [AgentActivityLinkTests](../../Tests/HeelerTests/AgentActivityLinkTests.swift).
 
 ## Sibling deliverables and generated files
 

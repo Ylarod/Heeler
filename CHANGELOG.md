@@ -38,6 +38,12 @@ Entries reference the pull request that made the change.
   buttons for the Workspace's terminals and an Agent's Changes, folding
   like on iPhone. They leave out Back, since the list is already beside
   them. (#421)
+- Other apps can open an Agent in Heeler with a
+  `heeler://agent?host=<address or name>&session=<name>&pane=<pane id>`
+  link. Heeler looks for the saved Host with that address, or else that
+  name, on that herdr session; leaving out `session` means the default one.
+  Without a pane, or when no single Host matches, the link opens the
+  Console. (refs #419)
 
 ### Fixed
 
