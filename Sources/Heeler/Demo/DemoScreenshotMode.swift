@@ -599,13 +599,13 @@
     private struct DemoPreflightConnector: TransportConnector {
         func connect(settings: SSHTransportSettings) async throws -> any Transport {
             guard
-                let host = await DemoScreenshotFixture.hosts.first(where: {
+                let host = DemoScreenshotFixture.hosts.first(where: {
                     $0.address == settings.host
                 })
             else {
                 throw TransportError.sshUnreachable(detail: "No demo Host at this address.")
             }
-            return try await DemoScreenshotFixture.transport(for: host)
+            return try DemoScreenshotFixture.transport(for: host)
         }
     }
 
