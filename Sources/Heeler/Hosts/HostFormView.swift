@@ -19,7 +19,11 @@ struct HostFormView: View {
     @State private var isConfirmingRSAKeyReplacement = false
     @State private var deviceKeyReplacementError: String?
     @State private var rsaKeyReplacementError: String?
+    @State private var isChoosingOverlayPeer = false
     @Environment(\.dismiss) private var dismiss
+    /// Absent in previews and hosting tests; the Network picker then offers
+    /// only Direct (plus the Host's current choice).
+    @Environment(OverlayNetworkStore.self) private var overlayNetworks: OverlayNetworkStore?
 
     private let credentials = HostCredentialsProvider()
 
@@ -42,94 +46,7 @@ struct HostFormView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Host") {
-                    TextField("Name (optional)", text: $draft.name)
-                    TextField("Address", text: $draft.address)
-                        .textContentType(.URL)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                    TextField("Port", text: $draft.port)
-                        .keyboardType(.numberPad)
-                    TextField("User", text: $draft.username)
-                        .textContentType(.username)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                }
-
-                Section {
-                    Picker("Method", selection: $draft.authMethod) {
-                        Text("Device Key").tag(Host.AuthMethod.deviceKey)
-                        Text("RSA Key").tag(Host.AuthMethod.rsaKey)
-                        Text("Password").tag(Host.AuthMethod.password)
-                    }
-                    .onChange(of: draft.authMethod) {
-                        didCopyKeyLine = false
-                        if draft.authMethod == .rsaKey,
-                           rsaPublicKeyLine == nil,
-                           !rsaKeyIsCorrupt
-                        {
-                            loadRSAKey()
-                        }
-                    }
-                    switch draft.authMethod {
-                    case .deviceKey:
-                        deviceKeySection
-                    case .rsaKey:
-                        rsaKeySection
-                    case .password:
-                        SecureField(
-                            editing == nil ? "Password" : "Password (blank keeps current)",
-                            text: $draft.password)
-                    }
-                } header: {
-                    Text("Authentication")
-                } footer: {
-                    switch draft.authMethod {
-                    case .deviceKey:
-                        Text(
-                            "Add this line to ~/.ssh/authorized_keys on the Host. "
-                                + "The private key never leaves this device.")
-                    case .rsaKey:
-                        Text(
-                            "Register this public key wherever the Host accepts SSH identities. "
-                                + "The private key never leaves this device.")
-                    case .password:
-                        EmptyView()
-                    }
-                }
-
-                Section {
-                    TextField("Session name", text: $draft.sessionName)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                } header: {
-                    Text("herdr Session")
-                } footer: {
-                    Text("Leave blank for the default herdr session.")
-                }
-
-                Section {
-                    TextField("Jump Host address (optional)", text: $draft.jumpAddress)
-                        .textContentType(.URL)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                    if draft.usesJumpHost {
-                        TextField("Jump Host port", text: $draft.jumpPort)
-                            .keyboardType(.numberPad)
-                        TextField("Jump Host user (blank = same as Host)", text: $draft.jumpUsername)
-                            .textContentType(.username)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                    }
-                } header: {
-                    Text("Jump Host")
-                } footer: {
-                    if draft.usesJumpHost {
-                        Text(jumpHostFooter)
-                    } else {
-                        Text("Leave blank to connect to the Host directly.")
-                    }
-                }
+                formSections
             }
             .navigationTitle(editing == nil ? "Add Host" : "Edit Host")
             .navigationBarTitleDisplayMode(.inline)
@@ -189,6 +106,17 @@ struct HostFormView: View {
                     "Every Host using RSA Key authentication will reject the replacement "
                         + "until you register its new public key on that Host.")
             }
+            .sheet(isPresented: $isChoosingOverlayPeer) {
+                if let overlayNetworks, let network = selectedOverlayNetwork {
+                    OverlayPeerPickerView(
+                        network: network,
+                        target: draft.overlayPeerTarget,
+                        model: OverlayPeerPickerModel(store: overlayNetworks, networkID: network.id)
+                    ) { candidate, style in
+                        draft.applyOverlayPeer(candidate, style: style)
+                    }
+                }
+            }
             .task {
                 loadDeviceKey()
                 if draft.authMethod == .rsaKey {
@@ -196,6 +124,177 @@ struct HostFormView: View {
                 }
             }
         }
+    }
+
+    /// Split out of `body` so the type checker sees two smaller
+    /// expressions instead of one very long modifier chain.
+    @ViewBuilder
+    private var formSections: some View {
+        Section("Host") {
+            TextField("Name (optional)", text: $draft.name)
+            TextField("Address", text: $draft.address)
+                .textContentType(.URL)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            if draft.overlayPeerTarget == .host {
+                overlayPeerChooser
+            }
+            TextField("Port", text: $draft.port)
+                .keyboardType(.numberPad)
+            TextField("User", text: $draft.username)
+                .textContentType(.username)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+        }
+
+        Section {
+            Picker("Method", selection: $draft.authMethod) {
+                Text("Device Key").tag(Host.AuthMethod.deviceKey)
+                Text("RSA Key").tag(Host.AuthMethod.rsaKey)
+                Text("Password").tag(Host.AuthMethod.password)
+            }
+            .onChange(of: draft.authMethod) {
+                didCopyKeyLine = false
+                if draft.authMethod == .rsaKey,
+                   rsaPublicKeyLine == nil,
+                   !rsaKeyIsCorrupt
+                {
+                    loadRSAKey()
+                }
+            }
+            switch draft.authMethod {
+            case .deviceKey:
+                deviceKeySection
+            case .rsaKey:
+                rsaKeySection
+            case .password:
+                SecureField(
+                    editing == nil ? "Password" : "Password (blank keeps current)",
+                    text: $draft.password)
+            }
+        } header: {
+            Text("Authentication")
+        } footer: {
+            switch draft.authMethod {
+            case .deviceKey:
+                Text(
+                    "Add this line to ~/.ssh/authorized_keys on the Host. "
+                        + "The private key never leaves this device.")
+            case .rsaKey:
+                Text(
+                    "Register this public key wherever the Host accepts SSH identities. "
+                        + "The private key never leaves this device.")
+            case .password:
+                EmptyView()
+            }
+        }
+
+        Section {
+            TextField("Session name", text: $draft.sessionName)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+        } header: {
+            Text("herdr Session")
+        } footer: {
+            Text("Leave blank for the default herdr session.")
+        }
+
+        Section {
+            TextField("Jump Host address (optional)", text: $draft.jumpAddress)
+                .textContentType(.URL)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            if draft.overlayPeerTarget == .jumpHost {
+                overlayPeerChooser
+            }
+            if draft.usesJumpHost {
+                TextField("Jump Host port", text: $draft.jumpPort)
+                    .keyboardType(.numberPad)
+                TextField("Jump Host user (blank = same as Host)", text: $draft.jumpUsername)
+                    .textContentType(.username)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+            }
+        } header: {
+            Text("Jump Host")
+        } footer: {
+            if draft.usesJumpHost {
+                Text(jumpHostFooter)
+            } else {
+                Text("Leave blank to connect to the Host directly.")
+            }
+        }
+
+        networkSection
+    }
+
+    /// The Overlay Network the draft names, when it still exists.
+    private var selectedOverlayNetwork: OverlayNetwork? {
+        draft.overlayNetworkID.flatMap { overlayNetworks?.network(id: $0) }
+    }
+
+    /// Below the first hop's address: pick it from the Overlay Network's
+    /// peers instead of typing it. ZeroTier reports no member addresses,
+    /// so it gets a pointer to where they are instead.
+    @ViewBuilder
+    private var overlayPeerChooser: some View {
+        if let network = selectedOverlayNetwork {
+            if OverlayPeerList.offersPeers(network.kind) {
+                Button {
+                    isChoosingOverlayPeer = true
+                } label: {
+                    Label(OverlayPeerList.chooseTitle(for: network.kind), systemImage: "network")
+                }
+                .accessibilityHint("Lists the peers of \(network.displayName)")
+            } else {
+                Text(
+                    "ZeroTier does not report member addresses. Copy the managed IP from "
+                        + "ZeroTier Central or your controller.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// Direct, or one of Settings › Overlay Networks. A Host still naming a
+    /// removed network keeps that choice visible as unavailable instead of
+    /// silently becoming Direct.
+    private var networkSection: some View {
+        let networks = overlayNetworks?.networks ?? []
+        let selectionIsMissing =
+            draft.overlayNetworkID.map { id in !networks.contains { $0.id == id } } ?? false
+        return Section {
+            Picker("Network", selection: $draft.overlayNetworkID) {
+                Text("Direct").tag(UUID?.none)
+                ForEach(networks) { network in
+                    Text("\(network.displayName) (\(network.kind.displayName))")
+                        .tag(UUID?.some(network.id))
+                }
+                if selectionIsMissing {
+                    Text("Unavailable network").tag(draft.overlayNetworkID)
+                }
+            }
+        } header: {
+            Text("Network")
+        } footer: {
+            Text(networkFooter(hasNetworks: !networks.isEmpty, selectionIsMissing: selectionIsMissing))
+        }
+    }
+
+    private func networkFooter(hasNetworks: Bool, selectionIsMissing: Bool) -> String {
+        if selectionIsMissing {
+            return "This Host's overlay network was removed. Choose another network or Direct."
+        }
+        guard draft.overlayNetworkID != nil else {
+            return hasNetworks
+                ? "Direct uses this device's own network connection."
+                : "Direct uses this device's own network connection. Add Tailscale, ZeroTier, "
+                    + "or EasyTier networks in Settings › Overlay Networks."
+        }
+        let target = draft.usesJumpHost ? "the Jump Host" : "this Host"
+        return "Heeler joins the overlay network itself and reaches \(target) through it — "
+            + "no VPN is turned on. Use \(target)'s overlay address or name (such as its "
+            + "MagicDNS name) as its address."
     }
 
     private var jumpHostFooter: String {

@@ -16,7 +16,8 @@
     },
     "projectPackages": {
       "GhosttyTerminal": ["libghostty-spm", "Ghostty", "GhosttyTheme"],
-      "HeelerSSH": ["libssh2", "libssh2-bcrypt_pbkdf", "libssh2-cipher-chachapoly", "OpenSSL"]
+      "HeelerSSH": ["libssh2", "libssh2-bcrypt_pbkdf", "libssh2-cipher-chachapoly", "OpenSSL"],
+      "HeelerOverlay": ["libtailscale", "Tailscale", "Go", "Tailscale-Go-modules", "libzt", "ZeroTier-Heeler-modifications", "ZeroTierOne", "ZeroTierOne-LZ4", "lwIP", "lwIP-contrib", "miniupnpc", "libnatpmp", "prometheus-cpp-lite", "concurrentqueue", "EasyTier", "heeler-easytier", "EasyTier-Rust-crates"]
     },
     "bundledFontFamilies": {
       "IBMPlexMono": ["IBMPlexMono"],

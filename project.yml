@@ -19,6 +19,12 @@ packages:
   # checked-in native artifacts. The one SSH backend (ADR 0011).
   HeelerSSH:
     path: Packages/HeelerSSH
+  # Repository-local package running Tailscale, ZeroTier, and EasyTier nodes
+  # in-process. It only dials byte streams for HeelerSSH; it never replaces
+  # the SSH backend (ADR 0021). Its native libraries come from an exact
+  # release of heeler-overlay-natives, pinned in its own Package.swift.
+  HeelerOverlay:
+    path: Packages/HeelerOverlay
   # Pin the reviewed 1.6.20260909 source commit. Its prebuilt libghostty is
   # Ghostty 82938b633ba6 with SwiftPM checksum
   # 2d9a26e80c3836c450f03ea2cf9d191841d9093d4f61c1cea466d2fc8e215dbb.
@@ -103,8 +109,12 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         # ActivityKit starts Live Activities from the app; HeelerWidgets renders them.
         INFOPLIST_KEY_NSSupportsLiveActivities: YES
+        # In-app overlay nodes (ADR 0021) find peers on the same LAN for direct
+        # paths; iOS asks before the first local-network packet.
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby."
     dependencies:
       - package: HeelerSSH
+      - package: HeelerOverlay
       - package: GhosttyTerminal
       - package: GhosttyTerminal
         product: GhosttyTheme
@@ -234,6 +244,7 @@ targets:
     dependencies:
       - target: Heeler
       - package: HeelerSSH
+      - package: HeelerOverlay
       - package: GhosttyTerminal
 
 schemes:
