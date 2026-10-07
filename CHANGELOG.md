@@ -7,6 +7,8 @@ Entries reference the pull request that made the change.
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-10-07
+
 ### Added
 
 - Autocorrect and spell checking in native Composer drafts. Direct Input and
