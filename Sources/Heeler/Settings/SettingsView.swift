@@ -137,7 +137,11 @@ struct SettingsView: View {
                             pushRegistration: pushRegistration,
                             notificationPreferences: notificationPreferences,
                             relaySettings: relaySettings,
-                            liveActivities: liveActivities)
+                            liveActivities: liveActivities,
+                            pluginStatuses: console.pluginStatuses,
+                            refreshPluginStatuses: { [console] in
+                                await console.refreshPluginStatuses(for: $0)
+                            })
                     } label: {
                         Label("Notifications", systemImage: "bell.badge")
                     }
