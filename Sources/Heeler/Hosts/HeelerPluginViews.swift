@@ -94,3 +94,36 @@ struct PluginNoticeSheet: View {
         .presentationDetents([.medium, .large])
     }
 }
+
+extension View {
+    /// Presents `PluginNoticeSheet` for `notice`, closing it once there is
+    /// nothing left to do. Run Checks Again closes it before `runChecks`.
+    func pluginNoticeSheet(
+        _ notice: HeelerPluginPresentation.Notice?,
+        isPresented: Binding<Bool>,
+        runChecks: @escaping () -> Void
+    ) -> some View {
+        modifier(PluginNoticeSheetModifier(notice: notice, isPresented: isPresented, runChecks: runChecks))
+    }
+}
+
+private struct PluginNoticeSheetModifier: ViewModifier {
+    let notice: HeelerPluginPresentation.Notice?
+    @Binding var isPresented: Bool
+    let runChecks: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $isPresented) {
+                if let notice {
+                    PluginNoticeSheet(notice: notice) {
+                        isPresented = false
+                        runChecks()
+                    }
+                }
+            }
+            .onChange(of: notice == nil) { _, resolved in
+                if resolved { isPresented = false }
+            }
+    }
+}

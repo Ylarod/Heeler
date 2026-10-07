@@ -159,16 +159,8 @@ struct HostOnboardingView: View {
         .sheet(isPresented: $isEditing) {
             HostFormView(store: catalog, editing: store.host)
         }
-        .sheet(isPresented: $isShowingPluginNotice) {
-            if let notice = pluginPresentation.notice {
-                PluginNoticeSheet(notice: notice) {
-                    isShowingPluginNotice = false
-                    Task { await store.runChecks() }
-                }
-            }
-        }
-        .onChange(of: pluginPresentation.notice == nil) { _, resolved in
-            if resolved { isShowingPluginNotice = false }
+        .pluginNoticeSheet(pluginPresentation.notice, isPresented: $isShowingPluginNotice) {
+            Task { await store.runChecks() }
         }
         .alert(
             "Trust this Host?",
@@ -202,9 +194,7 @@ struct HostOnboardingView: View {
         }
         .alert(
             "Could Not Select Session",
-            isPresented: Binding(
-                get: { sessionSelectionError != nil },
-                set: { if !$0 { sessionSelectionError = nil } })
+            isPresented: sessionSelectionErrorPresented
         ) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -253,6 +243,16 @@ struct HostOnboardingView: View {
         Binding(
             get: { store.pendingFingerprint != nil },
             set: { _ in })
+    }
+
+    /// Out of the body's modifier chain: inline, this closure exceeded
+    /// Xcode 26.6's type-checking limit for the whole body.
+    private var sessionSelectionErrorPresented: Binding<Bool> {
+        Binding(
+            get: { sessionSelectionError != nil },
+            set: { isPresented in
+                if !isPresented { sessionSelectionError = nil }
+            })
     }
 
     private var addressLine: String {
