@@ -40,7 +40,7 @@ Entries reference the pull request that made the change.
   with copyable commands unless the plugin is linked from a local checkout.
   Notification and Agent List Fields settings say which features a Host's
   older plugin lacks, such as notification session isolation before plugin
-  0.6.0.
+  0.6.0. (#422)
 - Agent and terminal screens beside the iPad sidebar have the floating glass
   buttons for the Workspace's terminals and an Agent's Changes, folding
   like on iPhone. They leave out Back, since the list is already beside
