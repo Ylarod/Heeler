@@ -272,17 +272,3 @@ struct NotificationSettingsView: View {
         }
     }
 }
-
-/// A feature the Host's plugin is too old for, pointing at the Host's page,
-/// which says how to update it.
-struct PluginRequirementNote: View {
-    let text: String
-
-    var body: some View {
-        let glyph = Text(Image(systemName: "exclamationmark.triangle"))
-            .foregroundStyle(HostConnectionTone.warning.tint)
-        let message = "\(text) See this Host's page in Hosts."
-        Text("\(glyph) \(message)")
-            .accessibilityLabel(message)
-    }
-}

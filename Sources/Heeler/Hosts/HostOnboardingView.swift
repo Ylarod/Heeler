@@ -287,8 +287,7 @@ struct HostOnboardingView: View {
                     } icon: {
                         switch notice.tone {
                         case .warning:
-                            Image(systemName: "exclamationmark.triangle")
-                                .foregroundStyle(HostConnectionTone.warning.tint)
+                            PluginWarningIcon()
                         case .info:
                             Image(systemName: "puzzlepiece.extension")
                                 .foregroundStyle(.secondary)
