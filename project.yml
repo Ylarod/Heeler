@@ -63,6 +63,12 @@ targets:
         # manifest already declares multiple-scene support.
         NSUserActivityTypes:
           - dev.bybee.heeler.agent
+        # `heeler://agent` links (AgentActivityLink). A Live Activity tap
+        # opens its own app without this; other apps' links need it.
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.bybee.heeler
+            CFBundleURLSchemes:
+              - heeler
     entitlements:
       path: Sources/Heeler/Heeler.entitlements
       properties:
