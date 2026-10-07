@@ -49,6 +49,8 @@ struct HostOnboardingView: View {
                 LabeledContent(
                     "Auth",
                     value: authenticationLabel)
+                LabeledContent("Heeler Plugin", value: pluginPresentation.value)
+                    .accessibilityIdentifier("hosts.detail.plugin.version")
             }
 
             if retryConnection != nil {
@@ -118,6 +120,8 @@ struct HostOnboardingView: View {
                             : "herdr \(info.version) · protocol \(info.protocolVersion)")
                 }
             }
+
+            pluginNoticeSection
 
             availableSessionsSection
 
@@ -264,6 +268,51 @@ struct HostOnboardingView: View {
 
     private func status(for check: PreflightCheck) -> PreflightCheckStatus? {
         store.report?[check]
+    }
+
+    private var pluginPresentation: HeelerPluginPresentation {
+        HeelerPluginPresentation(store.pluginStatus)
+    }
+
+    /// Shown only when the user has something to do on the Host: install,
+    /// update, enable, or replace the plugin.
+    @ViewBuilder
+    private var pluginNoticeSection: some View {
+        if let notice = pluginPresentation.notice {
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label {
+                        Text(notice.message)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        switch notice.tone {
+                        case .warning:
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(HostConnectionTone.warning.tint)
+                        case .info:
+                            Image(systemName: "puzzlepiece.extension")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .accessibilityIdentifier("hosts.detail.plugin.notice")
+                    ForEach(notice.commands, id: \.self) { command in
+                        CommandBlock(command: command)
+                    }
+                }
+                .padding(.vertical, 4)
+            } header: {
+                Text("Heeler Plugin")
+            } footer: {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(notice.notes, id: \.self) { note in
+                        Text(note)
+                    }
+                    if !notice.commands.isEmpty {
+                        Text("Then tap Run Checks Again.")
+                    }
+                }
+            }
+        }
     }
 
     @ViewBuilder

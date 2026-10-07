@@ -210,7 +210,7 @@ private struct SetupStep<Content: View>: View {
 /// A shell command with a Copy button, so it can be pasted into the
 /// machine's terminal. It stays on one line and scrolls, as in a terminal:
 /// a wrapped command reads as two when typed by hand.
-private struct CommandBlock: View {
+struct CommandBlock: View {
     let command: String
     @State private var copied = false
 

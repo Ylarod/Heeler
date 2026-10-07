@@ -31,6 +31,9 @@ final class HostOnboardingStore {
     private(set) var serverInfo: ServerInfo?
     private(set) var availableSessions: [HerdrSession] = []
     private(set) var sessionDiscoveryError: String?
+    /// The Heeler plugin as the preflight connection found it. Read after a
+    /// passing ping, so an unreachable Host reports `.unavailable`.
+    private(set) var pluginStatus: HeelerPluginStatus = .checking
 
     let host: Host
 
@@ -65,8 +68,12 @@ final class HostOnboardingStore {
         serverInfo = nil
         availableSessions = []
         sessionDiscoveryError = nil
+        pluginStatus = .checking
         pendingHostKeyReplacement = nil
-        defer { phase = .finished }
+        defer {
+            if pluginStatus == .checking { pluginStatus = .unavailable }
+            phase = .finished
+        }
 
         let resolved: SSHCredentials
         do {
@@ -104,6 +111,10 @@ final class HostOnboardingStore {
             do {
                 serverInfo = try await transport.ping()
                 report = .allPassed
+                // After the report, so the checklist renders first. The run
+                // still waits for this read (bounded by the request timeout),
+                // and its failure never fails the preflight.
+                pluginStatus = await HeelerPluginStatus.read(over: transport)
             } catch {
                 captureHostKeyReplacement(error)
                 report = failureReport(error)

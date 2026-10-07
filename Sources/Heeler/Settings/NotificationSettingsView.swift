@@ -9,6 +9,8 @@ struct NotificationSettingsView: View {
     let notificationPreferences: NotificationPreferencesStore
     @Bindable var relaySettings: NotificationRelaySettings
     let liveActivities: HostLiveActivityCoordinator
+    let pluginStatuses: HeelerPluginStatusStore
+    let refreshPluginStatuses: @MainActor ([Host.ID]) async -> Void
     @Environment(\.openURL) private var openURL
     @State private var isShowingExplainer = false
 
@@ -44,6 +46,7 @@ struct NotificationSettingsView: View {
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.inline)
         .task { await notificationPreferences.refresh() }
+        .task { await refreshPluginStatuses(notificationPreferences.hosts.map(\.id)) }
         // The user can finish push bootstrap on this very screen; the
         // per-Host rows appear the moment the token lands.
         .onChange(of: pushRegistration.deviceToken) { _, token in
@@ -202,6 +205,12 @@ struct NotificationSettingsView: View {
                 {
                     Text("Live Activity: \(note)")
                 }
+                ForEach(pluginRequirements(for: host), id: \.feature) { requirement in
+                    PluginRequirementNote(text: requirement.note)
+                        .accessibilityIdentifier(
+                            "settings.notifications.pluginRequirement.\(host.id.uuidString)"
+                                + ".\(requirement.feature)")
+                }
             }
             // Fail loudly (#75): a toggle that could not reach the Host
             // says so and stays on the Host's confirmed value.
@@ -210,6 +219,11 @@ struct NotificationSettingsView: View {
                     .foregroundStyle(.red)
             }
         }
+    }
+
+    private func pluginRequirements(for host: Host) -> [HeelerPluginRequirement] {
+        pluginStatuses.status(for: host.id)?.notificationRequirements(
+            liveActivityEnabled: liveActivities.isEnabled(for: host.id)) ?? []
     }
 
     @ViewBuilder
@@ -256,5 +270,19 @@ struct NotificationSettingsView: View {
                 "Leave blank to use \(NotificationRelayEndpoint.productionBaseURLString). "
                     + NotificationPrivacyCopy.customRelayCaveat)
         }
+    }
+}
+
+/// A feature the Host's plugin is too old for, pointing at the Host's page,
+/// which says how to update it.
+struct PluginRequirementNote: View {
+    let text: String
+
+    var body: some View {
+        let glyph = Text(Image(systemName: "exclamationmark.triangle"))
+            .foregroundStyle(HostConnectionTone.warning.tint)
+        let message = "\(text) See this Host's page in Hosts."
+        Text("\(glyph) \(message)")
+            .accessibilityLabel(message)
     }
 }

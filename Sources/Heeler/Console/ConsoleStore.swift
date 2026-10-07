@@ -89,6 +89,7 @@ final class ConsoleStore {
     let pins: PinnedAgentsStore
     let rowLayouts: AgentRowLayoutStore
     let sidebarSnapshots = HerdrSidebarSnapshotStore()
+    let pluginStatuses = HeelerPluginStatusStore()
     let terminalConnections: TerminalConnectionPool
     let agentTerminals: AgentTerminalCache
     @ObservationIgnored private var terminalSnapshotRevisions: [Host.ID: UInt64] = [:]
@@ -124,6 +125,7 @@ final class ConsoleStore {
         composerStores = composerStores.filter { incoming[$0.key.hostID] != nil }
         for (id, projection) in projections where incoming[id] != projection.host {
             sidebarSnapshots.invalidate(id)
+            pluginStatuses.invalidate(id)
             terminalSnapshotRevisions[id] = nil
             terminalTransportGenerations[id] = nil
             Task {
@@ -883,6 +885,12 @@ final class ConsoleStore {
         await sidebarSnapshots.refresh(transports: self) { [weak self] in
             self?.rebuildAgentOrder()
         }
+    }
+
+    /// Settings' plugin requirement notes: each Host's plugin, read on its
+    /// current connection.
+    func refreshPluginStatuses(for hostIDs: [Host.ID]) async {
+        await pluginStatuses.refresh(hostIDs, transports: self)
     }
 
     /// Settings' Sync from plugin: one Host's layout file, on its current

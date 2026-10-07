@@ -1056,6 +1056,10 @@
             DemoScreenshotFixture.sidebarLayoutData
         }
 
+        func readHeelerPlugin() async throws -> HeelerPluginInstallation? {
+            HeelerPluginInstallation(version: HeelerPluginCompatibility.bundled.description)
+        }
+
         func sessionSnapshot() async throws -> SessionSnapshot {
             if let failure = profile.snapshotFailure { throw failure }
             return profile.snapshot
