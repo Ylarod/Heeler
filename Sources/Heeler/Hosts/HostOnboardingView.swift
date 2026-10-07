@@ -30,7 +30,8 @@ struct HostOnboardingView: View {
         standingFailure: TransportError? = nil,
         syncIssue: String? = nil,
         isManualReconnectInFlight: Bool = false,
-        retryConnection: (@MainActor @Sendable () async -> Void)? = nil
+        retryConnection: (@MainActor @Sendable () async -> Void)? = nil,
+        dependencies: HostOnboardingDependencies = HostOnboardingDependencies()
     ) {
         self.catalog = catalog
         self.connectionStatus = connectionStatus
@@ -38,7 +39,12 @@ struct HostOnboardingView: View {
         self.syncIssue = syncIssue
         self.isManualReconnectInFlight = isManualReconnectInFlight
         self.retryConnection = retryConnection
-        _store = State(initialValue: HostOnboardingStore(host: host))
+        _store = State(
+            initialValue: HostOnboardingStore(
+                host: host,
+                connector: dependencies.connector,
+                knownHosts: dependencies.knownHosts,
+                credentials: dependencies.credentials))
     }
 
     var body: some View {
@@ -488,4 +494,9 @@ private struct PreflightCheckRow: View {
                 .foregroundStyle(.secondary)
         }
     }
+}
+
+extension EnvironmentValues {
+    /// Where Host detail preflights connect; see `HostOnboardingDependencies`.
+    @Entry var hostOnboardingDependencies = HostOnboardingDependencies()
 }

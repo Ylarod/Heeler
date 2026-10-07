@@ -8,6 +8,14 @@ struct HostKeyReplacement: Equatable, Sendable {
     let presented: HostKeyFingerprint
 }
 
+/// What Host onboarding connects and authenticates with. Production uses SSH
+/// and the Keychain; screenshot mode swaps in process-local stand-ins.
+struct HostOnboardingDependencies: Sendable {
+    var connector: any TransportConnector = SSHTransportConnector()
+    var knownHosts: any KnownHostsStore = UserDefaultsKnownHostsStore.shared
+    var credentials = HostCredentialsProvider()
+}
+
 /// Drives one Host's onboarding preflight (#14): resolve credentials,
 /// connect (surfacing the TOFU first-connect prompt), discover sessions,
 /// ping the selected session, and render the outcome as the checklist.
