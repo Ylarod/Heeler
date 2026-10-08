@@ -17,6 +17,22 @@ Read the common Host preparation below, follow one network tutorial, then return
 
 For Linux or Windows Hosts, use the provider's platform-specific installation instructions, then the same Heeler enrollment and Host fields. Native Windows also needs the [Windows SSH and herdr setup](windows-setup.md). The Mac commands in these tutorials are not Windows instructions.
 
+## Heeler setup screenshots
+
+Open **Settings > Overlay Networks > Add Network**, then choose the provider and, for EasyTier, the Source. These are four alternative forms, not four steps to complete. Select an image to view its full-size screenshot, or follow its setup link for the field values and next action.
+
+| Tailscale | ZeroTier |
+| --- | --- |
+| [![Tailscale Add Network form with device name, coordination server, and auth key fields](images/overlay-networks/tailscale-form.png)](images/overlay-networks/tailscale-form.png) | [![ZeroTier Add Network form with network ID and this device's node ID](images/overlay-networks/zerotier-form.png)](images/overlay-networks/zerotier-form.png) |
+| **Browser sign-in:** leave Coordination server and Auth key blank, then Save and Connect. [Follow the Tailscale setup](tailscale.md#3-join-the-same-tailnet-from-heeler). | **Private network:** enter your network ID, then authorize your own **This device** node ID in Central. [Follow the ZeroTier setup](zerotier.md#3-heeler-and-central-join-and-authorize-the-app). |
+
+| EasyTier Manual | EasyTier Config Server |
+| --- | --- |
+| [![EasyTier Manual form with network name, secret, fixed IPv4, and peer endpoints](images/overlay-networks/easytier-manual-form.png)](images/overlay-networks/easytier-manual-form.png) | [![EasyTier Config Server form with server URL, Require Encryption enabled, and Machine ID](images/overlay-networks/easytier-config-server-form.png)](images/overlay-networks/easytier-config-server-form.png) |
+| **Manual:** match the Mac's network name and secret; use a distinct virtual IP and a reachable peer endpoint. [Follow the Manual setup](easytier.md#3-add-the-network-in-heeler). | **Config Server:** use your operator's full Server URL, keep Require Encryption enabled, and assign a network to your Machine ID. [Follow the Config Server setup](easytier.md#2-register-heelers-device). |
+
+The screenshots show unconfigured forms and disposable device IDs. Use your own IDs and values from the selected tutorial. [Capture details](#screenshots-and-maintenance). Continue with [Host preparation](#prepare-the-host) before connecting.
+
 ## Prepare the Host
 
 Run these steps on the **Mac that will run herdr**, using the local account Heeler will log into.

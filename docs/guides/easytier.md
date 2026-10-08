@@ -94,9 +94,9 @@ Open **Settings > Overlay Networks > Add Network**, select **EasyTier**, and fil
 | Fixed IPv4 | `10.144.144.3/24` |
 | Peers | `tcp://192.168.1.20:21010`, using the Mac's actual reachable address |
 
-<img src="images/overlay-networks/easytier-manual-form.png" width="360" alt="Heeler EasyTier Manual form with network name, network secret, device name, Fixed IPv4, and Peers fields">
+![Heeler EasyTier Manual form with network name, network secret, device name, Fixed IPv4, and Peers fields](images/overlay-networks/easytier-manual-form.png)
 
-The unconfigured form above shows where to enter the values in the table. [Screenshot provenance](overlay-networks.md#screenshots-and-maintenance).
+**In this screen:** select **Manual**, enter the Mac's network name and secret, then set Fixed IPv4 and Peers from the table above. Save before opening the network and selecting Connect. [Open the full-size screenshot](images/overlay-networks/easytier-manual-form.png). [Capture details](overlay-networks.md#screenshots-and-maintenance).
 
 Save, open the network, and select **Connect**. Look for the Mac peer with virtual address `10.144.144.2`. A blank Fixed IPv4 requests DHCP; this example uses distinct fixed addresses to make verification predictable. Include the network prefix and avoid `/32`, which EasyTier treats as part of a `/24`. Heeler's Manual **Peers** field accepts `tcp://` and `udp://` endpoints; a peer's virtual address is not the bootstrap endpoint unless some existing route already makes it reachable. The Config Server field below has a separate set of accepted schemes.
 
@@ -157,9 +157,9 @@ The command keeps the web UI and API on loopback, but **v2.6.4 binds the configu
 
 In **Settings > Overlay Networks > Add Network**, choose **EasyTier > Config Server**. Set a display Name, enter the full delivery URL in **Server**, give the phone a recognizable **Device name**, and leave **Require Encryption** enabled. Save, select Connect, and copy the displayed **Machine ID** for comparison with the console's device list.
 
-<img src="images/overlay-networks/easytier-config-server-form.png" width="360" alt="Heeler EasyTier Config Server form with Server URL, Device name, Require Encryption enabled, and a generated Machine ID">
+![Heeler EasyTier Config Server form with Server URL, Device name, Require Encryption enabled, and a generated Machine ID](images/overlay-networks/easytier-config-server-form.png)
 
-Use your own Machine ID. The screenshot's footer reflects the current app's legacy hosted-server wording; use the full operator-provided URL described above. [Screenshot provenance](overlay-networks.md#screenshots-and-maintenance).
+**In this screen:** enter the full operator-provided Server URL, keep **Require Encryption** on, and copy your own **Machine ID** for the console assignment. The screenshot's footer reflects the current app's legacy hosted-server wording; use the full URL described above. [Open the full-size screenshot](images/overlay-networks/easytier-config-server-form.png). [Capture details](overlay-networks.md#screenshots-and-maintenance).
 
 The first state can be **Waiting** or a later **Not ready** with instructions to assign a network. Find the device by its name and exact Machine ID in the web console. Merely appearing in the device list does not give it a virtual address or a route to the Mac.
 

@@ -28,9 +28,9 @@ In Heeler, open **Settings → Overlay Networks**, add a network, and choose **T
 | Coordination server | Leave blank for Tailscale |
 | Auth key | Leave blank for browser sign-in |
 
-<img src="images/overlay-networks/tailscale-form.png" width="360" alt="Heeler Add Network form with Tailscale selected, Device name, optional Coordination server, and optional Auth key fields">
+![Heeler Add Network form with Tailscale selected, Device name, optional Coordination server, and optional Auth key fields](images/overlay-networks/tailscale-form.png)
 
-The unconfigured form above uses Tailscale's default coordination server and browser sign-in. [Screenshot provenance](overlay-networks.md#screenshots-and-maintenance).
+**In this screen:** enter a recognizable Device name and leave Coordination server and Auth key blank for the browser sign-in route. Tap **Save**, then open the saved network and tap **Connect**. [Open the full-size screenshot](images/overlay-networks/tailscale-form.png). [Capture details](overlay-networks.md#screenshots-and-maintenance).
 
 Save the network and tap **Connect**. When **Sign In** appears, open it, authenticate to the same tailnet as the Mac, then return to Heeler. Approve the new Heeler device in the admin console if required. Heeler is a separate device from any Tailscale iOS app installed on the phone, with its own identity and address.
 

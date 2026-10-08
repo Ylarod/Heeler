@@ -55,9 +55,11 @@ Return to Central and authorize only the member whose node ID matches this Mac. 
 
 ## 3. Heeler and Central: join and authorize the app
 
-<img src="images/overlay-networks/zerotier-form.png" width="360" alt="Heeler ZeroTier form with Network ID, the device node ID, optional Moons, and default Planet settings">
+Open **Settings > Overlay Networks > Add Network > Type > ZeroTier** to reach this form:
 
-The pictured node ID belongs to an isolated tutorial device. Copy **This device** from your own Heeler installation. [Screenshot provenance](overlay-networks.md#screenshots-and-maintenance).
+![Heeler ZeroTier form with Network ID, the device node ID, optional Moons, and default Planet settings](images/overlay-networks/zerotier-form.png)
+
+**In this screen:** enter your 16-digit Network ID and copy **This device** for authorization in Central. Keep the default Planet and empty Moons for this walkthrough. The pictured node ID belongs to an isolated tutorial device; use your own. [Open the full-size screenshot](images/overlay-networks/zerotier-form.png). [Capture details](overlay-networks.md#screenshots-and-maintenance).
 
 1. In Heeler, open **Settings > Overlay Networks > Add Network**.
 2. Give the entry a recognizable **Name**, choose **Type > ZeroTier**, and paste `ZT_NETWORK_ID` into **Network ID**. Keep **Moons** empty and **Planet** set to **ZeroTier default**.
