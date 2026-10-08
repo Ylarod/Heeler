@@ -45,6 +45,11 @@ Entries reference the pull request that made the change.
   so a later authorization still applies; a stopped Host stays paused until
   you reconnect it. (#426)
 
+### Fixed
+
+- Show Connected and remove the sign-in prompt when Tailscale browser authorization completes, without requiring another Connect. (#426)
+- Open a Host's connection checks after adding it from an overlay network's peer list, so its SSH host key can be trusted on the first connection. (#426)
+
 ## [0.1.13] - 2026-10-07
 
 ### Added
@@ -94,7 +99,6 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
-- Show Connected and remove the sign-in prompt when Tailscale browser authorization completes, without requiring another Connect. (#426)
 - Fix Agent terminal connections failing when an older system herdr shadows the user's updated installation. (#404)
 - Opening an Agent from the iPhone Agent list no longer shows the input bar
   a tab bar's height too high before it drops to the bottom of the screen.

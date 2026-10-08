@@ -53,8 +53,10 @@ enum SettingsOverlayNetworksDestination: String, Sendable {
     var destinationTypeName: String { String(reflecting: OverlayNetworksSettingsView.self) }
 
     @MainActor
-    func destinationView(store: OverlayNetworkStore) -> OverlayNetworksSettingsView {
-        OverlayNetworksSettingsView(store: store)
+    func destinationView(
+        store: OverlayNetworkStore, onHostAdded: @escaping (Host.ID) -> Void
+    ) -> OverlayNetworksSettingsView {
+        OverlayNetworksSettingsView(store: store, onHostAdded: onHostAdded)
     }
 }
 
@@ -71,6 +73,7 @@ struct SettingsView: View {
     let liveActivities: HostLiveActivityCoordinator
     let console: ConsoleStore
     let hosts: [Host]
+    let onHostAdded: (Host.ID) -> Void
     /// Closes Settings where it is presented as a sheet, as on iPad; nil
     /// where it is a tab.
     var onDone: (@MainActor () -> Void)? = nil
@@ -173,7 +176,8 @@ struct SettingsView: View {
                 if let overlayNetworks {
                     Section {
                         NavigationLink {
-                            Self.overlayNetworksDestination.destinationView(store: overlayNetworks)
+                            Self.overlayNetworksDestination.destinationView(
+                                store: overlayNetworks, onHostAdded: onHostAdded)
                         } label: {
                             Label("Overlay Networks", systemImage: "point.3.connected.trianglepath.dotted")
                         }

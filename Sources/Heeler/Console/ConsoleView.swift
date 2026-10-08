@@ -50,6 +50,9 @@ struct ConsoleView: View {
     /// Hosts and Settings where the sidebar navigates instead of a tab bar.
     @State private var isShowingHostsSheet = false
     @State private var isShowingSettingsSheet = false
+    /// A Host added in Settings waits for that sheet to close before the
+    /// Hosts sheet can present onboarding and its trust alert.
+    @State private var pendingSettingsHostID: Host.ID?
     @State private var isShowingListMenu = false
     /// Where the sidebar's title sits in the window, for its choices to
     /// point at.
@@ -245,7 +248,11 @@ struct ConsoleView: View {
                     .modifier(ConsoleSheetPresentationModifier(presentation: presentation))
             }
         }
-        .sheet(isPresented: $isShowingSettingsSheet) {
+        .sheet(isPresented: $isShowingSettingsSheet, onDismiss: {
+            guard let id = pendingSettingsHostID else { return }
+            pendingSettingsHostID = nil
+            presentHosts(id)
+        }) {
             ConsoleSheetContent(sheetPresentation) { presentation in
                 settingsView(onDone: { isShowingSettingsSheet = false })
                     .modifier(ConsoleSheetPresentationModifier(presentation: presentation))
@@ -403,6 +410,14 @@ struct ConsoleView: View {
             liveActivities: liveActivities,
             console: console,
             hosts: hosts.hosts,
+            onHostAdded: { id in
+                if isShowingSettingsSheet {
+                    pendingSettingsHostID = id
+                    isShowingSettingsSheet = false
+                } else {
+                    presentHosts(id)
+                }
+            },
             onDone: onDone)
     }
 
@@ -477,6 +492,7 @@ struct ConsoleView: View {
         connectionDetailRequest = nil
         isShowingHostIssues = false
         isShowingHostsSheet = false
+        pendingSettingsHostID = nil
         isShowingSettingsSheet = false
     }
 

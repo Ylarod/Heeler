@@ -9,6 +9,7 @@ import UniformTypeIdentifiers
 /// on the network's own screen and form.
 struct OverlayNetworksSettingsView: View {
     let store: OverlayNetworkStore
+    let onHostAdded: (Host.ID) -> Void
     @State private var isAdding = false
     @State private var deleteError: String?
 
@@ -23,7 +24,8 @@ struct OverlayNetworksSettingsView: View {
             Section {
                 ForEach(store.networks) { network in
                     NavigationLink {
-                        OverlayNetworkDetailView(store: store, networkID: network.id)
+                        OverlayNetworkDetailView(
+                            store: store, networkID: network.id, onHostAdded: onHostAdded)
                     } label: {
                         OverlayNetworkRow(
                             network: network,
@@ -360,12 +362,14 @@ private struct OverlayPeerRow: View {
 struct OverlayNetworkDetailView: View {
     let store: OverlayNetworkStore
     let networkID: OverlayNetwork.ID
+    let onHostAdded: (Host.ID) -> Void
     @State private var isEditing = false
     @State private var isConfirmingDelete = false
     @State private var isConfirmingSignOut = false
     @State private var isConfirmingMachineIDReset = false
     @State private var deleteFailed = false
     @State private var addHostRequest: OverlayPeerHostRequest?
+    @State private var pendingOnboardingHostID: Host.ID?
     @Environment(\.dismiss) private var dismiss
     /// Injected app-wide by `ContentView`; absent in previews, where peers
     /// offer no Add Host….
@@ -392,9 +396,17 @@ struct OverlayNetworkDetailView: View {
                 try? await Task.sleep(for: .seconds(2))
             }
         }
-        .sheet(item: $addHostRequest) { request in
+        .sheet(item: $addHostRequest, onDismiss: {
+            // As in Hosts, wait for the form to close before onboarding can
+            // present its first-connection trust alert (#359, #426).
+            guard let id = pendingOnboardingHostID else { return }
+            pendingOnboardingHostID = nil
+            onHostAdded(id)
+        }) { request in
             if let hostStore {
-                HostFormView(store: hostStore, prefill: request.draft)
+                HostFormView(store: hostStore, prefill: request.draft) { saved in
+                    pendingOnboardingHostID = saved.id
+                }
             }
         }
     }
