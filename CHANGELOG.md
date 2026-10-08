@@ -94,6 +94,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Show Connected and remove the sign-in prompt when Tailscale browser authorization completes, without requiring another Connect. (#426)
 - Fix Agent terminal connections failing when an older system herdr shadows the user's updated installation. (#404)
 - Opening an Agent from the iPhone Agent list no longer shows the input bar
   a tab bar's height too high before it drops to the bottom of the screen.

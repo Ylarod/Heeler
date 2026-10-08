@@ -358,6 +358,36 @@ struct OverlayNetworkStoreTests {
         #expect(throws: OverlayNetworkStoreError.unknownNetwork) { try store.remove(second.id) }
     }
 
+    @Test(arguments: [false, true])
+    func interactiveLoginRecoveryClearsFailure(refreshList: Bool) async throws {
+        let factory = FakeNodeFactory()
+        let login = try #require(URL(string: "https://login.tailscale.com/a/1"))
+        factory.failure.withLock { $0 = .loginRequired(login) }
+        let store = OverlayNetworkStore(volatileNetworks: [tailnet], runtime: makeRuntime(factory))
+
+        await store.connect(tailnet.id)
+        let node = try #require(factory.built.first)
+        node.state.withLock { $0.status = .needsLogin(login) }
+        if refreshList { await store.refreshStatuses() } else { await store.refreshStatus(tailnet.id) }
+        #expect(store.connectFailures[tailnet.id]?.overlayLoginURL == login)
+        #expect(
+            OverlayStatusCopy.summary(store.statuses[tailnet.id], failure: store.connectFailures[tailnet.id])
+                == "Needs sign-in")
+
+        // Browser authorization completes on the existing node without another Connect.
+        node.state.withLock { $0.status = .online(addresses: ["100.64.0.2"]) }
+        if refreshList { await store.refreshStatuses() } else { await store.refreshStatus(tailnet.id) }
+        #expect(store.connectFailures[tailnet.id] == nil)
+        #expect(store.connectFailures[tailnet.id]?.overlayLoginURL == nil)
+        #expect(
+            OverlayStatusCopy.summary(store.statuses[tailnet.id], failure: store.connectFailures[tailnet.id])
+                == "Connected")
+        #expect(
+            OverlayStatusCopy.explanation(store.statuses[tailnet.id], failure: store.connectFailures[tailnet.id])
+                == nil)
+        #expect(node.state.withLock { $0.starts } == 1)
+    }
+
     @Test func connectRecordsTheNodeStatusOrItsFailure() async throws {
         let factory = FakeNodeFactory()
         let store = OverlayNetworkStore(volatileNetworks: [tailnet], runtime: makeRuntime(factory))

@@ -377,9 +377,8 @@ final class OverlayNetworkStore {
 
     /// Status and details together, as the detail screen polls them.
     func refreshStatus(_ id: OverlayNetwork.ID) async {
-        statuses[id] = await runtime.status(networkID: id)
+        await refreshNodeStatus(id)
         details[id] = await runtime.details(networkID: id)
-        await refreshSignedOut(id)
         if network(id: id)?.kind == .zerotier {
             refreshZeroTierDeviceState()
         }
@@ -387,10 +386,20 @@ final class OverlayNetworkStore {
 
     func refreshStatuses() async {
         for network in networks {
-            statuses[network.id] = await runtime.status(networkID: network.id)
-            await refreshSignedOut(network.id)
+            await refreshNodeStatus(network.id)
         }
         refreshZeroTierDeviceState()
+    }
+
+    private func refreshNodeStatus(_ id: OverlayNetwork.ID) async {
+        let status = await runtime.status(networkID: id)
+        statuses[id] = status
+        // Browser sign-in or controller approval can finish after Connect
+        // returned an error. The live node supersedes that failed attempt.
+        if status.isOnline {
+            connectFailures[id] = nil
+        }
+        await refreshSignedOut(id)
     }
 
     private func refreshSignedOut(_ id: OverlayNetwork.ID) async {
