@@ -349,12 +349,16 @@ struct OverlayNetworkFormView: View {
         return parts.isEmpty ? "Optional" : parts.joined(separator: ", ")
     }
 
-    /// The kinds side by side, each with what joining it takes.
+    /// The kinds side by side, each with what joining it takes. A header,
+    /// not a row: a row clips to the section's larger corner radius, which
+    /// cuts the outer corners of the first and last card.
     private var kindPicker: some View {
         Section {
+        } header: {
             OverlayKindPicker(selection: $draft.kind)
+                .textCase(nil)
                 .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
+                .padding(.top, 12)
         }
     }
 
@@ -467,10 +471,11 @@ private struct OverlayKindPicker: View {
                 OverlayKindGlyph(kind: kind)
                 Text(kind.displayName)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    // Explicit colors: a section header dims its content.
+                    .foregroundStyle(Color.primary)
                 Text(Self.blurb(kind))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

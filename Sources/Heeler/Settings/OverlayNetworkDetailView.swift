@@ -137,6 +137,9 @@ struct OverlayNetworkDetailView: View {
                 }
             }
         }
+        // The status card sits right under the bar, not a header's height
+        // below it.
+        .contentMargins(.top, 8, for: .scrollContent)
         .modifier(
             MachineSearch(
                 isEnabled: searchesMachines, query: $query,
@@ -740,13 +743,12 @@ private struct OverlayCopyAddressButton: View {
     let action: () -> Void
 
     var body: some View {
+        // Text, Text, Image: a menu shows the second Text as a subtitle,
+        // which it drops from a Label's title.
         Button(action: action) {
-            Label {
-                Text("Copy \(OverlayStatusCopy.addressTitle(address, among: among))")
-                Text(address)
-            } icon: {
-                Image(systemName: "doc.on.doc")
-            }
+            Text("Copy \(OverlayStatusCopy.addressTitle(address, among: among))")
+            Text(address)
+            Image(systemName: "doc.on.doc")
         }
     }
 }
