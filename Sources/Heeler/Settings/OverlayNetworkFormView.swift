@@ -254,7 +254,7 @@ struct OverlayNetworkFormView: View {
     @ViewBuilder
     private var easyTierConfigServerSections: some View {
         Section {
-            OverlayFormField(title: "Server", prompt: "User name or server URL", text: $draft.configServer)
+            OverlayFormField(title: "Server", prompt: "Server URL", text: $draft.configServer)
                 .keyboardType(.URL)
         } header: {
             Text("Config Server")
@@ -262,15 +262,15 @@ struct OverlayNetworkFormView: View {
             VStack(alignment: .leading, spacing: 6) {
                 if let url = draft.configServerURL {
                     Text(
-                        "Connects to \(Text(url).monospaced()). \(EasyTierConfigServerCopy.serverNote)")
+                        "Connects to \(Text(url).monospaced()). \(EasyTierConfigServerCopy.trustNote)")
                     if let warning = EasyTierConfigServerCopy.transportWarning(for: url) {
                         Label(warning, systemImage: "exclamationmark.triangle")
                             .foregroundStyle(OverlayStatusTone.attention.textColor)
                     }
                 } else if !draft.configServer.trimmingCharacters(in: .whitespaces).isEmpty {
                     Text(
-                        "Enter a user name, or a udp://, tcp://, ws://, or wss:// server URL "
-                            + "ending in your user name, such as udp://host:22020/user.")
+                        "Enter a udp://, tcp://, ws://, or wss:// URL ending in your user "
+                            + "name, such as wss://host/user.")
                         .foregroundStyle(.red)
                 } else {
                     Text(EasyTierConfigServerCopy.serverNote)
@@ -422,9 +422,10 @@ struct OverlayNetworkFormView: View {
 
 enum EasyTierConfigServerCopy {
     static let serverNote =
-        "A user name uses the official server, config-server.easytier.cn; enter a URL for your "
-        + "own. The server knows the network secrets and decides which peers this device "
-        + "connects to."
+        "The full URL from the server's operator, ending in your user name. \(trustNote)"
+
+    static let trustNote =
+        "The server knows the network secrets and decides which peers this device connects to."
 
     static let machineIDNote =
         "Assign up to 8 networks to it in the EasyTier console, with different subnets: a Host "
