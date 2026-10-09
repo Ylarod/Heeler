@@ -141,7 +141,7 @@ struct HostFormView: View {
     @ViewBuilder
     private var formSections: some View {
         // The network decides which address to enter (and offers its peers
-        // under it), so it leads the form once there is one to choose.
+        // beside it), so it leads the form once there is one to choose.
         if networkLeadsForm {
             networkSection
         }
@@ -152,9 +152,6 @@ struct HostFormView: View {
                 .textContentType(.URL)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
-            if draft.overlayPeerTarget == .host {
-                overlayPeerChooser
-            }
             TextField("Port", text: $draft.port)
                 .keyboardType(.numberPad)
             TextField("User", text: $draft.username)
@@ -221,9 +218,6 @@ struct HostFormView: View {
                 .textContentType(.URL)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
-            if draft.overlayPeerTarget == .jumpHost {
-                overlayPeerChooser
-            }
             if draft.usesJumpHost {
                 TextField("Jump Host port", text: $draft.jumpPort)
                     .keyboardType(.numberPad)
@@ -258,26 +252,16 @@ struct HostFormView: View {
         draft.overlayNetworkID.flatMap { overlayNetworks?.network(id: $0) }
     }
 
-    /// Below the first hop's address: pick it from the Overlay Network's
-    /// peers instead of typing it. ZeroTier reports no member addresses,
-    /// so it gets a pointer to where they are instead.
+    /// Under the network: pick the first hop's address (the Host's, or the
+    /// Jump Host's when one is set) from its peers instead of typing it.
+    /// ZeroTier reports no member addresses; its footer says where they are.
     @ViewBuilder
     private var overlayPeerChooser: some View {
-        if let network = selectedOverlayNetwork {
-            if OverlayPeerList.offersPeers(network.kind) {
-                Button {
-                    isChoosingOverlayPeer = true
-                } label: {
-                    Label(OverlayPeerList.chooseTitle(for: network.kind), systemImage: "network")
-                }
-                .accessibilityHint("Lists the peers of \(network.displayName)")
-            } else {
-                Text(
-                    "ZeroTier does not report member addresses. Copy the managed IP from "
-                        + "ZeroTier Central or your controller.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+        if let network = selectedOverlayNetwork, OverlayPeerList.offersPeers(network.kind) {
+            Button(OverlayPeerList.chooseTitle(for: network.kind)) {
+                isChoosingOverlayPeer = true
             }
+            .accessibilityHint("Lists the peers of \(network.displayName)")
         }
     }
 
@@ -299,6 +283,7 @@ struct HostFormView: View {
                     Text("Unavailable network").tag(draft.overlayNetworkID)
                 }
             }
+            overlayPeerChooser
         } header: {
             Text("Network")
         } footer: {
@@ -318,11 +303,11 @@ struct HostFormView: View {
         }
         let target = draft.usesJumpHost ? "the Jump Host" : "this Host"
         let base = "Heeler reaches \(target) through this network without turning on a VPN."
-        guard let network = selectedOverlayNetwork, OverlayPeerList.offersPeers(network.kind) else {
-            return base + " Enter \(target)'s overlay address."
+        guard let network = selectedOverlayNetwork, !OverlayPeerList.offersPeers(network.kind) else {
+            return base
         }
-        let source = network.kind == .tailscale ? "the tailnet" : "the network"
-        return base + " Choose it from \(source) below, or enter its overlay address or name."
+        return base + " ZeroTier does not report member addresses; copy \(target)'s managed IP "
+            + "from ZeroTier Central or your controller."
     }
 
     private var jumpHostFooter: String {
