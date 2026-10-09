@@ -398,34 +398,46 @@ struct OverlayCopyableRow: View {
     }
 }
 
-/// The first row of a network's screen: a status dot (or a spinner while
-/// busy), the few-word summary, and the reason under it.
-private struct OverlayStatusHeader: View {
+/// The first row of a network's screen: a status dot, the few-word
+/// summary with the reason under it, and the network's one action at the
+/// trailing edge (which also shows when it is busy).
+private struct OverlayStatusHeader<Action: View>: View {
     let summary: String
     let explanation: String?
     let tone: OverlayStatusTone
+    @ViewBuilder let action: Action
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            if tone == .busy {
-                ProgressView()
-                    .controlSize(.small)
-            } else {
+        HStack(spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
                 OverlayStatusDot(tone: tone)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(summary)
-                    .font(.headline)
-                if let explanation {
-                    Text(explanation)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(summary)
+                        .font(.headline)
+                    if let explanation {
+                        Text(explanation)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(
+                explanation.map { "Status: \(summary). \($0)" } ?? "Status: \(summary)")
+            Spacer(minLength: 0)
+            action
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            explanation.map { "Status: \(summary). \($0)" } ?? "Status: \(summary)")
+    }
+}
+
+/// The status row's button shape, shared by every state so it keeps its
+/// place as it changes.
+private struct OverlayStatusActionStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .buttonBorderShape(.capsule)
+            .controlSize(.small)
+            .fixedSize()
     }
 }
 
@@ -610,7 +622,11 @@ struct OverlayNetworkDetailView: View {
                         ? .busy
                         : OverlayStatusCopy.tone(
                             status, failure: failure, signedOut: signedOut,
-                            needsSignIn: needsSignIn))
+                            needsSignIn: needsSignIn)
+                ) {
+                    statusAction(
+                        action, isStartingSignIn: isStartingSignIn, isSigningOut: isSigningOut)
+                }
                 if case .waiting = status,
                     case .easytierConfigServer(_, let machineID, _, _) = network.settings
                 {
@@ -628,36 +644,6 @@ struct OverlayNetworkDetailView: View {
                             + "listed.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                }
-                switch action {
-                case .disconnect:
-                    Button {
-                        Task { await store.disconnect(networkID) }
-                    } label: {
-                        Label("Disconnect", systemImage: "bolt.horizontal.circle")
-                    }
-                case .connecting:
-                    Button(role: .cancel) {
-                        store.cancelConnect(networkID)
-                        cancelSignIn()
-                    } label: {
-                        Label("Cancel", systemImage: "xmark.circle")
-                    }
-                    .accessibilityLabel(isStartingSignIn ? "Cancel sign-in" : "Cancel connecting")
-                case .signIn:
-                    Button {
-                        startSignIn()
-                    } label: {
-                        Label("Sign In", systemImage: "person.badge.key")
-                    }
-                    .disabled(isSigningOut)
-                case .connect:
-                    Button {
-                        Task { await store.connect(networkID) }
-                    } label: {
-                        Label("Connect", systemImage: "bolt.horizontal")
-                    }
-                    .disabled(isSigningOut)
                 }
             } footer: {
                 if let hint = OverlayStatusCopy.actionHint(
@@ -774,6 +760,48 @@ struct OverlayNetworkDetailView: View {
         }
         .alert("Could not delete the network", isPresented: $deleteFailed) {
             Button("OK", role: .cancel) {}
+        }
+    }
+
+    /// The status row's trailing button. While busy it spins and cancels;
+    /// Sign In, the step a new network waits on, is the prominent one.
+    @ViewBuilder
+    private func statusAction(
+        _ action: OverlayNetworkPrimaryAction, isStartingSignIn: Bool, isSigningOut: Bool
+    ) -> some View {
+        switch action {
+        case .disconnect:
+            Button("Disconnect") {
+                Task { await store.disconnect(networkID) }
+            }
+            .buttonStyle(.bordered)
+            .modifier(OverlayStatusActionStyle())
+        case .connecting:
+            Button {
+                store.cancelConnect(networkID)
+                cancelSignIn()
+            } label: {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Cancel")
+                }
+            }
+            .buttonStyle(.bordered)
+            .modifier(OverlayStatusActionStyle())
+            .accessibilityLabel(isStartingSignIn ? "Cancel sign-in" : "Cancel connecting")
+        case .signIn:
+            Button("Sign In", action: startSignIn)
+                .buttonStyle(.borderedProminent)
+                .modifier(OverlayStatusActionStyle())
+                .disabled(isSigningOut)
+        case .connect:
+            Button("Connect") {
+                Task { await store.connect(networkID) }
+            }
+            .buttonStyle(.bordered)
+            .modifier(OverlayStatusActionStyle())
+            .disabled(isSigningOut)
         }
     }
 
