@@ -563,6 +563,113 @@ struct OverlayNetworkSignInTests {
         #expect(headline.symbol == "hourglass")
     }
 
+    @Test func aZeroTierNodeAwaitingAuthorizationSaysWhoMustActAndWhere() async throws {
+        let factory = FakeNodeFactory()
+        let store = OverlayNetworkStore(volatileNetworks: [zeroTierLab], runtime: makeRuntime(factory))
+        await store.connect(zeroTierLab.id)
+        let node = try #require(factory.built.first)
+        node.state.withLock {
+            $0.status = .waiting("Waiting for authorization of node e2f4a91c07 on ZeroTier network 8056c2e21c000001")
+        }
+        await store.refreshStatus(zeroTierLab.id)
+
+        #expect(store.control(for: zeroTierLab) == .toggle(isOn: true))
+        let headline = OverlayNetworkHeadline(network: zeroTierLab, store: store)
+        #expect(headline.title == "Waiting for authorization")
+        #expect(headline.rowSummary == "Waiting for authorization")
+        #expect(headline.subtitle == "An admin must authorize this device on 8056c2e21c000001.")
+        #expect(headline.symbol == "hourglass")
+        #expect(headline.tone == .attention)
+        #expect(
+            zeroTierLab.zeroTierCentralURL?.absoluteString
+                == "https://my.zerotier.com/network/8056c2e21c000001")
+        // A custom planet's controller is self-hosted, not in Central.
+        var custom = zeroTierLab
+        custom.settings = .zerotier(networkID: "8056c2e21c000001", planet: Data([1]))
+        #expect(custom.zeroTierCentralURL == nil)
+    }
+
+    @Test func aConfigServerNodeSaysWhetherItReachesTheServerOrWaitsForANetwork() async throws {
+        let cloud = OverlayNetwork(
+            name: "Cloud",
+            settings: .easytierConfigServer(
+                server: "udp://config-server.easytier.cn:22020", machineID: UUID(), hostname: "phone"))
+        let factory = FakeNodeFactory()
+        let secrets = VolatileSecretStore()
+        try secrets.write(
+            Data("udp://config-server.easytier.cn:22020/alice".utf8),
+            account: try #require(OverlaySecretAccount.secret(for: cloud)))
+        let store = OverlayNetworkStore(
+            volatileNetworks: [cloud], runtime: makeRuntime(factory, secrets: secrets))
+        await store.connect(cloud.id)
+        let node = try #require(factory.built.first)
+        node.state.withLock {
+            $0.failure = .startFailed("still waiting")
+            $0.status = .waiting(OverlayWaitReason.configServerConnectionDetail)
+        }
+        // A Connect that ended while the node still reaches the server.
+        await store.connect(cloud.id)
+        #expect(store.connectFailures[cloud.id] != nil)
+        var headline = OverlayNetworkHeadline(network: cloud, store: store)
+        #expect(headline.title == "Connecting…")
+        #expect(headline.subtitle == "config-server.easytier.cn")
+        #expect(headline.symbol == "pause.fill")
+        #expect(headline.tone == .busy)
+
+        node.state.withLock {
+            $0.status = .waiting(
+                "Assign a network to this device (machine ID x) in the EasyTier console")
+        }
+        await store.refreshStatus(cloud.id)
+        headline = OverlayNetworkHeadline(network: cloud, store: store)
+        #expect(headline.title == "Waiting for a network")
+        #expect(headline.rowSummary == "Waiting for a network")
+        #expect(headline.subtitle == "Assign one to this device in the EasyTier console.")
+        #expect(headline.tone == .attention)
+    }
+
+    @Test func aConfigServerWithARefusedNetworkCountsTheRunningOnes() async throws {
+        let cloud = OverlayNetwork(
+            name: "Cloud",
+            settings: .easytierConfigServer(
+                server: "udp://config-server.easytier.cn:22020", machineID: UUID(), hostname: "phone"))
+        let factory = FakeNodeFactory()
+        let secrets = VolatileSecretStore()
+        try secrets.write(
+            Data("udp://config-server.easytier.cn:22020/alice".utf8),
+            account: try #require(OverlaySecretAccount.secret(for: cloud)))
+        let store = OverlayNetworkStore(
+            volatileNetworks: [cloud], runtime: makeRuntime(factory, secrets: secrets))
+        await store.connect(cloud.id)
+        let node = try #require(factory.built.first)
+        let home = OverlayAssignedNetwork(
+            id: "i1", name: "home", isRunning: true, address: "10.144.144.3/24", peerCount: 1)
+        let peer = OverlayPeer(id: "p", name: "mac", addresses: ["10.144.144.2"], isOnline: true, network: "home")
+        node.state.withLock {
+            $0.details = OverlayNodeDetails(
+                hostname: "phone", addresses: ["10.144.144.3"], peers: [peer],
+                assignedNetworks: [
+                    home, OverlayAssignedNetwork(id: "i2", name: "lab", isRunning: false, error: "overlaps home"),
+                ])
+        }
+        await store.refreshStatus(cloud.id)
+        var headline = OverlayNetworkHeadline(network: cloud, store: store)
+        #expect(headline.title == "1 of 2 networks running")
+        #expect(headline.rowSummary == "1 of 2 networks running")
+        #expect(headline.subtitle == "lab can't run here.")
+        #expect(headline.tone == .attention)
+
+        node.state.withLock {
+            $0.details.assignedNetworks[1] = OverlayAssignedNetwork(
+                id: "i2", name: "lab", isRunning: true, address: "10.126.0.4/24")
+        }
+        await store.refreshStatus(cloud.id)
+        headline = OverlayNetworkHeadline(network: cloud, store: store)
+        #expect(headline.title == "Connected")
+        #expect(headline.subtitle == "2 networks · 1 of 1 peer online")
+        #expect(headline.tone == .ok)
+    }
+
     @Test func aConnectedRowCountsTheOnlineMachines() async throws {
         let factory = FakeNodeFactory()
         let store = OverlayNetworkStore(volatileNetworks: [], runtime: makeRuntime(factory))
@@ -2249,8 +2356,9 @@ struct OverlayNetworkPlanetAndDetailsTests {
         #expect(OverlayStatusCopy.shortPeerCount([online, offline], kind: .tailscale) == "1 of 2 online")
         #expect(OverlayStatusCopy.shortPeerCount([online, unknown], kind: .easytier) == "2 peers")
         #expect(OverlayStatusCopy.shortPeerCount([root], kind: .zerotier) == nil)
-        #expect(OverlayStatusCopy.peerCount([online, root], kind: .zerotier) == "1 of 1 peer online")
-        #expect(OverlayStatusCopy.peerCount([root], kind: .zerotier) == "No peers yet")
+        #expect(OverlayStatusCopy.peerCount([online, root], kind: .zerotier) == "1 of 1 member online")
+        #expect(OverlayStatusCopy.peerCount([root], kind: .zerotier) == "No other members yet")
+        #expect(OverlayStatusCopy.peerCount([], kind: .easytier) == "No other peers yet")
         #expect(OverlayStatusCopy.peerCount([online, unknown], kind: .easytier) == "2 peers")
     }
 

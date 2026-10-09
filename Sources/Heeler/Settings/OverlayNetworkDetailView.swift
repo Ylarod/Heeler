@@ -3,15 +3,17 @@ import SwiftUI
 import UIKit
 
 /// One network: a status card with the switch (or the step in progress,
-/// or Sign In) and this device's address, then the network's machines.
-/// Edit, Copy Node ID, Sign Out, and Delete are in the … menu.
+/// or Sign In) and what others need of this device (its address, or the
+/// ZeroTier node ID or EasyTier machine ID to authorize), then the
+/// network's machines. Edit, Copy Node ID, Sign Out, and Delete are in the
+/// … menu.
 struct OverlayNetworkDetailView: View {
     let store: OverlayNetworkStore
     let networkID: OverlayNetwork.ID
     let onHostAdded: (Host.ID) -> Void
     /// Set for a network just added or signed in from the list: a Tailscale
     /// network starts its sign-in (or Connect, with an auth key) when the
-    /// screen opens.
+    /// screen opens, any other network its Connect.
     var startsOnAppear = false
     @State private var didStartOnAppear = false
     @State private var isEditing = false
@@ -53,12 +55,11 @@ struct OverlayNetworkDetailView: View {
             // Once: coming back from Diagnostics runs this task again.
             guard startsOnAppear, !didStartOnAppear else { return }
             didStartOnAppear = true
-            guard let network = store.network(id: networkID), network.kind == .tailscale else {
-                return
-            }
+            guard let network = store.network(id: networkID) else { return }
             switch store.primaryAction(for: network) {
             case .signIn: startSignIn()
-            case .connect: await store.connect(networkID)
+            // Not this task's: pushing Diagnostics would cancel it.
+            case .connect: Task { await store.connect(networkID) }
             case .connecting, .disconnect: break
             }
         }
@@ -113,16 +114,8 @@ struct OverlayNetworkDetailView: View {
                     network, headline: headline, control: control, status: status, details: details,
                     isStartingSignIn: isStartingSignIn)
 
-                if network.kind == .zerotier {
-                    zeroTierDeviceSection
-                }
-
-                if !details.assignedNetworks.isEmpty {
-                    assignedNetworksSection(details.assignedNetworks)
-                }
-
                 if let peers {
-                    peersSection(peers, kind: network.kind)
+                    peersSections(network, peers: peers, assigned: details.assignedNetworks)
                         .disabled(isSigningOut)
                 }
 
@@ -131,7 +124,16 @@ struct OverlayNetworkDetailView: View {
                         NavigationLink {
                             OverlayDiagnosticsView(store: store, networkID: networkID)
                         } label: {
-                            Label("Diagnostics", systemImage: "stethoscope")
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Diagnostics")
+                                    Text("Roots, routes, paths, events")
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: "stethoscope")
+                            }
                         }
                     }
                 }
@@ -226,6 +228,8 @@ struct OverlayNetworkDetailView: View {
         status: OverlayNodeStatus, details: OverlayNodeDetails, isStartingSignIn: Bool
     ) -> some View {
         let offersSignIn = isStartingSignIn || control == .signIn
+        let waitReason = OverlayWaitReason(
+            network: network, status: status, failure: store.connectFailures[networkID])
         return Section {
             VStack(alignment: .leading, spacing: 14) {
                 OverlayStatusHeader(headline: headline) {
@@ -254,17 +258,25 @@ struct OverlayNetworkDetailView: View {
                     .controlSize(.large)
                     .fontWeight(.semibold)
                     .accessibilityHint("Opens the tailnet's machines in the browser to approve this device")
+                } else if waitReason == .zeroTierAuthorization, let url = network.zeroTierCentralURL {
+                    Link(destination: url) {
+                        Label("Open ZeroTier Central", systemImage: "arrow.up.forward.app")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.large)
+                    .fontWeight(.semibold)
+                    .accessibilityHint("Opens the network in the browser to authorize this device")
                 }
             }
             .padding(.vertical, 4)
             .animation(.snappy, value: headline)
-            if status.isOnline, !details.addresses.isEmpty {
-                OverlayDeviceAddresses(name: details.hostname, addresses: details.addresses)
-            }
+            deviceRow(network, status: status, details: details, waitReason: waitReason)
         } footer: {
             if let footer = statusFooter(
                 network, headline: headline, control: control, status: status,
-                offersSignIn: offersSignIn)
+                waitReason: waitReason, offersSignIn: offersSignIn)
             {
                 Text(footer)
             }
@@ -293,21 +305,68 @@ struct OverlayNetworkDetailView: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// The card's lower half: this device's addresses once it has them,
+    /// and before that what an admin needs to let it in.
+    @ViewBuilder
+    private func deviceRow(
+        _ network: OverlayNetwork, status: OverlayNodeStatus, details: OverlayNodeDetails,
+        waitReason: OverlayWaitReason?
+    ) -> some View {
+        let addresses = status.isOnline ? details.addresses : []
+        switch network.settings {
+        case .zerotier:
+            // One node ID for every ZeroTier network on this device.
+            let nodeID = store.zeroTierNodeID ?? details.nodeID
+            if !addresses.isEmpty {
+                OverlayDeviceAddresses(
+                    label: nodeID.map { "This device · \($0)" } ?? "This device", addresses: addresses)
+            } else if let nodeID {
+                OverlayDeviceIdentifier(label: "This device · Node ID", title: "node ID", value: nodeID)
+            } else {
+                LabeledContent("Node ID", value: "Created when you first connect")
+            }
+        case .easytierConfigServer(_, let machineID, _, _):
+            let lines = OverlayAssignedAddressLine.lines(status.isOnline ? details.assignedNetworks : [])
+            if !lines.isEmpty {
+                OverlayAssignedAddresses(label: Self.deviceLabel(details), lines: lines)
+            } else if !addresses.isEmpty {
+                OverlayDeviceAddresses(label: Self.deviceLabel(details), addresses: addresses)
+            } else if waitReason == .configServerAssignment {
+                OverlayDeviceIdentifier(
+                    label: "This device · Machine ID", title: "machine ID",
+                    value: machineID.uuidString.lowercased(), isCompact: true)
+            }
+        case .tailscale, .easytier:
+            if !addresses.isEmpty {
+                OverlayDeviceAddresses(label: Self.deviceLabel(details), addresses: addresses)
+            }
+        }
+    }
+
+    private static func deviceLabel(_ details: OverlayNodeDetails) -> String {
+        details.hostname.map { "This device · \($0)" } ?? "This device"
+    }
+
     /// What the card's state means for Hosts, or what happens next.
     private func statusFooter(
         _ network: OverlayNetwork, headline: OverlayNetworkHeadline, control: OverlayNetworkControl,
-        status: OverlayNodeStatus, offersSignIn: Bool
+        status: OverlayNodeStatus, waitReason: OverlayWaitReason?, offersSignIn: Bool
     ) -> String? {
         if let signOutFailure = store.signOutFailures[networkID] {
             return "Heeler signed this device out and forgot its login, but could not reach "
                 + "the coordination server (\(signOutFailure.presentation.summary)). Remove "
                 + "the device in the tailnet's admin console if it is still listed."
         }
-        if case .waiting = status,
-            case .easytierConfigServer(_, let machineID, _, _) = network.settings
-        {
-            return "In the EasyTier console, assign a network to the device with machine ID "
-                + "\(machineID.uuidString.lowercased())."
+        switch waitReason {
+        case .zeroTierAuthorization:
+            return "Heeler joins on its own once authorized. With your own controller, authorize "
+                + "it there."
+        case .configServerAssignment:
+            return "Heeler starts each network as soon as it is assigned, up to 8."
+        case .configServerConnection:
+            return "Hosts on this network wait for it."
+        case nil:
+            break
         }
         if offersSignIn {
             return "\(network.deviceName ?? "This device") joins the tailnet as its own device. "
@@ -331,70 +390,69 @@ struct OverlayNetworkDetailView: View {
             return "Turn the switch on to try again. If it keeps failing, check the internet "
                 + "connection, or the network's settings in Edit."
         }
-        return nil
-    }
-
-    /// ZeroTier's node ID is needed before the first connect, to authorize
-    /// it, so it stays on the screen rather than in the … menu.
-    private var zeroTierDeviceSection: some View {
-        Section {
-            if let nodeID = store.zeroTierNodeID {
-                OverlayCopyableRow(title: "Node ID", value: nodeID)
-            } else {
-                LabeledContent("Node ID", value: "Created on first connect")
-            }
-        } header: {
-            Text("This Device")
-        } footer: {
-            Text(ZeroTierNodeIDCopy.authorizationHint)
+        if network.kind == .zerotier, !status.isOnline {
+            return ZeroTierNodeIDCopy.authorizationHint
         }
+        return nil
     }
 
     // MARK: Machines
 
     @ViewBuilder
-    private func peersSection(_ peers: [OverlayPeer], kind: OverlayKind) -> some View {
-        if kind == .zerotier {
-            zeroTierPeerSections(peers)
-        } else {
-            let groups = OverlayPeerList.groupedByNetwork(peers)
-            if groups.count > 1 || groups.first?.network != nil {
-                // A config server's networks, one section each.
-                ForEach(groups, id: \.network) { group in
-                    machinesSection(group.peers, kind: kind, network: group.network)
-                }
+    private func peersSections(
+        _ network: OverlayNetwork, peers: [OverlayPeer], assigned: [OverlayAssignedNetwork]
+    ) -> some View {
+        switch network.kind {
+        case .zerotier:
+            zeroTierMembersSection(peers)
+        case .tailscale:
+            machinesSection(peers, network: network)
+        case .easytier:
+            if assigned.isEmpty {
+                machinesSection(peers, network: network)
             } else {
-                machinesSection(peers, kind: kind)
+                // A config server's networks, one section each.
+                let groups = OverlayPeerList.assignedGroups(peers, assigned: assigned)
+                ForEach(groups) { group in
+                    assignedNetworkSection(group, isLast: group.id == groups.last?.id)
+                }
             }
         }
     }
 
-    private func machinesSection(
-        _ peers: [OverlayPeer], kind: OverlayKind, network: String? = nil
-    ) -> some View {
-        let noun = kind == .tailscale ? "Machines" : "Peers"
-        return Section {
+    private func machinesSection(_ peers: [OverlayPeer], network: OverlayNetwork) -> some View {
+        Section {
             if peers.isEmpty {
-                emptyMachines(kind)
+                emptyMachines(network)
             } else {
                 ForEach(OverlayPeerList.sorted(peers.map(OverlayPeerCandidate.init))) { candidate in
                     machineRow(candidate)
                 }
             }
         } header: {
-            Text(network.map { "\(noun) · \($0)" } ?? noun)
+            if !peers.isEmpty {
+                Text(network.kind == .tailscale ? "Machines" : "Peers")
+            }
         } footer: {
-            if hostStore != nil, !peers.isEmpty {
-                Text(
-                    "Tap a \(kind == .tailscale ? "machine" : "peer") to add it as a Host. Touch "
-                        + "and hold to copy its address.")
+            if !peers.isEmpty {
+                addFooter(network.kind)
             }
         }
     }
 
     @ViewBuilder
-    private func emptyMachines(_ kind: OverlayKind) -> some View {
-        if kind == .tailscale {
+    private func addFooter(_ kind: OverlayKind) -> some View {
+        if hostStore != nil {
+            Text(
+                "Tap a \(kind == .tailscale ? "machine" : "peer") to add it as a Host. Touch "
+                    + "and hold to copy its address.")
+        }
+    }
+
+    @ViewBuilder
+    private func emptyMachines(_ network: OverlayNetwork) -> some View {
+        switch network.settings {
+        case .tailscale:
             ContentUnavailableView {
                 Label("Only This Device So Far", systemImage: OverlayKind.glyphSymbol)
             } description: {
@@ -402,9 +460,55 @@ struct OverlayNetworkDetailView: View {
                     "Install Tailscale on your Mac and sign in with the same account. It appears "
                         + "here, ready to add as a Host.")
             }
-        } else {
+        case .easytier(let networkName, _, _, _):
+            ContentUnavailableView {
+                Label("No Peers Yet", systemImage: OverlayKind.glyphSymbol)
+            } description: {
+                Text(
+                    "Run EasyTier on your Mac with network name \(networkName) and the same "
+                        + "secret. It appears here, ready to add as a Host.")
+            }
+        case .zerotier, .easytierConfigServer:
             Text("No peers yet")
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    /// One network a config server assigned: its peers, or why it does
+    /// not run.
+    private func assignedNetworkSection(_ group: OverlayAssignedPeerGroup, isLast: Bool) -> some View {
+        Section {
+            if let error = group.error {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Not running")
+                        Text(error.hasSuffix(".") ? error : error + ".")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
+                }
+                .accessibilityElement(children: .combine)
+            } else if !group.isRunning {
+                Text("Connecting…")
+                    .foregroundStyle(.secondary)
+            } else if group.peers.isEmpty {
+                Text("No peers yet")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(OverlayPeerList.sorted(group.peers.map(OverlayPeerCandidate.init))) {
+                    candidate in
+                    machineRow(candidate)
+                }
+            }
+        } header: {
+            Text(group.header)
+        } footer: {
+            if isLast {
+                addFooter(.easytier)
+            }
         }
     }
 
@@ -441,66 +545,37 @@ struct OverlayNetworkDetailView: View {
             onEditHost: host.map { host in { hostRequest = .edit(host) } })
     }
 
-    /// The networks an EasyTier config server assigned this device.
-    private func assignedNetworksSection(_ networks: [OverlayAssignedNetwork]) -> some View {
-        Section {
-            ForEach(networks) { assigned in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(assigned.name.isEmpty ? assigned.id : assigned.name)
-                    Text(OverlayStatusCopy.assignedNetworkSummary(assigned))
-                        .font(.footnote)
-                        .foregroundStyle(assigned.error == nil ? Color.secondary : Color.red)
-                }
-                .accessibilityElement(children: .combine)
-            }
-        } header: {
-            Text("Assigned Networks")
-        } footer: {
-            Text(
-                "Each network the config server assigned runs on its own. A Host reaches the "
-                    + "one its address or name is on; an address on more than one of them is "
-                    + "refused, so give the networks different subnets.")
-        }
-    }
-
     /// ZeroTier reports the node's peers across every network it joined,
     /// with physical paths (public IP/port) rather than overlay addresses,
-    /// so they are labelled as such and not offered for copying. Its roots
-    /// (planet and moons) are listed apart from the ordinary nodes.
-    @ViewBuilder
-    private func zeroTierPeerSections(_ peers: [OverlayPeer]) -> some View {
-        let roots = peers.filter { $0.role == "planet" || $0.role == "moon" }
-        let members = peers.filter { $0.role != "planet" && $0.role != "moon" }
-        Section {
+    /// so a member cannot be added as a Host. Roots (planet and moons) are
+    /// in Diagnostics.
+    private func zeroTierMembersSection(_ peers: [OverlayPeer]) -> some View {
+        let members = OverlayPeerList.sorted(
+            peers.filter { !OverlayStatusCopy.isZeroTierRoot($0) }.map(OverlayPeerCandidate.init))
+        return Section {
             if members.isEmpty {
-                Text("No members yet")
-                    .foregroundStyle(.secondary)
+                ContentUnavailableView {
+                    Label("No Members Yet", systemImage: OverlayKind.glyphSymbol)
+                } description: {
+                    Text(
+                        "A member appears after this device first reaches it. Your Mac's managed "
+                            + "IP is in ZeroTier Central or your controller.")
+                }
             } else {
-                ForEach(members) { peer in
-                    ZeroTierPeerRow(peer: peer)
+                ForEach(members) { member in
+                    ZeroTierMemberRow(peer: member.peer)
                 }
             }
         } header: {
-            Text("ZeroTier Members")
+            if !members.isEmpty {
+                Text("Members")
+            }
         } footer: {
-            Text(
-                "Nodes this device's ZeroTier has been in touch with, across all its ZeroTier "
-                    + "networks. A member appears only after traffic first goes its way. Paths "
-                    + "are the public addresses the traffic takes, not addresses to use for a "
-                    + "Host; a member without one is relayed through a root.")
-        }
-        if !roots.isEmpty {
-            Section {
-                ForEach(roots) { peer in
-                    ZeroTierPeerRow(peer: peer)
-                }
-            } header: {
-                Text("ZeroTier Roots")
-            } footer: {
+            if !members.isEmpty {
                 Text(
-                    "The planet and moon servers this device uses to find members and relay "
-                        + "traffic. On a self-hosted planet the root is often the network "
-                        + "controller as well.")
+                    "Nodes this device has reached on any of its ZeroTier networks. ZeroTier "
+                        + "doesn't share their managed IPs: for a Host, copy your Mac's IP from "
+                        + "ZeroTier Central or your controller.")
             }
         }
     }
@@ -679,35 +754,34 @@ private struct OverlayStatusHeader<Trailing: View>: View {
 }
 
 /// This device's addresses on the network: the one to share in large type
-/// with a copy button, the rest under it. Touch and hold copies any.
+/// with a copy button, the rest under it. Touch and hold copies any. An
+/// IPv6 address, too long for large type, is set smaller.
 private struct OverlayDeviceAddresses: View {
-    let name: String?
+    let label: String
     let addresses: [String]
-    @State private var copied = false
+
+    init(label: String, addresses: [String]) {
+        self.label = label
+        self.addresses = addresses.map { $0.lowercased() }
+    }
 
     var body: some View {
         let primary = addresses.first { !$0.contains(":") } ?? addresses.first ?? ""
         VStack(alignment: .leading, spacing: 2) {
-            Text(name.map { "This device · \($0)" } ?? "This device")
+            Text(label)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             HStack(spacing: 10) {
                 Text(primary)
-                    .font(.title2.monospaced().weight(.semibold))
+                    .font(
+                        primary.contains(":")
+                            ? .callout.monospaced().weight(.medium)
+                            : .title2.monospaced().weight(.semibold)
+                    )
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Button {
-                    copy(primary)
-                } label: {
-                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                        .font(.body.weight(.semibold))
-                        .contentTransition(.symbolEffect(.replace))
-                        .frame(width: 36, height: 36)
-                        .background(Color.accentColor.opacity(0.12), in: .circle)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Copy \(primary)")
+                OverlayCardCopyButton(value: primary, accessibilityLabel: "Copy \(primary)")
             }
             ForEach(addresses.filter { $0 != primary }, id: \.self) { address in
                 Text(address)
@@ -719,9 +793,120 @@ private struct OverlayDeviceAddresses: View {
         .padding(.vertical, 2)
         .contextMenu {
             ForEach(addresses, id: \.self) { address in
-                OverlayCopyAddressButton(address: address, among: addresses) { copy(address) }
+                OverlayCopyAddressButton(address: address, among: addresses) {
+                    OverlayCardCopyButton.copy(address)
+                }
             }
         }
+    }
+}
+
+/// What an admin needs to let this device in (the ZeroTier node ID, the
+/// EasyTier machine ID), in the card with a copy button.
+private struct OverlayDeviceIdentifier: View {
+    let label: String
+    /// Spoken in "Copy node ID".
+    let title: String
+    let value: String
+    /// Smaller type for a long value (a machine ID), still on one line.
+    var isCompact = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                Text(value)
+                    .font(
+                        isCompact
+                            ? .footnote.monospaced().weight(.medium)
+                            : .title2.monospaced().weight(.semibold)
+                    )
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                OverlayCardCopyButton(value: value, accessibilityLabel: "Copy \(title)")
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+/// This device's address on each network a config server assigned, by
+/// network name, each with its own copy button.
+private struct OverlayAssignedAddresses: View {
+    let label: String
+    let lines: [OverlayAssignedAddressLine]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
+                ForEach(lines) { line in
+                    GridRow {
+                        Text(line.network)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Text(line.address)
+                            .font(.body.monospaced().weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        OverlayCardCopyButton(
+                            value: line.address, size: 30,
+                            accessibilityLabel: "Copy the address on \(line.network)")
+                    }
+                    .accessibilityElement(children: .contain)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+/// A running assigned network's name and this device's bare address on it.
+struct OverlayAssignedAddressLine: Identifiable, Equatable {
+    let id: String
+    let network: String
+    let address: String
+
+    /// The running networks with an address, in the server's order.
+    static func lines(_ networks: [OverlayAssignedNetwork]) -> [OverlayAssignedAddressLine] {
+        networks.compactMap { network in
+            guard network.isRunning, network.error == nil, let address = network.address,
+                let bare = OverlayPeerCandidate.orderedAddresses([address]).first
+            else { return nil }
+            return OverlayAssignedAddressLine(
+                id: network.id, network: OverlayStatusCopy.assignedNetworkName(network), address: bare)
+        }
+    }
+}
+
+/// The card's round copy button, with a checkmark for a moment after.
+private struct OverlayCardCopyButton: View {
+    let value: String
+    var size = 36.0
+    let accessibilityLabel: String
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            Self.copy(value)
+            copied = true
+        } label: {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .font((size < 36 ? Font.footnote : .body).weight(.semibold))
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: size, height: size)
+                .background(Color.accentColor.opacity(0.12), in: .circle)
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(accessibilityLabel)
         .task(id: copied) {
             guard copied else { return }
             try? await Task.sleep(for: .seconds(1.5))
@@ -729,9 +914,8 @@ private struct OverlayDeviceAddresses: View {
         }
     }
 
-    private func copy(_ address: String) {
-        UIPasteboard.general.string = address
-        copied = true
+    static func copy(_ value: String) {
+        UIPasteboard.general.string = value
         AccessibilityNotification.Announcement("Copied").post()
     }
 }
@@ -847,13 +1031,67 @@ private struct OverlayMachineRow: View {
     }
 }
 
-/// A ZeroTier member or root: its paths are where traffic goes, not
-/// addresses to use for a Host, so it offers neither Add nor Copy.
+/// A ZeroTier member: its node ID and how it is reached. Its paths are
+/// where traffic goes, not addresses for a Host, so it offers no Add;
+/// touch and hold copies the node ID or a path, for troubleshooting.
+private struct ZeroTierMemberRow: View {
+    let peer: OverlayPeer
+
+    var body: some View {
+        let reachability = OverlayStatusCopy.peerReachability(peer)
+        HStack(spacing: 10) {
+            if let isOnline = peer.isOnline {
+                Image(systemName: "circle.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(isOnline ? .green : .secondary)
+                    .accessibilityHidden(true)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Group {
+                    if let name = peer.name, !name.isEmpty {
+                        Text(name)
+                    } else {
+                        Text(peer.id).monospaced()
+                    }
+                }
+                .foregroundStyle(peer.isOnline == false ? .secondary : .primary)
+                if !reachability.isEmpty {
+                    Text(reachability)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+        .contextMenu {
+            copyButton("Copy Node ID", value: peer.id)
+            ForEach(OverlayStatusCopy.uniquePaths(peer), id: \.self) { path in
+                copyButton("Copy Path", value: path)
+            }
+        }
+    }
+
+    private func copyButton(_ title: String, value: String) -> some View {
+        // Text, Text, Image: the menu shows the value as a subtitle.
+        Button {
+            UIPasteboard.general.string = value
+        } label: {
+            Text(title)
+            Text(value)
+            Image(systemName: "doc.on.doc")
+        }
+    }
+}
+
+/// A ZeroTier root in Diagnostics: the planet or moon server, and the
+/// paths traffic to it takes.
 private struct ZeroTierPeerRow: View {
     let peer: OverlayPeer
 
     var body: some View {
         let summary = OverlayStatusCopy.peerSummary(peer)
+        let paths = OverlayStatusCopy.uniquePaths(peer)
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 if let isOnline = peer.isOnline {
@@ -864,8 +1102,8 @@ private struct ZeroTierPeerRow: View {
                 }
                 Text(peer.name ?? peer.id)
             }
-            if !peer.addresses.isEmpty {
-                Text("Path: " + peer.addresses.joined(separator: ", "))
+            if !paths.isEmpty {
+                Text("Path: " + paths.joined(separator: ", "))
                     .font(.footnote.monospaced())
                     .foregroundStyle(.secondary)
             }
@@ -941,12 +1179,27 @@ struct OverlayDiagnosticsView: View {
     @State private var copied = false
 
     var body: some View {
+        let roots = (store.details[networkID]?.peers ?? []).filter(OverlayStatusCopy.isZeroTierRoot)
         List {
             if diagnostics.isEmpty {
                 ContentUnavailableView(
                     "No Diagnostics", systemImage: "stethoscope",
                     description: Text("Connect the network to see its state."))
             } else {
+                if !roots.isEmpty {
+                    Section {
+                        ForEach(roots) { peer in
+                            ZeroTierPeerRow(peer: peer)
+                        }
+                    } header: {
+                        Text("Roots")
+                    } footer: {
+                        Text(
+                            "The planet and moon servers this device uses to find members and "
+                                + "relay traffic. On a self-hosted planet the root is often the "
+                                + "network controller as well.")
+                    }
+                }
                 Section("State") {
                     ForEach(Array(diagnostics.entries.enumerated()), id: \.offset) { _, entry in
                         VStack(alignment: .leading, spacing: 2) {
@@ -997,6 +1250,9 @@ struct OverlayDiagnosticsView: View {
         }
         .task {
             while !Task.isCancelled {
+                // The network's screen stops refreshing while this one is
+                // pushed over it; the roots come from its details.
+                await store.refreshStatus(networkID)
                 diagnostics = await store.diagnostics(networkID)
                 try? await Task.sleep(for: .seconds(2))
             }

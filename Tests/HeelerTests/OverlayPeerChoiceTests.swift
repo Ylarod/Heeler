@@ -147,23 +147,33 @@ struct OverlayPeerChoiceTests {
         #expect(single.count == 1 && single[0].network == nil && single[0].peers.count == 2)
     }
 
-    @Test func assignedNetworksSummarizeTheirStateOrWhyTheyDoNotRun() {
-        #expect(
-            OverlayStatusCopy.assignedNetworkSummary(
-                OverlayAssignedNetwork(
-                    id: "i1", name: "home", isRunning: true, address: "10.144.144.9/24", peerCount: 2))
-                == "Connected · 10.144.144.9/24 · 2 peers")
-        #expect(
-            OverlayStatusCopy.assignedNetworkSummary(
-                OverlayAssignedNetwork(id: "i1", name: "home", isRunning: true, peerCount: 1))
-                == "Connected · 1 peer")
-        #expect(
-            OverlayStatusCopy.assignedNetworkSummary(OverlayAssignedNetwork(id: "i1", name: "home", isRunning: false))
-                == "Connecting…")
-        #expect(
-            OverlayStatusCopy.assignedNetworkSummary(
-                OverlayAssignedNetwork(id: "i3", name: "bad", isRunning: false, error: "exit_nodes is not supported"))
-                == "Not running: exit_nodes is not supported")
+    @Test func aConfigServersPeersGroupByItsNetworksInItsOrder() {
+        let assigned = [
+            OverlayAssignedNetwork(
+                id: "i1", name: "home", isRunning: true, address: "10.144.144.9/24", peerCount: 1),
+            OverlayAssignedNetwork(id: "i2", name: "lab", isRunning: false, error: "overlaps home"),
+            OverlayAssignedNetwork(id: "i3", name: "", isRunning: true, address: "10.126.0.4/16"),
+        ]
+        let peers = [
+            OverlayPeer(id: "a", network: "stray"),
+            OverlayPeer(id: "b", network: "home"),
+        ]
+        let groups = OverlayPeerList.assignedGroups(peers, assigned: assigned)
+
+        #expect(groups.map(\.header) == ["home · 10.144.144.0/24", "lab", "i3 · 10.126.0.0/16", "stray"])
+        #expect(groups[0].peers.map(\.id) == ["b"])
+        #expect(groups[1].error == "overlaps home" && groups[1].peers.isEmpty)
+        #expect(groups[3].peers.map(\.id) == ["a"])
+    }
+
+    @Test func anIPv4SubnetComesFromTheAddressAndItsPrefix() {
+        #expect(OverlayPeerList.ipv4Subnet("10.144.144.9/24") == "10.144.144.0/24")
+        #expect(OverlayPeerList.ipv4Subnet("172.16.5.4/12") == "172.16.0.0/12")
+        #expect(OverlayPeerList.ipv4Subnet("10.0.0.1/32") == "10.0.0.1/32")
+        #expect(OverlayPeerList.ipv4Subnet("10.0.0.1/0") == "0.0.0.0/0")
+        #expect(OverlayPeerList.ipv4Subnet("10.0.0.1") == nil)
+        #expect(OverlayPeerList.ipv4Subnet("10.0..1/24") == nil)
+        #expect(OverlayPeerList.ipv4Subnet("fd00::1/64") == nil)
     }
 
     @Test func zeroTierOffersNoPeersAndOnlyTailscaleOffersNames() {

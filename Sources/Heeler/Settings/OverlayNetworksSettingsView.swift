@@ -287,6 +287,7 @@ struct OverlayNetworkHeadline: Equatable {
         let failure = store.connectFailures[id]
         let signedOut = store.signedOut.contains(id)
         let needsSignIn = store.needsSignIn(network)
+        let waitReason = OverlayWaitReason(network: network, status: status, failure: failure)
         let summary = OverlayStatusCopy.summary(
             status, failure: failure, signedOut: signedOut, needsSignIn: needsSignIn)
         symbol = OverlayStatusCopy.symbol(
@@ -306,10 +307,33 @@ struct OverlayNetworkHeadline: Equatable {
             title = "Preparing sign-in…"
             subtitle = "Your browser opens when it is ready."
             rowSummary = title
-        } else if store.connecting.contains(id) || status == .starting {
-            title = "Connecting…"
-            subtitle = network.deviceName.map { "Joining as \($0)" }
+        } else if let waitReason, waitReason != .configServerConnection {
+            // Shown while a Connect still runs, too: the wait is for
+            // someone else, and the step it needs is known already.
+            switch waitReason {
+            case .zeroTierAuthorization:
+                title = "Waiting for authorization"
+                subtitle = "An admin must authorize this device on \(network.zeroTierNetworkID ?? "the network")."
+            case .configServerAssignment, .configServerConnection:
+                title = "Waiting for a network"
+                subtitle = "Assign one to this device in the EasyTier console."
+            }
             rowSummary = title
+            symbol = "hourglass"
+            tone = .attention
+        } else if store.connecting.contains(id) || status == .starting || waitReason != nil {
+            title = "Connecting…"
+            if let server = network.configServerHost {
+                subtitle = server
+            } else {
+                subtitle = network.deviceName.map { "Joining as \($0)" }
+            }
+            rowSummary = title
+            if waitReason != nil {
+                // Still reaching the config server: nothing to do yet.
+                symbol = "pause.fill"
+                tone = .busy
+            }
         } else if isAwaitingApproval {
             title = "Waiting for approval"
             subtitle = "An admin must approve \(deviceName) before it joins."
@@ -335,7 +359,74 @@ struct OverlayNetworkHeadline: Equatable {
             rowSummary = peers
                 .flatMap { OverlayStatusCopy.shortPeerCount($0, kind: network.kind) }
                 .map { "\(summary) · \($0)" } ?? summary
+            let assigned = status.isOnline ? store.details[id]?.assignedNetworks ?? [] : []
+            let refused = assigned.filter { $0.error != nil }
+            if !refused.isEmpty {
+                title = "\(assigned.count - refused.count) of \(assigned.count) networks running"
+                let names = refused.map(OverlayStatusCopy.assignedNetworkName).formatted(.list(type: .and))
+                subtitle = "\(names) can't run here."
+                rowSummary = title
+                symbol = "exclamationmark"
+                tone = .attention
+            } else if assigned.count > 1 {
+                subtitle = ["\(assigned.count) networks", subtitle].compactMap { $0 }.joined(separator: " · ")
+            }
         }
+    }
+}
+
+/// What a ZeroTier or EasyTier config-server node waits for: its waiting
+/// status, or the not-ready failure a Connect ended with while it waited.
+enum OverlayWaitReason: Equatable {
+    /// An admin has yet to authorize this ZeroTier node on the network.
+    case zeroTierAuthorization
+    /// The EasyTier node is still reaching its config server.
+    case configServerConnection
+    /// The config server has not assigned this device a network.
+    case configServerAssignment
+
+    /// What `EasyTierNode` reports while it reaches the config server.
+    static let configServerConnectionDetail = "Connecting to the config server"
+
+    init?(network: OverlayNetwork, status: OverlayNodeStatus, failure: TransportError?) {
+        let detail: String
+        if case .waiting(let waiting) = status {
+            detail = waiting
+        } else if !status.isOnline, case .overlayFailed(_, .notReady(let notReady))? = failure {
+            detail = notReady
+        } else {
+            return nil
+        }
+        switch network.settings {
+        case .zerotier:
+            self = .zeroTierAuthorization
+        case .easytierConfigServer:
+            self = detail.hasPrefix(Self.configServerConnectionDetail)
+                ? .configServerConnection : .configServerAssignment
+        case .tailscale, .easytier:
+            return nil
+        }
+    }
+}
+
+extension OverlayNetwork {
+    /// The ZeroTier network ID, 16 lowercase hex digits.
+    var zeroTierNetworkID: String? {
+        guard case .zerotier(let networkID, _, _) = settings else { return nil }
+        return networkID
+    }
+
+    /// The network in ZeroTier Central, where its admin authorizes members.
+    /// nil on a custom planet, whose controller is self-hosted.
+    var zeroTierCentralURL: URL? {
+        guard case .zerotier(let networkID, _, .none) = settings else { return nil }
+        return URL(string: "https://my.zerotier.com/network/\(networkID)")
+    }
+
+    /// The config server's host, without the account token the URL ends in.
+    var configServerHost: String? {
+        guard case .easytierConfigServer(let server, _, _, _) = settings else { return nil }
+        return URLComponents(string: server)?.host ?? server
     }
 }
 
@@ -488,7 +579,7 @@ enum OverlayStatusCopy {
     static func peerCount(_ peers: [OverlayPeer], kind: OverlayKind) -> String? {
         let members = members(peers, kind: kind)
         guard !members.isEmpty else {
-            return kind == .tailscale ? "No other machines yet" : "No peers yet"
+            return "No other \(peerNoun(2, kind: kind)) yet"
         }
         let noun = peerNoun(members.count, kind: kind)
         guard let online = onlineCount(members) else { return "\(members.count) \(noun)" }
@@ -507,11 +598,27 @@ enum OverlayStatusCopy {
     }
 
     private static func members(_ peers: [OverlayPeer], kind: OverlayKind) -> [OverlayPeer] {
-        kind == .zerotier ? peers.filter { $0.role != "planet" && $0.role != "moon" } : peers
+        kind == .zerotier ? peers.filter { !isZeroTierRoot($0) } : peers
+    }
+
+    /// A ZeroTier planet or moon: infrastructure, not a member.
+    static func isZeroTierRoot(_ peer: OverlayPeer) -> Bool {
+        peer.role == "planet" || peer.role == "moon"
+    }
+
+    /// A ZeroTier peer's paths, each once: the node reports one per
+    /// network it shares with the peer.
+    static func uniquePaths(_ peer: OverlayPeer) -> [String] {
+        var seen = Set<String>()
+        return peer.addresses.filter { seen.insert($0).inserted }
     }
 
     private static func peerNoun(_ count: Int, kind: OverlayKind) -> String {
-        let noun = kind == .tailscale ? "machine" : "peer"
+        let noun = switch kind {
+        case .tailscale: "machine"
+        case .zerotier: "member"
+        case .easytier: "peer"
+        }
         return count == 1 ? noun : noun + "s"
     }
 
@@ -624,19 +731,9 @@ enum OverlayStatusCopy {
         return parts.joined(separator: " · ")
     }
 
-    /// "Connected · 10.144.144.9/24 · 2 peers", or why the network does
-    /// not run.
-    static func assignedNetworkSummary(_ network: OverlayAssignedNetwork) -> String {
-        if let error = network.error {
-            return "Not running: " + error
-        }
-        guard network.isRunning else { return "Connecting…" }
-        var parts = ["Connected"]
-        if let address = network.address {
-            parts.append(address)
-        }
-        parts.append(network.peerCount == 1 ? "1 peer" : "\(network.peerCount) peers")
-        return parts.joined(separator: " · ")
+    /// An assigned network's name, or its instance ID when it has none.
+    static func assignedNetworkName(_ network: OverlayAssignedNetwork) -> String {
+        network.name.isEmpty ? network.id : network.name
     }
 
     /// "IPv4" / "IPv6" where there are both, so two addresses do not both
@@ -660,6 +757,9 @@ enum OverlayStatusCopy {
 struct OverlayCopyableRow: View {
     let title: String
     let value: String
+    /// Smaller type on one line, the middle elided, for a long value (a
+    /// machine ID); the copy is whole.
+    var isCompact = false
     @State private var copied = false
 
     var body: some View {
@@ -671,9 +771,11 @@ struct OverlayCopyableRow: View {
             LabeledContent {
                 HStack(spacing: 6) {
                     Text(value)
-                        .font(.body.monospaced())
+                        .font(isCompact ? .footnote.monospaced() : .body.monospaced())
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.trailing)
+                        .lineLimit(isCompact ? 1 : nil)
+                        .truncationMode(.middle)
                     Image(systemName: copied ? "checkmark" : "doc.on.doc")
                         .font(.footnote)
                         .contentTransition(.symbolEffect(.replace))
@@ -699,6 +801,5 @@ struct OverlayCopyableRow: View {
 
 enum ZeroTierNodeIDCopy {
     static let authorizationHint =
-        "On a private network, an admin authorizes this node ID in ZeroTier Central or the "
-        + "network's own controller."
+        "On a private network, an admin authorizes this node ID before it can join."
 }

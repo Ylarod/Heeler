@@ -125,6 +125,47 @@ enum OverlayPeerList {
         return groups
     }
 
+    /// A config server's peers by the network it assigned them on, in the
+    /// server's order and with each network's state, then any peers on a
+    /// network it did not list.
+    static func assignedGroups(
+        _ peers: [OverlayPeer], assigned: [OverlayAssignedNetwork]
+    ) -> [OverlayAssignedPeerGroup] {
+        var remaining = peers
+        var groups = assigned.map { network in
+            let onNetwork = remaining.filter { $0.network == network.name }
+            remaining.removeAll { $0.network == network.name }
+            return OverlayAssignedPeerGroup(
+                id: network.id, name: OverlayStatusCopy.assignedNetworkName(network),
+                subnet: network.error == nil ? network.address.flatMap(ipv4Subnet) : nil,
+                error: network.error, isRunning: network.isRunning, peers: onNetwork)
+        }
+        for group in groupedByNetwork(remaining) {
+            groups.append(
+                OverlayAssignedPeerGroup(
+                    id: "peers/" + (group.network ?? ""), name: group.network ?? "Peers",
+                    subnet: nil, error: nil, isRunning: true, peers: group.peers))
+        }
+        return groups
+    }
+
+    /// `10.144.144.9/24` → `10.144.144.0/24`; nil for anything else.
+    static func ipv4Subnet(_ cidr: String) -> String? {
+        let parts = cidr.split(separator: "/")
+        guard parts.count == 2, let prefix = Int(parts[1]), (0...32).contains(prefix) else {
+            return nil
+        }
+        let octets = parts[0].split(separator: ".", omittingEmptySubsequences: false).compactMap {
+            UInt32($0)
+        }
+        guard octets.count == 4, octets.allSatisfy({ $0 < 256 }) else { return nil }
+        let address = octets.reduce(UInt32(0)) { $0 << 8 | $1 }
+        let mask = prefix == 0 ? 0 : UInt32.max << UInt32(32 - prefix)
+        let network = address & mask
+        let dotted = [24, 16, 8, 0].map { String(network >> UInt32($0) & 255) }.joined(separator: ".")
+        return "\(dotted)/\(prefix)"
+    }
+
     /// The Host already reached at `candidate` over `networkID`: one whose
     /// first hop (its Jump Host when it has one) is one of the peer's
     /// addresses or its machine name, bare or as a MagicDNS name.
@@ -200,6 +241,24 @@ extension HostDraft {
         self.init()
         overlayNetworkID = networkID
         applyOverlayPeer(candidate, style: style)
+    }
+}
+
+/// One network a config server assigned, with its peers, for the
+/// network's screen.
+struct OverlayAssignedPeerGroup: Identifiable, Equatable {
+    let id: String
+    let name: String
+    /// The network's subnet from this device's address, while it runs.
+    let subnet: String?
+    /// Why the network does not run.
+    let error: String?
+    let isRunning: Bool
+    let peers: [OverlayPeer]
+
+    /// "home · 10.144.144.0/24".
+    var header: String {
+        subnet.map { "\(name) · \($0)" } ?? name
     }
 }
 

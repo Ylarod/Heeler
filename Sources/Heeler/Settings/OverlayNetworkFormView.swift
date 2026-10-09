@@ -6,7 +6,8 @@ import UniformTypeIdentifiers
 /// Add/edit form for an Overlay Network. Secrets go straight to the Keychain
 /// through the store; a blank secret field keeps the stored one when editing.
 /// Adding picks the kind first and ends with one button that says what
-/// happens next (a Tailscale network then signs in or connects).
+/// happens next (the network then signs in or connects). Optional settings
+/// are one push away, in Advanced.
 struct OverlayNetworkFormView: View {
     let store: OverlayNetworkStore
     var editing: OverlayNetwork?
@@ -15,8 +16,6 @@ struct OverlayNetworkFormView: View {
     var onAdded: ((OverlayNetwork.ID) -> Void)?
     @State private var draft: OverlayNetworkDraft
     @State private var saveError: String?
-    @State private var isImportingPlanet = false
-    @State private var planetError: String?
     @Environment(\.dismiss) private var dismiss
 
     init(
@@ -40,59 +39,9 @@ struct OverlayNetworkFormView: View {
         draft.canSave(hasStoredSecret: hasStoredSecret)
     }
 
-    /// ZeroTier: this network's custom planet, imported from Files.
-    private var planetSection: some View {
-        Section {
-            LabeledContent(
-                "Planet",
-                value: draft.planet.map { "Custom (\($0.count) bytes)" } ?? "ZeroTier default")
-            Button {
-                isImportingPlanet = true
-            } label: {
-                Label(
-                    draft.planet == nil ? "Import Planet File…" : "Replace Planet File…",
-                    systemImage: "square.and.arrow.down")
-            }
-            if draft.planet != nil {
-                Button(role: .destructive) {
-                    draft.planet = nil
-                    planetError = nil
-                } label: {
-                    Label("Use ZeroTier's Planet", systemImage: "arrow.uturn.backward")
-                }
-            }
-        } header: {
-            Text("Custom Planet")
-        } footer: {
-            if let planetError {
-                Text(planetError)
-                    .foregroundStyle(.red)
-            } else {
-                Text(
-                    "Optional, for a network whose controller runs on self-hosted roots: the "
-                        + "planet file their operator provides (as made by mkworld). Only this "
-                        + "network uses it; other ZeroTier networks keep their own planet.")
-            }
-        }
-        .fileImporter(isPresented: $isImportingPlanet, allowedContentTypes: [.data]) { result in
-            switch result {
-            case .success(let url):
-                do {
-                    draft.planet = try OverlayNetworkStore.readZeroTierPlanet(from: url)
-                    planetError = nil
-                } catch {
-                    planetError = (error as? OverlayNetworkStoreError)?.message
-                        ?? OverlayNetworkStoreError.zeroTierPlanetNotSaved.message
-                }
-            case .failure:
-                planetError = OverlayNetworkStoreError.zeroTierPlanetNotSaved.message
-            }
-        }
-    }
-
     /// The add button's title: what saving starts.
     private var addTitle: String {
-        guard draft.kind == .tailscale else { return "Add Network" }
+        guard draft.kind == .tailscale else { return "Add and Connect" }
         return draft.secretUpdate == nil ? "Continue to Sign In" : "Add and Connect"
     }
 
@@ -105,20 +54,7 @@ struct OverlayNetworkFormView: View {
                 if editing == nil {
                     kindPicker
                 }
-                Section {
-                    if let editing {
-                        LabeledContent("Type", value: editing.kind.displayName)
-                    }
-                    plainField("Name", prompt: "Optional", text: $draft.name)
-                    if draft.kind == .tailscale {
-                        plainField("Device name", prompt: "heeler", text: $draft.hostname)
-                    }
-                } footer: {
-                    if draft.kind == .tailscale {
-                        Text("How this device appears in your tailnet.")
-                    }
-                }
-
+                identitySection
                 kindSection
             }
             .navigationTitle(editing == nil ? "Add Network" : "Edit Network")
@@ -161,6 +97,44 @@ struct OverlayNetworkFormView: View {
         }
     }
 
+    /// The network's name and what identifies it: the device name it
+    /// joins as, or ZeroTier's network ID.
+    private var identitySection: some View {
+        Section {
+            if let editing {
+                LabeledContent("Type", value: editing.kind.displayName)
+            }
+            OverlayFormField(title: "Name", prompt: "Optional", text: $draft.name)
+            switch draft.kind {
+            case .tailscale, .easytier:
+                OverlayFormField(title: "Device name", prompt: "heeler", text: $draft.hostname)
+            case .zerotier:
+                OverlayFormField(
+                    title: "Network ID", prompt: "Required", text: $draft.networkID,
+                    isMonospaced: true)
+            }
+        } header: {
+            // EasyTier's source decides the sections below; a header keeps
+            // it close to them instead of a row's spacing away.
+            if draft.kind == .easytier {
+                Picker("Source", selection: $draft.easyTierSource) {
+                    Text("Network").tag(OverlayNetwork.EasyTierSource.manual)
+                    Text("Config Server").tag(OverlayNetwork.EasyTierSource.configServer)
+                }
+                .pickerStyle(.segmented)
+                .textCase(nil)
+                .listRowInsets(EdgeInsets())
+                .padding(.bottom, 8)
+            }
+        } footer: {
+            switch draft.kind {
+            case .tailscale: Text("How this device appears in your tailnet.")
+            case .zerotier: Text("16 hex digits, from ZeroTier Central or your controller.")
+            case .easytier: EmptyView()
+            }
+        }
+    }
+
     @ViewBuilder
     private var kindSection: some View {
         switch draft.kind {
@@ -188,119 +162,90 @@ struct OverlayNetworkFormView: View {
             }
         case .zerotier:
             Section {
-                plainField("Network ID", prompt: "16 hex digits", text: $draft.networkID)
-                    .font(.body.monospaced())
                 if let nodeID = store.zeroTierNodeID {
-                    OverlayCopyableRow(title: "This device", value: nodeID)
+                    OverlayCopyableRow(title: "Node ID", value: nodeID)
+                } else {
+                    LabeledContent("Node ID", value: "Created on first connect")
                 }
             } header: {
-                Text("ZeroTier")
+                Text("This Device")
             } footer: {
-                if let nodeID = store.zeroTierNodeID {
-                    Text(
-                        "The 16-digit network ID. This device's node ID: \(nodeID). "
-                            + ZeroTierNodeIDCopy.authorizationHint)
-                } else {
-                    Text(
-                        "The 16-digit network ID. This device creates its ZeroTier identity on "
-                            + "first connect; its node ID then appears on the network's screen. "
-                            + ZeroTierNodeIDCopy.authorizationHint)
-                }
+                Text(
+                    "Authorize it on the network so this device can join. Every ZeroTier network "
+                        + "on this device shares it.")
             }
             .task { await store.prepareZeroTierIdentity() }
             Section {
-                ForEach($draft.moons) { $moon in
-                    VStack(alignment: .leading) {
-                        plainField("World ID", prompt: "10–16 hex digits", text: $moon.worldID)
-                            .font(.body.monospaced())
-                        plainField("Seed", prompt: "Root node ID", text: $moon.seed)
-                            .font(.body.monospaced())
-                    }
-                }
-                .onDelete { draft.moons.remove(atOffsets: $0) }
-                Button {
-                    draft.moons.append(OverlayNetworkDraft.MoonDraft())
+                NavigationLink {
+                    ZeroTierAdvancedForm(draft: $draft)
                 } label: {
-                    Label("Add Moon", systemImage: "plus")
+                    LabeledContent("Advanced", value: zeroTierAdvancedSummary)
                 }
-            } header: {
-                Text("Moons")
             } footer: {
                 if !draft.invalidMoons.isEmpty {
-                    Text(
-                        "A moon's world ID is 10 to 16 hexadecimal digits and its seed is a "
-                            + "10-digit node ID; neither may be zero.")
+                    Text("A moon is not valid. Fix it in Advanced.")
                         .foregroundStyle(.red)
-                } else {
-                    Text(
-                        "Optional extra roots, as in zerotier-cli orbit: the moon's world ID and "
-                            + "the node ID of one of its roots.")
                 }
             }
-            planetSection
         case .easytier:
-            Section {
-                Picker("Source", selection: $draft.easyTierSource) {
-                    Text("Manual").tag(OverlayNetwork.EasyTierSource.manual)
-                    Text("Config Server").tag(OverlayNetwork.EasyTierSource.configServer)
-                }
-                .pickerStyle(.segmented)
-            } footer: {
-                if draft.easyTierSource == .configServer {
-                    Text(
-                        "The network comes from an EasyTier config server (its web console), "
-                            + "which assigns it to this device.")
-                }
-            }
             if draft.easyTierSource == .configServer {
-                easyTierConfigServerSection
+                easyTierConfigServerSections
             } else {
-                easyTierManualSection
+                easyTierNetworkSections
             }
         }
     }
 
-    private var easyTierConfigServerSection: some View {
+    @ViewBuilder
+    private var easyTierConfigServerSections: some View {
         Section {
-            plainField("Server", prompt: "User name or server URL", text: $draft.configServer)
+            OverlayFormField(title: "Server", prompt: "User name or server URL", text: $draft.configServer)
                 .keyboardType(.URL)
-            plainField("Device name", prompt: "heeler", text: $draft.hostname)
-            Toggle("Require Encryption", isOn: $draft.requireEncryption)
-            OverlayCopyableRow(title: "Machine ID", value: draft.machineID.uuidString.lowercased())
         } header: {
             Text("Config Server")
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
                 if let url = draft.configServerURL {
-                    Text("Connects to \(url)")
-                        .font(.footnote.monospaced())
+                    Text(
+                        "Connects to \(Text(url).monospaced()). \(EasyTierConfigServerCopy.serverNote)")
                     if let warning = EasyTierConfigServerCopy.transportWarning(for: url) {
                         Label(warning, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(OverlayStatusTone.attention.textColor)
                     }
                 } else if !draft.configServer.trimmingCharacters(in: .whitespaces).isEmpty {
                     Text(
                         "Enter a user name, or a udp://, tcp://, ws://, or wss:// server URL "
                             + "ending in your user name, such as udp://host:22020/user.")
                         .foregroundStyle(.red)
+                } else {
+                    Text(EasyTierConfigServerCopy.serverNote)
                 }
-                if !draft.requireEncryption {
-                    Label(EasyTierConfigServerCopy.encryptionOffWarning, systemImage: "lock.open")
-                        .foregroundStyle(.orange)
-                }
-                Text(EasyTierConfigServerCopy.formNote)
+            }
+        }
+        Section {
+            OverlayCopyableRow(
+                title: "Machine ID", value: draft.machineID.uuidString.lowercased(), isCompact: true)
+        } header: {
+            Text("This Device")
+        } footer: {
+            Text(EasyTierConfigServerCopy.machineIDNote)
+        }
+        Section {
+            NavigationLink {
+                EasyTierConfigServerAdvancedForm(draft: $draft)
+            } label: {
+                LabeledContent(
+                    "Advanced",
+                    value: draft.requireEncryption ? "Encryption required" : "Encryption not required")
             }
         }
     }
 
     @ViewBuilder
-    private var easyTierManualSection: some View {
+    private var easyTierNetworkSections: some View {
         Section {
-            plainField("Network name", prompt: "Required", text: $draft.networkName)
-            secretField("Network secret", prompt: "Required")
-            plainField("Device name", prompt: "heeler", text: $draft.hostname)
-            plainField("Fixed IPv4", prompt: "DHCP (optional)", text: $draft.ipv4)
-                .keyboardType(.numbersAndPunctuation)
+            OverlayFormField(title: "Network name", prompt: "Required", text: $draft.networkName)
+            secretField("Secret", prompt: "Required")
             VStack(alignment: .leading, spacing: 4) {
                 Text("Peers")
                 TextField(
@@ -315,22 +260,27 @@ struct OverlayNetworkFormView: View {
                     .accessibilityLabel("Peers")
             }
         } header: {
-            Text("EasyTier")
+            Text("Network")
         } footer: {
             if let invalid = draft.invalidPeers.first {
                 Text("“\(invalid)” is not a peer such as tcp://host:11010 or udp://host:11010.")
                     .foregroundStyle(.red)
-            } else if !draft.ipv4IsValid {
-                Text(
-                    "A fixed address is a private IPv4 address with a prefix, such as "
-                        + "10.144.144.7/24 (not 0.x, 127.x, or 224 and up).")
-                    .foregroundStyle(.red)
-            } else if draft.ipv4IsHostPrefix {
-                Text("EasyTier treats a /32 address as part of its /24. Use the network's own prefix.")
             } else {
                 Text(
-                    "Peers are URIs such as tcp://public.easytier.top:11010, one per line. "
-                        + "Leave the fixed address blank to get one from the network.")
+                    "The same name and secret as on your Mac. Peers are how the two find each "
+                        + "other, such as tcp://public.easytier.top:11010, one per line.")
+            }
+        }
+        Section {
+            NavigationLink {
+                EasyTierAdvancedForm(draft: $draft)
+            } label: {
+                LabeledContent("Advanced", value: easyTierAdvancedSummary)
+            }
+        } footer: {
+            if !draft.ipv4IsValid {
+                Text("The fixed address is not valid. Fix it in Advanced.")
+                    .foregroundStyle(.red)
             }
         }
     }
@@ -349,6 +299,25 @@ struct OverlayNetworkFormView: View {
         return parts.isEmpty ? "Optional" : parts.joined(separator: ", ")
     }
 
+    /// The moons and custom planet, beside Advanced.
+    private var zeroTierAdvancedSummary: String {
+        var parts: [String] = []
+        let moons = draft.moons.filter { !$0.isBlank }.count
+        if moons > 0 {
+            parts.append(moons == 1 ? "1 moon" : "\(moons) moons")
+        }
+        if draft.planet != nil {
+            parts.append("Custom planet")
+        }
+        return parts.isEmpty ? "Optional" : parts.joined(separator: ", ")
+    }
+
+    /// The fixed address, or DHCP, beside Advanced.
+    private var easyTierAdvancedSummary: String {
+        let ipv4 = draft.ipv4.trimmingCharacters(in: .whitespaces)
+        return ipv4.isEmpty ? "DHCP" : ipv4
+    }
+
     /// The kinds side by side, each with what joining it takes. A header,
     /// not a row: a row clips to the section's larger corner radius, which
     /// cuts the outer corners of the first and last card.
@@ -362,23 +331,6 @@ struct OverlayNetworkFormView: View {
         }
     }
 
-    /// A titled row: the title stays visible beside what was typed, so a
-    /// filled-in form still says what each value is.
-    private func plainField(
-        _ title: String, prompt: String, text: Binding<String>
-    ) -> some View {
-        LabeledContent {
-            TextField(title, text: text, prompt: Text(prompt))
-                .multilineTextAlignment(.trailing)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                // A prompt alone is not a label; VoiceOver names the field.
-                .accessibilityLabel(title)
-        } label: {
-            Text(title)
-        }
-    }
-
     private func secretField(_ title: String, prompt: String) -> some View {
         // No password content type: these are network secrets, not account
         // passwords, and must not be offered to (or saved by) AutoFill.
@@ -389,7 +341,7 @@ struct OverlayNetworkFormView: View {
                 .multilineTextAlignment(.trailing)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
-                .accessibilityLabel(title)
+                .accessibilityLabel("Network secret")
         } label: {
             Text(title)
         }
@@ -414,17 +366,20 @@ struct OverlayNetworkFormView: View {
 }
 
 enum EasyTierConfigServerCopy {
-    static let formNote =
-        "A user name uses the official server, config-server.easytier.cn. In the EasyTier "
-        + "console, assign up to 8 networks to this device; Heeler only connects out and drops "
-        + "their listeners. A Host on this network reaches the assigned network its address "
-        + "or name is on, so give the networks different subnets. The server knows the "
-        + "network secrets and decides which peers this device connects to."
+    static let serverNote =
+        "A user name uses the official server, config-server.easytier.cn; enter a URL for your "
+        + "own. The server knows the network secrets and decides which peers this device "
+        + "connects to."
+
+    static let machineIDNote =
+        "Assign up to 8 networks to it in the EasyTier console, with different subnets: a Host "
+        + "reaches the one its address or name is on. Heeler only connects out and drops their "
+        + "listeners."
 
     static let encryptionOffWarning =
-        "Without required encryption, Heeler also uses a server that does not offer EasyTier's "
-        + "encrypted connection, in clear text: anyone on the network path can read the user name "
-        + "and the network secret, change the network the server sends, or pose as the server."
+        "Without it, a server that offers no encryption gets the user name and network secret "
+        + "in clear text: anyone on the network path can read them, change the network the "
+        + "server sends, or pose as the server."
 
     /// The risk of a config server URL's transport, or nil for wss://, the
     /// only one that authenticates the server.
@@ -501,6 +456,178 @@ private struct OverlayKindPicker: View {
         case .zerotier: "Join by network ID"
         case .easytier: "Peers or a config server"
         }
+    }
+}
+
+/// A titled row: the title stays visible beside what was typed, so a
+/// filled-in form still says what each value is. A monospaced value keeps
+/// its title in the body font.
+private struct OverlayFormField: View {
+    let title: String
+    let prompt: String
+    @Binding var text: String
+    var isMonospaced = false
+
+    var body: some View {
+        LabeledContent {
+            TextField(title, text: $text, prompt: Text(prompt))
+                .font(isMonospaced ? .body.monospaced() : .body)
+                .multilineTextAlignment(.trailing)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                // A prompt alone is not a label; VoiceOver names the field.
+                .accessibilityLabel(title)
+        } label: {
+            Text(title)
+        }
+    }
+}
+
+/// ZeroTier's optional settings: moons, and a custom planet imported from
+/// Files.
+private struct ZeroTierAdvancedForm: View {
+    @Binding var draft: OverlayNetworkDraft
+    @State private var isImportingPlanet = false
+    @State private var planetError: String?
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach($draft.moons) { $moon in
+                    VStack(alignment: .leading) {
+                        OverlayFormField(
+                            title: "World ID", prompt: "10–16 hex digits", text: $moon.worldID,
+                            isMonospaced: true)
+                        OverlayFormField(
+                            title: "Seed", prompt: "Root node ID", text: $moon.seed, isMonospaced: true)
+                    }
+                }
+                .onDelete { draft.moons.remove(atOffsets: $0) }
+                Button {
+                    draft.moons.append(OverlayNetworkDraft.MoonDraft())
+                } label: {
+                    Label("Add Moon", systemImage: "plus")
+                }
+            } header: {
+                Text("Moons")
+            } footer: {
+                if !draft.invalidMoons.isEmpty {
+                    Text(
+                        "A moon's world ID is 10 to 16 hexadecimal digits and its seed is a "
+                            + "10-digit node ID; neither may be zero.")
+                        .foregroundStyle(.red)
+                } else {
+                    Text(
+                        "Extra roots, as in zerotier-cli orbit: the moon's world ID and the node ID "
+                            + "of one of its roots.")
+                }
+            }
+            planetSection
+        }
+        .navigationTitle("Advanced")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var planetSection: some View {
+        Section {
+            LabeledContent(
+                "Planet",
+                value: draft.planet.map { "Custom (\($0.count) bytes)" } ?? "ZeroTier default")
+            Button {
+                isImportingPlanet = true
+            } label: {
+                Label(
+                    draft.planet == nil ? "Import Planet File…" : "Replace Planet File…",
+                    systemImage: "square.and.arrow.down")
+            }
+            if draft.planet != nil {
+                Button(role: .destructive) {
+                    draft.planet = nil
+                    planetError = nil
+                } label: {
+                    Label("Use ZeroTier's Planet", systemImage: "arrow.uturn.backward")
+                }
+            }
+        } header: {
+            Text("Custom Planet")
+        } footer: {
+            if let planetError {
+                Text(planetError)
+                    .foregroundStyle(.red)
+            } else {
+                Text(
+                    "For a controller on self-hosted roots: the planet file its operator made with "
+                        + "mkworld. Only this network uses it.")
+            }
+        }
+        .fileImporter(isPresented: $isImportingPlanet, allowedContentTypes: [.data]) { result in
+            switch result {
+            case .success(let url):
+                do {
+                    draft.planet = try OverlayNetworkStore.readZeroTierPlanet(from: url)
+                    planetError = nil
+                } catch {
+                    planetError = (error as? OverlayNetworkStoreError)?.message
+                        ?? OverlayNetworkStoreError.zeroTierPlanetNotSaved.message
+                }
+            case .failure:
+                planetError = OverlayNetworkStoreError.zeroTierPlanetNotSaved.message
+            }
+        }
+    }
+}
+
+/// An EasyTier network's optional fixed address.
+private struct EasyTierAdvancedForm: View {
+    @Binding var draft: OverlayNetworkDraft
+
+    var body: some View {
+        Form {
+            Section {
+                OverlayFormField(title: "Fixed IPv4", prompt: "DHCP", text: $draft.ipv4)
+                    .keyboardType(.numbersAndPunctuation)
+            } footer: {
+                if !draft.ipv4IsValid {
+                    Text(
+                        "A fixed address is a private IPv4 address with a prefix, such as "
+                            + "10.144.144.7/24 (not 0.x, 127.x, or 224 and up).")
+                        .foregroundStyle(.red)
+                } else if draft.ipv4IsHostPrefix {
+                    Text(
+                        "EasyTier treats a /32 address as part of its /24. Use the network's own "
+                            + "prefix.")
+                } else {
+                    Text(
+                        "Leave blank to get an address from the network, or enter one with its "
+                            + "prefix, such as 10.144.144.7/24.")
+                }
+            }
+        }
+        .navigationTitle("Advanced")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// A config server's optional setting: whether it must encrypt.
+private struct EasyTierConfigServerAdvancedForm: View {
+    @Binding var draft: OverlayNetworkDraft
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Require Encryption", isOn: $draft.requireEncryption)
+            } footer: {
+                VStack(alignment: .leading, spacing: 6) {
+                    if !draft.requireEncryption {
+                        Label(EasyTierConfigServerCopy.encryptionOffWarning, systemImage: "lock.open")
+                            .foregroundStyle(OverlayStatusTone.attention.textColor)
+                    }
+                    Text("Leave it on unless your own server can't encrypt.")
+                }
+            }
+        }
+        .navigationTitle("Advanced")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
