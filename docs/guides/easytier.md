@@ -1,6 +1,6 @@
 # EasyTier setup
 
-Use EasyTier to reach a Mac running SSH and herdr from Heeler. Heeler contains its own EasyTier node: installing another VPN app or enabling an iOS system VPN is unnecessary. Start with **Manual** for one Mac; use **Config Server** when an administrator should assign networks to the phone from a web console.
+Use EasyTier to reach a Mac running SSH and herdr from Heeler. Heeler contains its own EasyTier node: installing another VPN app or enabling an iOS system VPN is unnecessary. Start with **Network** for one Mac; use **Config Server** when an administrator should assign networks to the phone from a web console.
 
 This guide checks macOS commands against the official **EasyTier v2.6.4** release and Heeler's current form fields on **2026-10-09**. Check `easytier-core --version` and `--help` before applying the commands to another release. The Linux one-click installer, `systemctl`, and `/dev/net/tun` instructions do not apply to macOS.
 
@@ -37,7 +37,7 @@ ET_BIN="$HOME/Downloads/easytier-macos-aarch64"
 
 Expect version `2.6.4` for the commands below. If macOS blocks the download, verify its origin and use the macOS approval flow for that specific app. Do not disable system protection globally. A graphical alternative is the official macOS DMG on the same release page; its normal TUN/VPN setup has different permissions and routing behavior from this guide's CLI route.
 
-## Manual: connect directly to the Mac
+## Network: connect directly to the Mac
 
 ### 1. Check local SSH
 
@@ -87,18 +87,18 @@ Open **Settings > Overlay Networks > Add Network**, select **EasyTier**, and fil
 | Field | Value |
 | --- | --- |
 | Name | `Home EasyTier` (Heeler's display label) |
-| Source | **Manual** |
-| Network name | `heeler-home` |
-| Network secret | The same secret entered on the Mac |
+| Source | **Network** |
 | Device name | `heeler-phone` |
-| Fixed IPv4 | `10.144.144.3/24` |
+| Network name | `heeler-home` |
+| Secret | The same secret entered on the Mac |
 | Peers | `tcp://192.168.1.20:21010`, using the Mac's actual reachable address |
+| Advanced > Fixed IPv4 | `10.144.144.3/24` |
 
 ![Heeler EasyTier Manual form with network name, network secret, device name, Fixed IPv4, and Peers fields](images/overlay-networks/easytier-manual-form.png)
 
-**In this screen:** select **Manual**, enter the Mac's network name and secret, then set Fixed IPv4 and Peers from the table above. Save before opening the network and selecting Connect. [Open the full-size screenshot](images/overlay-networks/easytier-manual-form.png). [Capture details](overlay-networks.md#screenshots-and-maintenance).
+**In this screen:** select **Network**, enter the Mac's network name and secret and the Peers from the table above, then set Fixed IPv4 under **Advanced**. The screenshot predates the Advanced screen and shows Fixed IPv4 in the main form. [Open the full-size screenshot](images/overlay-networks/easytier-manual-form.png). [Capture details](overlay-networks.md#screenshots-and-maintenance).
 
-Add the network, then turn on its switch. Look for the Mac peer with virtual address `10.144.144.2`. A blank Fixed IPv4 requests DHCP; this example uses distinct fixed addresses to make verification predictable. Include the network prefix and avoid `/32`, which EasyTier treats as part of a `/24`. Heeler's Manual **Peers** field accepts `tcp://` and `udp://` endpoints; a peer's virtual address is not the bootstrap endpoint unless some existing route already makes it reachable. The Config Server field below has a separate set of accepted schemes.
+Select **Add and Connect**; the network's screen opens and connects. Look for the Mac peer with virtual address `10.144.144.2`. A blank Fixed IPv4 requests DHCP; this example uses distinct fixed addresses to make verification predictable. Include the network prefix and avoid `/32`, which EasyTier treats as part of a `/24`. Heeler's **Peers** field accepts `tcp://` and `udp://` endpoints; a peer's virtual address is not the bootstrap endpoint unless some existing route already makes it reachable. The Config Server field below has a separate set of accepted schemes.
 
 ### 4. Add and verify the SSH Host
 
@@ -155,13 +155,13 @@ The command keeps the web UI and API on loopback, but **v2.6.4 binds the configu
 
 ### 2. Register Heeler's device
 
-In **Settings > Overlay Networks > Add Network**, choose **EasyTier > Config Server**. Set a display Name, enter the full delivery URL in **Server**, give the phone a recognizable **Device name**, and leave **Require Encryption** enabled. Save, select Connect, and copy the displayed **Machine ID** for comparison with the console's device list.
+In **Settings > Overlay Networks > Add Network**, choose **EasyTier > Config Server**. Set a display Name, enter the full delivery URL in **Server**, give the phone a recognizable **Device name**, and leave **Require Encryption** (under **Advanced**) enabled. Copy the **Machine ID** for comparison with the console's device list, then select **Add and Connect**.
 
 ![Heeler EasyTier Config Server form with Server URL, Device name, Require Encryption enabled, and a generated Machine ID](images/overlay-networks/easytier-config-server-form.png)
 
-**In this screen:** enter the full operator-provided Server URL, keep **Require Encryption** on, and copy your own **Machine ID** for the console assignment. The screenshot's footer reflects the current app's legacy hosted-server wording; use the full URL described above. [Open the full-size screenshot](images/overlay-networks/easytier-config-server-form.png). [Capture details](overlay-networks.md#screenshots-and-maintenance).
+**In this screen:** enter the full operator-provided Server URL, keep **Require Encryption** on, and copy your own **Machine ID** for the console assignment. The screenshot predates the Advanced screen and shows Require Encryption in the main form; its footer also reflects the legacy hosted-server wording, so use the full URL described above. [Open the full-size screenshot](images/overlay-networks/easytier-config-server-form.png). [Capture details](overlay-networks.md#screenshots-and-maintenance).
 
-The first state can be **Waiting** or a later **Not ready** with instructions to assign a network. Find the device by its name and exact Machine ID in the web console. Merely appearing in the device list does not give it a virtual address or a route to the Mac.
+While Heeler reaches the server, the network shows **Connecting…** with the server's host. It then shows **Waiting for a network**, with the Machine ID on its status card to copy. Find the device by its name and exact Machine ID in the web console. Merely appearing in the device list does not give it a virtual address or a route to the Mac.
 
 Require Encryption demands EasyTier's encrypted configuration tunnel; v2.6.4 implements the compatible Noise handshake. It encrypts the session without authenticating a `tcp://` or `udp://` server. For an untrusted network path, use an administrator-provided `wss://` endpoint with a certificate trusted by the phone. `ws://` sends the account token in the initial HTTP path, and Heeler refuses untrusted/self-signed certificates for Config Server `wss://`. Keep the switch enabled and correct the server configuration instead of using plaintext to bypass a connection failure. The configuration server can see the network secrets it distributes. These details are documented in [Heeler's Config Server implementation contract](../../Packages/HeelerOverlay/README.md#config-servers).
 
@@ -180,7 +180,7 @@ On that device's web-console page, create a network instance and set:
 | Peer URL | `tcp://192.168.1.20:21010`, using the Mac's reachable listener |
 | Traffic encryption | Enabled |
 
-Use `.4` so this assigned instance does not duplicate the `.3` address if your Manual profile is also connected. Save the configuration **and run/enable the instance**. Creating a saved, stopped configuration alone is insufficient; the [v2.6.4 console](https://github.com/EasyTier/EasyTier/blob/v2.6.4/easytier-web/frontend-lib/src/components/RemoteManagement.vue#L209) separates those actions. Do not configure inbound proxies, credential files, or disabled encryption for the phone. Heeler drops listeners supplied by the console and only connects outward.
+Use `.4` so this assigned instance does not duplicate the `.3` address if your Network profile is also connected. Save the configuration **and run/enable the instance**. Creating a saved, stopped configuration alone is insufficient; the [v2.6.4 console](https://github.com/EasyTier/EasyTier/blob/v2.6.4/easytier-web/frontend-lib/src/components/RemoteManagement.vue#L209) separates those actions. Do not configure inbound proxies, credential files, or disabled encryption for the phone. Heeler drops listeners supplied by the console and only connects outward.
 
 Return to Heeler's network details. Expect an assigned, running network with its virtual address, the Mac peer, and **Connected** status. Then add the Mac Host or edit its Network to select this Config Server entry; the Host address stays `10.144.144.2`. Complete the same [SSH and terminal acceptance](overlay-networks.md#verify-the-connection). To prove this route is doing the work, select it on the Host and disconnect the separate Manual profile before the final connection test.
 
@@ -193,7 +193,7 @@ Heeler accepts up to eight assigned networks. Give them distinct network names a
 | No Mac peer appears | Network name and secret must match; the peer URI must address a reachable listener with the same protocol and port. Check the Mac process, its bind address, LAN isolation, and firewall. |
 | Works in the simulator but not on a phone | Replace loopback endpoints with an address reachable from the phone. Check both the data-plane peer endpoint and, if used, the configuration-delivery endpoint. |
 | Network is Connected, but SSH fails | Check `127.0.0.1:22` on the no-TUN Mac, the Host's virtual address/SSH port, login account, SSH key authorization, and fingerprint. Inspect the specific preflight check in Heeler. |
-| Config Server stays Waiting or Not ready | Confirm the full delivery URL, account/token, Machine ID, encryption support, and that an instance was actually assigned and started. A working web page proves only the web/API service is reachable. |
+| Config Server stays Connecting or Waiting for a network | Confirm the full delivery URL, account/token, Machine ID, encryption support, and that an instance was actually assigned and started. A working web page proves only the web/API service is reachable. |
 | Assigned network is refused | Check the reported reason, duplicate network names, unsupported inbound settings, disabled encryption, and the eight-network limit. |
 | Several assigned networks fit the Host | Use distinct subnets and peer names in the console. Changing only Heeler's display label does not disambiguate routes. |
 | Port already in use | Stop your earlier EasyTier instance or give each process separate listener and RPC ports; update the phone's peer URI to match. |

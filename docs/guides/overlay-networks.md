@@ -13,7 +13,7 @@ Read the common Host preparation below, follow one network tutorial, then return
 | [Tailscale: standard macOS app](tailscale.md) | Install the standalone app and sign in | Sign in from Heeler to the same tailnet | Uses a network extension and VPN configuration |
 | [Tailscale: userspace CLI](tailscale-userspace.md) | Run `tailscaled --tun=userspace-networking` and forward SSH with Serve | Same Heeler enrollment as the standard route | No TUN interface or system VPN configuration; no automatic routes for other Mac apps |
 | [ZeroTier: private Central network](zerotier.md) | Install ZeroTier One, join, and authorize the Mac | Authorize Heeler's separate node ID | Creates a virtual network interface with managed addresses and routes |
-| [EasyTier: Manual or Config Server](easytier.md) | Run the documented CLI configuration | Match network name/secret or assign a configuration to Heeler's Machine ID | The guide's `--no-tun` recipe creates no TUN; other EasyTier modes can use system networking |
+| [EasyTier: Network or Config Server](easytier.md) | Run the documented CLI configuration | Match network name/secret or assign a configuration to Heeler's Machine ID | The guide's `--no-tun` recipe creates no TUN; other EasyTier modes can use system networking |
 
 For Linux or Windows Hosts, use the provider's platform-specific installation instructions, then the same Heeler enrollment and Host fields. Native Windows also needs the [Windows SSH and herdr setup](windows-setup.md). The Mac commands in these tutorials are not Windows instructions.
 
@@ -26,10 +26,10 @@ Open **Settings > Overlay Networks > Add Network**, then choose the provider and
 | [![Tailscale Add Network form with a device name field and optional coordination server and auth key fields](images/overlay-networks/tailscale-form.png)](images/overlay-networks/tailscale-form.png) | [![ZeroTier Add Network form with network ID and this device's node ID](images/overlay-networks/zerotier-form.png)](images/overlay-networks/zerotier-form.png) |
 | **Browser sign-in:** leave Coordination server and Auth key blank, then Save; sign-in starts on its own. [Follow the Tailscale setup](tailscale.md#3-join-the-same-tailnet-from-heeler). | **Private network:** enter your network ID, then authorize your own **This device** node ID in Central. [Follow the ZeroTier setup](zerotier.md#3-heeler-and-central-join-and-authorize-the-app). |
 
-| EasyTier Manual | EasyTier Config Server |
+| EasyTier Network | EasyTier Config Server |
 | --- | --- |
 | [![EasyTier Manual form with network name, secret, fixed IPv4, and peer endpoints](images/overlay-networks/easytier-manual-form.png)](images/overlay-networks/easytier-manual-form.png) | [![EasyTier Config Server form with server URL, Require Encryption enabled, and Machine ID](images/overlay-networks/easytier-config-server-form.png)](images/overlay-networks/easytier-config-server-form.png) |
-| **Manual:** match the Mac's network name and secret; use a distinct virtual IP and a reachable peer endpoint. [Follow the Manual setup](easytier.md#3-add-the-network-in-heeler). | **Config Server:** use your operator's full Server URL, keep Require Encryption enabled, and assign a network to your Machine ID. [Follow the Config Server setup](easytier.md#2-register-heelers-device). |
+| **Network:** match the Mac's network name and secret; use a distinct virtual IP and a reachable peer endpoint. [Follow the Network setup](easytier.md#3-add-the-network-in-heeler). | **Config Server:** use your operator's full Server URL, keep Require Encryption enabled, and assign a network to your Machine ID. [Follow the Config Server setup](easytier.md#2-register-heelers-device). |
 
 The screenshots show unconfigured forms and disposable device IDs. Use your own IDs and values from the selected tutorial. [Capture details](#screenshots-and-maintenance). Continue with [Host preparation](#prepare-the-host) before connecting.
 
@@ -60,7 +60,7 @@ An existing key enrolled through QR pairing can be reused. You can copy a public
 
 ## Connect from Heeler
 
-First complete the chosen provider's tutorial until the Mac and Heeler have joined the same network and have usable addresses. A saved network alone is not enough. Adding a network opens it: a Tailscale network starts browser sign-in (or connects with its auth key) at once; for another provider, turn on its switch. Return to Heeler after browser authorization; it connects automatically.
+First complete the chosen provider's tutorial until the Mac and Heeler have joined the same network and have usable addresses. A saved network alone is not enough. Adding a network opens it: a Tailscale network starts browser sign-in (or connects with its auth key) at once, and any other network connects. Return to Heeler after browser authorization; it connects automatically.
 
 1. Open **Hosts > Add Host**, or edit an existing Host. For Tailscale and EasyTier you can instead tap **Add** beside a machine on the network's screen; it opens the Host form with the machine's address filled in.
 2. Under **Network**, at the top of the form once you have an Overlay Network, select the saved network. **Direct** uses the phone's normal network connection, including any separately installed system VPN; it does not select Heeler's built-in overlay node.
@@ -104,7 +104,7 @@ Opening an Agent's live terminal can take over its existing attachment. Use a di
 | --- | --- |
 | No **Overlay Networks** settings | Confirm the installed Heeler build includes this feature |
 | **Not signed in** | Tap the network's **Sign In** button, finish enrollment, return to Heeler, and check required device approval |
-| **Waiting** | For ZeroTier, authorize the exact node ID; for EasyTier Config Server, assign and start a network for the exact Machine ID |
+| **Waiting for authorization** (ZeroTier) or **Waiting for a network** (EasyTier Config Server) | Authorize the exact node ID, or assign and start a network for the exact Machine ID; both are on the network's status card |
 | Connected network, SSH timeout | Confirm the selected Network, destination IP/port, awake Host, SSH listener, and provider rules; see the provider-specific troubleshooting table |
 | SSH authentication error | Check the local account, allowed Remote Login users, and authorized public key or password |
 | SSH passes, herdr fails | Inspect the failing onboarding check for herdr executable/PATH, session, protocol version, or SSH stream-local forwarding |
@@ -126,6 +126,6 @@ These tutorials were prepared on **2026-10-09** against the local PR #426 implem
 
 ## Screenshots and maintenance
 
-The provider tutorials include unedited screenshots of the actual Heeler forms, captured on an iPhone 17 Pro Simulator running iOS 26.5, in light appearance at default text size. The Tailscale form was refreshed on **2026-10-09** for the save-then-sign-in flow; the other forms come from build `eb52bf0c`. Names are examples, and credentials are left blank. The pictured ZeroTier node ID and EasyTier Machine ID belong to the isolated tutorial device; use your own IDs. No production account, auth key, or network secret appears in the images.
+The provider tutorials include unedited screenshots of the actual Heeler forms, captured on an iPhone 17 Pro Simulator running iOS 26.5, in light appearance at default text size. The Tailscale form was refreshed on **2026-10-09** for the save-then-sign-in flow; the other forms come from build `eb52bf0c`, before their optional settings moved to **Advanced** and EasyTier's Manual source was renamed **Network**. Names are examples, and credentials are left blank. The pictured ZeroTier node ID and EasyTier Machine ID belong to the isolated tutorial device; use your own IDs. No production account, auth key, or network secret appears in the images.
 
 Text tables describe every required field so the procedures remain usable without images. When labels or behavior change, update the relevant tutorial and its screenshot together. Consult [the overlay architecture](../adr/0021-in-process-overlay-networks.md) and [the source map](../agents/navigation.md) for implementation work. Official sources are linked beside each provider's instructions.

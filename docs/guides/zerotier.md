@@ -59,12 +59,12 @@ Open **Settings > Overlay Networks > Add Network > Type > ZeroTier** to reach th
 
 ![Heeler ZeroTier form with Network ID, the device node ID, optional Moons, and default Planet settings](images/overlay-networks/zerotier-form.png)
 
-**In this screen:** enter your 16-digit Network ID and copy **This device** for authorization in Central. Keep the default Planet and empty Moons for this walkthrough. The pictured node ID belongs to an isolated tutorial device; use your own. [Open the full-size screenshot](images/overlay-networks/zerotier-form.png). [Capture details](overlay-networks.md#screenshots-and-maintenance).
+**In this screen:** enter your 16-digit Network ID and copy **This Device > Node ID** for authorization in Central. Keep the default Planet and empty Moons for this walkthrough; both are now under **Advanced**, which the screenshot predates. The pictured node ID belongs to an isolated tutorial device; use your own. [Open the full-size screenshot](images/overlay-networks/zerotier-form.png). [Capture details](overlay-networks.md#screenshots-and-maintenance).
 
 1. In Heeler, open **Settings > Overlay Networks > Add Network**.
-2. Give the entry a recognizable **Name**, choose **Type > ZeroTier**, and paste `ZT_NETWORK_ID` into **Network ID**. Keep **Moons** empty and **Planet** set to **ZeroTier default**.
-3. Copy **This device**, the generated Heeler node ID. If generation is still pending, save the entry and find **This Device > Node ID** on its detail screen after the first connection attempt.
-4. Add the network, then turn on its switch. A message asking for authorization is expected for a new private-network member.
+2. Give the entry a recognizable **Name**, choose **Type > ZeroTier**, and paste `ZT_NETWORK_ID` into **Network ID**. Leave **Advanced** alone: no Moons, and the ZeroTier default Planet.
+3. Copy **This Device > Node ID**, the generated Heeler node ID. If generation is still pending, add the network and copy the node ID from its status card after the first connection attempt.
+4. Select **Add and Connect**. The network's screen opens and connects; **Waiting for authorization** is expected for a new private-network member, with the node ID on the status card and, for a network on ZeroTier's default roots, an **Open ZeroTier Central** button.
 5. In Central, refresh the network's members and authorize the row matching the Heeler node ID. Authorizing the Mac alone does not authorize Heeler. Return to the network details in Heeler and allow its status to refresh; turn its switch on again if a prior attempt has ended and it is not connected.
 
 Heeler shares one ZeroTier identity across its configured ZeroTier networks and keeps the private identity in the Keychain. That identity belongs to Heeler, independently of any other ZeroTier app installed on the same device. Keep both private identities on their own devices; Central needs only the public node IDs.
@@ -83,7 +83,7 @@ Follow [Connect from Heeler](overlay-networks.md#connect-from-heeler), using the
 | Username and authentication | The account and Device Key prepared in the shared guide |
 | Jump Host | Leave unset for a Mac directly reachable on this ZeroTier network |
 
-Heeler's ZeroTier backend accepts IP literals, including IPv6, rather than DNS names. Copy the managed IP from Central or the Mac's `listnetworks` output. **ZeroTier Members** and **ZeroTier Roots** in Heeler show transport paths, which may be public IP addresses and ports; those are not the managed addresses to enter for a Host. ZeroTier therefore has no managed-address peer picker in Heeler.
+Heeler's ZeroTier backend accepts IP literals, including IPv6, rather than DNS names. Copy the managed IP from Central or the Mac's `listnetworks` output. Heeler's **Members** list and the **Roots** in its **Diagnostics** show transport paths (touch and hold a member to copy one), which may be public IP addresses and ports; those are not the managed addresses to enter for a Host. ZeroTier therefore has no managed-address peer picker in Heeler.
 
 Verify the Mac's SSH fingerprint when prompted, complete the Host checks, and follow [Verify the connection](overlay-networks.md#verify-the-connection). Success means the intended herdr inventory appears and a disposable terminal accepts input and returns output. Merely seeing an overlay address does not establish SSH authentication or herdr readiness.
 
