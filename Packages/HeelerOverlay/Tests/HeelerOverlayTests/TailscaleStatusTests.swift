@@ -58,6 +58,8 @@ struct TailscaleStatusTests {
             return
         }
         #expect(message.contains("approval"))
+        // The node stays up awaiting approval, which can still arrive.
+        #expect(status.nodeStatus == .waiting(message))
     }
 
     @Test func transientStatesWait() throws {

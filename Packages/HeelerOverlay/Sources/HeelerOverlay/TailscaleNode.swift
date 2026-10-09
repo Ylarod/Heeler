@@ -89,7 +89,7 @@ actor TailscaleNode: OverlayNode {
                     lastStatus = .needsLogin(url)
                     throw OverlayError.loginRequired(url)
                 case .failed(let message):
-                    lastStatus = .failed(message)
+                    lastStatus = status.nodeStatus
                     throw OverlayError.startFailed(message)
                 case .waiting:
                     lastStatus = .starting

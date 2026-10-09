@@ -66,10 +66,14 @@ struct TailscaleStatus: Equatable, Sendable {
         }
     }
 
+    /// A device awaiting an admin's approval is up and keeps asking, so it
+    /// reports `.waiting` (approval can still arrive) even though `start`
+    /// stops waiting for it at once.
     var nodeStatus: OverlayNodeStatus {
         switch progress {
         case .online(let addresses): .online(addresses: addresses)
         case .needsLogin(let url): .needsLogin(url)
+        case .failed(let message) where backendState == .needsMachineAuth: .waiting(message)
         case .failed(let message): .failed(message)
         case .waiting: .starting
         }
