@@ -13,6 +13,39 @@ private final class EventLog: Sendable {
     var all: [String] { lines.withLock { $0 } }
 }
 
+/// Holds a captured node status until the test changes the catalog.
+private final class OverlayStatusReadGate: Sendable {
+    private struct State {
+        var released = false
+        var waiters: [CheckedContinuation<Void, Never>] = []
+    }
+
+    private let state = Mutex(State())
+
+    var isWaiting: Bool { state.withLock { !$0.waiters.isEmpty } }
+
+    func wait() async {
+        await withCheckedContinuation { continuation in
+            let resumeNow = state.withLock { state in
+                guard !state.released else { return true }
+                state.waiters.append(continuation)
+                return false
+            }
+            if resumeNow { continuation.resume() }
+        }
+    }
+
+    func release() {
+        let waiters = state.withLock { state in
+            state.released = true
+            let waiters = state.waiters
+            state.waiters.removeAll()
+            return waiters
+        }
+        for waiter in waiters { waiter.resume() }
+    }
+}
+
 /// A scripted overlay node: records calls and fails as told.
 private final class FakeOverlayNode: OverlayNode, Sendable {
     struct State {
@@ -20,6 +53,7 @@ private final class FakeOverlayNode: OverlayNode, Sendable {
         var stops = 0
         var dials: [String] = []
         var status: OverlayNodeStatus = .stopped
+        var statusReadGate: OverlayStatusReadGate?
         var failure: OverlayError?
         var details = OverlayNodeDetails()
         var logouts = 0
@@ -70,7 +104,9 @@ private final class FakeOverlayNode: OverlayNode, Sendable {
     }
 
     func status() async -> OverlayNodeStatus {
-        state.withLock { $0.status }
+        let (status, gate) = state.withLock { ($0.status, $0.statusReadGate) }
+        await gate?.wait()
+        return status
     }
 
     func stop() async {
@@ -405,6 +441,419 @@ struct OverlayNetworkStoreTests {
         #expect(
             store.connectFailures[tailnet.id]
                 == .overlayFailed(network: "Home", reason: .loginRequired(login)))
+    }
+}
+
+@MainActor
+@Suite("Overlay Network sign-in")
+struct OverlayNetworkSignInTests {
+    private func makeRuntime(
+        _ factory: FakeNodeFactory,
+        secrets: any SecretStore = VolatileSecretStore(),
+        stateRoot: URL = temporaryStateRoot()
+    ) -> OverlayNetworkRuntime {
+        OverlayNetworkRuntime(secrets: secrets, stateRoot: stateRoot, makeNode: factory.make)
+    }
+
+    private func makeDefaults() throws -> (UserDefaults, cleanup: () -> Void) {
+        let suite = "overlay-network-sign-in-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        return (defaults, { defaults.removePersistentDomain(forName: suite) })
+    }
+
+    @Test func firstSignInReturnsTheLoginAndLaterReconnectUsesTheSavedSession() async throws {
+        let factory = FakeNodeFactory()
+        let login = try #require(URL(string: "https://login.tailscale.com/a/sign-in"))
+        factory.failure.withLock { $0 = .loginRequired(login) }
+        let store = OverlayNetworkStore(volatileNetworks: [tailnet], runtime: makeRuntime(factory))
+
+        #expect(store.primaryAction(for: tailnet) == .signIn)
+        #expect(await store.signIn(tailnet.id) == login)
+        #expect(store.primaryAction(for: tailnet) == .signIn)
+
+        let node = try #require(factory.built.first)
+        node.state.withLock { $0.status = .online(addresses: ["100.64.0.2"]) }
+        await store.refreshStatus(tailnet.id)
+        #expect(store.primaryAction(for: tailnet) == .disconnect)
+        #expect(store.connectFailures[tailnet.id] == nil)
+
+        await store.disconnect(tailnet.id)
+        #expect(store.primaryAction(for: tailnet) == .connect)
+        factory.failure.withLock { $0 = nil }
+        await store.connect(tailnet.id)
+        #expect(store.primaryAction(for: tailnet) == .disconnect)
+        #expect(factory.built.count == 2)
+    }
+
+    @Test func storedNativeLoginCanConnectWithoutAnInterfaceHintOrBrowserURL() async throws {
+        let factory = FakeNodeFactory()
+        let store = OverlayNetworkStore(volatileNetworks: [tailnet], runtime: makeRuntime(factory))
+
+        // An upgrade may have native login state without the new UI hint.
+        #expect(store.primaryAction(for: tailnet) == .signIn)
+        #expect(await store.signIn(tailnet.id) == nil)
+        #expect(store.primaryAction(for: tailnet) == .disconnect)
+        #expect(factory.built.first?.state.withLock { $0.starts } == 1)
+    }
+
+    @Test func authKeyUsesConnectUntilTheNodeActuallyRequiresSignIn() async throws {
+        let factory = FakeNodeFactory()
+        let store = OverlayNetworkStore(volatileNetworks: [], runtime: makeRuntime(factory))
+        try store.add(tailnet, secret: "tskey-auth-test")
+        #expect(store.primaryAction(for: tailnet) == .connect)
+
+        let login = try #require(URL(string: "https://login.tailscale.com/a/expired-key"))
+        factory.failure.withLock { $0 = .loginRequired(login) }
+        await store.connect(tailnet.id)
+        let node = try #require(factory.built.first)
+        node.state.withLock { $0.status = .needsLogin(login) }
+        await store.refreshStatus(tailnet.id)
+
+        #expect(store.hasSecret(for: tailnet))
+        #expect(store.primaryAction(for: tailnet) == .signIn)
+    }
+
+    @Test func otherBackendsKeepTheirConnectAction() throws {
+        let easyTier = OverlayNetwork(
+            name: "Lab", settings: .easytier(networkName: "lab", peers: ["tcp://p:1"], hostname: "h"))
+        let factory = FakeNodeFactory()
+        let store = OverlayNetworkStore(
+            volatileNetworks: [zeroTierLab, easyTier], runtime: makeRuntime(factory))
+
+        #expect(store.primaryAction(for: zeroTierLab) == .connect)
+        #expect(store.primaryAction(for: easyTier) == .connect)
+        #expect(factory.built.isEmpty)
+    }
+
+    @Test func successfulLoginHintSurvivesReloadRenameAndHostnameChanges() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = VolatileSecretStore()
+        let factory = FakeNodeFactory()
+        let runtime = makeRuntime(factory, secrets: secrets)
+        let store = OverlayNetworkStore(defaults: defaults, secrets: secrets, runtime: runtime)
+        try store.add(tailnet)
+        await store.connect(tailnet.id)
+        await store.disconnect(tailnet.id)
+
+        let reloaded = OverlayNetworkStore(
+            defaults: defaults, secrets: secrets, runtime: makeRuntime(FakeNodeFactory(), secrets: secrets))
+        #expect(reloaded.primaryAction(for: tailnet) == .connect)
+
+        var renamed = tailnet
+        renamed.name = "Office"
+        renamed.settings = .tailscale(hostname: "heeler-iphone", controlURL: nil)
+        try reloaded.update(renamed)
+        await reloaded.runtime.reconcile()
+        #expect(reloaded.primaryAction(for: renamed) == .connect)
+
+        let renamedReload = OverlayNetworkStore(
+            defaults: defaults, secrets: secrets, runtime: makeRuntime(FakeNodeFactory(), secrets: secrets))
+        #expect(renamedReload.primaryAction(for: renamed) == .connect)
+    }
+
+    @Test func aDifferentCoordinationServerClearsTheSavedLoginHint() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = VolatileSecretStore()
+        let factory = FakeNodeFactory()
+        let store = OverlayNetworkStore(
+            defaults: defaults, secrets: secrets, runtime: makeRuntime(factory, secrets: secrets))
+        try store.add(tailnet)
+        await store.connect(tailnet.id)
+        await store.disconnect(tailnet.id)
+        #expect(store.primaryAction(for: tailnet) == .connect)
+
+        var changed = tailnet
+        let server = try #require(URL(string: "https://headscale.example"))
+        changed.settings = .tailscale(hostname: "heeler", controlURL: server)
+        try store.update(changed)
+        await store.runtime.reconcile()
+        #expect(store.primaryAction(for: changed) == .signIn)
+
+        let reloaded = OverlayNetworkStore(
+            defaults: defaults, secrets: secrets, runtime: makeRuntime(FakeNodeFactory(), secrets: secrets))
+        #expect(reloaded.primaryAction(for: changed) == .signIn)
+    }
+
+    @Test func clearingAnAuthKeyAlsoClearsTheLoginHint() async throws {
+        let factory = FakeNodeFactory()
+        let store = OverlayNetworkStore(volatileNetworks: [], runtime: makeRuntime(factory))
+        try store.add(tailnet, secret: "tskey-auth-test")
+        await store.connect(tailnet.id)
+        await store.disconnect(tailnet.id)
+
+        try store.update(tailnet, secret: "")
+        await store.runtime.reconcile()
+        #expect(!store.hasSecret(for: tailnet))
+        #expect(store.primaryAction(for: tailnet) == .signIn)
+    }
+
+    @Test func expiredLoginClearsTheRememberedHintAcrossReload() async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = VolatileSecretStore()
+        let factory = FakeNodeFactory()
+        let store = OverlayNetworkStore(
+            defaults: defaults, secrets: secrets, runtime: makeRuntime(factory, secrets: secrets))
+        try store.add(tailnet)
+        await store.connect(tailnet.id)
+
+        let node = try #require(factory.built.first)
+        let login = try #require(URL(string: "https://login.tailscale.com/a/expired-session"))
+        node.state.withLock { $0.status = .needsLogin(login) }
+        await store.refreshStatus(tailnet.id)
+        #expect(store.primaryAction(for: tailnet) == .signIn)
+        await store.disconnect(tailnet.id)
+
+        let reloaded = OverlayNetworkStore(
+            defaults: defaults, secrets: secrets, runtime: makeRuntime(FakeNodeFactory(), secrets: secrets))
+        #expect(reloaded.primaryAction(for: tailnet) == .signIn)
+    }
+
+    @Test(arguments: [false, true])
+    func explicitSignOutRequiresSignInEvenWithAnAuthKey(hasAuthKey: Bool) async throws {
+        let factory = FakeNodeFactory()
+        let store = OverlayNetworkStore(volatileNetworks: [], runtime: makeRuntime(factory))
+        try store.add(tailnet, secret: hasAuthKey ? "tskey-auth-test" : nil)
+        await store.connect(tailnet.id)
+
+        await store.signOut(tailnet.id)
+
+        #expect(store.primaryAction(for: tailnet) == .signIn)
+        #expect(store.signedOut.contains(tailnet.id))
+    }
+
+    @Test func removingAndReaddingTheNetworkDoesNotKeepItsLoginHint() async throws {
+        let factory = FakeNodeFactory()
+        let store = OverlayNetworkStore(volatileNetworks: [tailnet], runtime: makeRuntime(factory))
+        await store.connect(tailnet.id)
+        await store.disconnect(tailnet.id)
+        try store.remove(tailnet.id)
+        await store.runtime.reconcile()
+
+        try store.add(tailnet)
+
+        #expect(store.primaryAction(for: tailnet) == .signIn)
+    }
+
+    @Test func returningFromBrowserRestartsASuspendedSignInOnlyOnce() async throws {
+        let factory = FakeNodeFactory()
+        let login = try #require(URL(string: "https://login.tailscale.com/a/browser-return"))
+        factory.failure.withLock { $0 = .loginRequired(login) }
+        let runtime = makeRuntime(factory)
+        let store = OverlayNetworkStore(volatileNetworks: [tailnet], runtime: runtime)
+        #expect(await store.signIn(tailnet.id) == login)
+
+        await runtime.suspend()
+        factory.failure.withLock { $0 = nil }
+        await store.resumePendingSignIns()
+        #expect(store.primaryAction(for: tailnet) == .disconnect)
+        #expect(factory.built.count == 2)
+
+        // The browser-return intent must not become a general auto-connect policy.
+        await runtime.suspend()
+        await store.resumePendingSignIns()
+        #expect(factory.built.count == 2)
+        #expect(await runtime.activeNetworkIDs.isEmpty)
+    }
+
+    @Test func returningWithALiveNodeRefreshesItWithoutAnotherStart() async throws {
+        let factory = FakeNodeFactory()
+        let login = try #require(URL(string: "https://login.tailscale.com/a/live-return"))
+        factory.failure.withLock { $0 = .loginRequired(login) }
+        let runtime = makeRuntime(factory)
+        let store = OverlayNetworkStore(volatileNetworks: [tailnet], runtime: runtime)
+        #expect(await store.signIn(tailnet.id) == login)
+        let node = try #require(factory.built.first)
+        node.state.withLock { $0.status = .online(addresses: ["100.64.0.2"]) }
+
+        await store.resumePendingSignIns()
+
+        #expect(store.primaryAction(for: tailnet) == .disconnect)
+        #expect(node.state.withLock { $0.starts } == 1)
+        #expect(factory.built.count == 1)
+        await runtime.suspend()
+        await store.resumePendingSignIns()
+        #expect(factory.built.count == 1)
+    }
+
+    @Test func rejectedLoginURLDoesNotCreateABrowserReturnIntent() async throws {
+        let factory = FakeNodeFactory()
+        let login = try #require(URL(string: "http://login.tailscale.com/a/insecure"))
+        factory.failure.withLock { $0 = .loginRequired(login) }
+        let runtime = makeRuntime(factory)
+        let store = OverlayNetworkStore(volatileNetworks: [tailnet], runtime: runtime)
+
+        #expect(await store.signIn(tailnet.id) == nil)
+        await runtime.suspend()
+        factory.failure.withLock { $0 = nil }
+        await store.resumePendingSignIns()
+
+        #expect(factory.built.count == 1)
+        #expect(await runtime.activeNetworkIDs.isEmpty)
+    }
+
+    @Test(arguments: ["disconnect", "signOut", "remove"])
+    func anExplicitStopDiscardsThePendingBrowserReturn(action: String) async throws {
+        let factory = FakeNodeFactory()
+        let login = try #require(URL(string: "https://login.tailscale.com/a/abandoned"))
+        factory.failure.withLock { $0 = .loginRequired(login) }
+        let runtime = makeRuntime(factory)
+        let store = OverlayNetworkStore(volatileNetworks: [tailnet], runtime: runtime)
+        #expect(await store.signIn(tailnet.id) == login)
+
+        switch action {
+        case "disconnect": await store.disconnect(tailnet.id)
+        case "signOut": await store.signOut(tailnet.id)
+        case "remove":
+            try store.remove(tailnet.id)
+            await runtime.reconcile()
+        default: Issue.record("Unexpected stop action")
+        }
+        let countAfterStop = factory.built.count
+        factory.failure.withLock { $0 = nil }
+        await store.resumePendingSignIns()
+
+        #expect(factory.built.count == countAfterStop)
+        #expect(await runtime.activeNetworkIDs.isEmpty)
+    }
+
+    @Test(arguments: [false, true])
+    func cancellingSignInNeverReturnsALateURLOrCreatesAResumeIntent(cancelCaller: Bool) async throws {
+        let factory = BlockingNodeFactory()
+        factory.hang.withLock { $0 = .milliseconds(400) }
+        let login = try #require(URL(string: "https://login.tailscale.com/a/cancelled"))
+        factory.failure.withLock { $0 = .loginRequired(login) }
+        let runtime = OverlayNetworkRuntime(
+            secrets: VolatileSecretStore(), stateRoot: temporaryStateRoot(), makeNode: factory.make)
+        let store = OverlayNetworkStore(volatileNetworks: [tailnet], runtime: runtime)
+
+        let signingIn = Task { await store.signIn(tailnet.id) }
+        let started = await eventually { factory.built.first?.state.withLock { $0.starts > 0 } == true }
+        #expect(started)
+        #expect(store.primaryAction(for: tailnet) == .connecting)
+        if cancelCaller { signingIn.cancel() } else { store.cancelConnect(tailnet.id) }
+
+        #expect(await signingIn.value == nil)
+        #expect(store.connectFailures[tailnet.id] == nil)
+        let stopped = await eventually { await runtime.activeNetworkIDs.isEmpty }
+        #expect(stopped)
+        await store.resumePendingSignIns()
+        #expect(factory.built.count == 1)
+        #expect(store.primaryAction(for: tailnet) == .signIn)
+    }
+
+    @Test func suspensionCancelsABlockingBrowserReturnWithoutWaitingForItsTimeout() async throws {
+        let factory = BlockingNodeFactory()
+        factory.hang.withLock { $0 = nil }
+        let login = try #require(URL(string: "https://login.tailscale.com/a/resume-cancelled"))
+        factory.failure.withLock { $0 = .loginRequired(login) }
+        let runtime = OverlayNetworkRuntime(
+            secrets: VolatileSecretStore(), stateRoot: temporaryStateRoot(), makeNode: factory.make)
+        let store = OverlayNetworkStore(volatileNetworks: [tailnet], runtime: runtime)
+        #expect(await store.signIn(tailnet.id) == login)
+        await store.suspend()
+
+        factory.hang.withLock { $0 = .seconds(2) }
+        factory.failure.withLock { $0 = nil }
+        store.resumeBrowserSignInAfterActivation()
+        let restarted = await eventually {
+            factory.built.count == 2 && factory.built.last?.state.withLock { $0.starts > 0 } == true
+        }
+        #expect(restarted)
+        #expect(store.primaryAction(for: tailnet) == .connecting)
+
+        let suspending = ContinuousClock.now
+        await store.suspend()
+        #expect(ContinuousClock.now - suspending < .milliseconds(800))
+        let settled = await eventually { !store.connecting.contains(tailnet.id) }
+        #expect(settled)
+        #expect(store.connectFailures[tailnet.id] == nil)
+        #expect(await runtime.activeNetworkIDs.isEmpty)
+
+        // A second foreground can finish the interrupted browser return.
+        factory.hang.withLock { $0 = nil }
+        await store.resumePendingSignIns()
+        #expect(factory.built.count == 3)
+        #expect(store.primaryAction(for: tailnet) == .disconnect)
+
+        await store.suspend()
+        await store.resumePendingSignIns()
+        #expect(factory.built.count == 3)
+        #expect(await runtime.activeNetworkIDs.isEmpty)
+    }
+
+    @Test func overlappingActivationsFinishThePendingSignInAfterCancellingTheFirstResume() async throws {
+        let factory = BlockingNodeFactory()
+        factory.hang.withLock { $0 = nil }
+        let login = try #require(URL(string: "https://login.tailscale.com/a/overlapping-activation"))
+        factory.failure.withLock { $0 = .loginRequired(login) }
+        let runtime = OverlayNetworkRuntime(
+            secrets: VolatileSecretStore(), stateRoot: temporaryStateRoot(), makeNode: factory.make)
+        let store = OverlayNetworkStore(volatileNetworks: [tailnet], runtime: runtime)
+        #expect(await store.signIn(tailnet.id) == login)
+        await store.suspend()
+
+        factory.hang.withLock { $0 = .seconds(2) }
+        factory.failure.withLock { $0 = nil }
+        store.resumeBrowserSignInAfterActivation()
+        let restarting = await eventually {
+            factory.built.count == 2 && factory.built.last?.state.withLock { $0.starts > 0 } == true
+        }
+        #expect(restarting)
+        #expect(store.connecting.contains(tailnet.id))
+
+        // Reactivate before the first resume has cleared its connecting state.
+        factory.hang.withLock { $0 = nil }
+        store.resumeBrowserSignInAfterActivation()
+        let connected = await eventually {
+            !store.connecting.contains(tailnet.id) && store.statuses[tailnet.id]?.isOnline == true
+        }
+
+        #expect(connected)
+        #expect(factory.built.count == 3)
+        #expect(store.primaryAction(for: tailnet) == .disconnect)
+        #expect(store.connectFailures[tailnet.id] == nil)
+        await store.suspend()
+        await store.resumePendingSignIns()
+        #expect(factory.built.count == 3)
+    }
+
+    @Test(arguments: ["controlURL", "secret"])
+    func anOldStatusReadCannotRestoreLoginAfterAuthenticationSettingsChange(change: String) async throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let secrets = VolatileSecretStore()
+        let factory = FakeNodeFactory()
+        let runtime = makeRuntime(factory, secrets: secrets)
+        let store = OverlayNetworkStore(defaults: defaults, secrets: secrets, runtime: runtime)
+        try store.add(tailnet, secret: change == "secret" ? "tskey-auth-test" : nil)
+        await store.connect(tailnet.id)
+        let node = try #require(factory.built.first)
+        let server = try #require(URL(string: "https://headscale.example"))
+        let gate = OverlayStatusReadGate()
+        defer { gate.release() }
+        node.state.withLock { $0.statusReadGate = gate }
+        let refreshing = Task { await store.refreshStatus(tailnet.id) }
+        let capturedOldStatus = await eventually { gate.isWaiting }
+        #expect(capturedOldStatus)
+
+        var changed = tailnet
+        if change == "controlURL" {
+            changed.settings = .tailscale(hostname: "heeler", controlURL: server)
+            try store.update(changed)
+        } else {
+            try store.update(changed, secret: "")
+        }
+        await runtime.reconcile()
+        gate.release()
+        await refreshing.value
+
+        #expect(store.primaryAction(for: changed) == .signIn)
+        let reloaded = OverlayNetworkStore(
+            defaults: defaults, secrets: secrets, runtime: makeRuntime(FakeNodeFactory(), secrets: secrets))
+        #expect(reloaded.primaryAction(for: changed) == .signIn)
     }
 }
 

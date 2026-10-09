@@ -453,8 +453,14 @@ actor OverlayNetworkRuntime {
 
     /// `.stopped` for a network whose node was never built or was discarded.
     func status(networkID: UUID) async -> OverlayNodeStatus {
-        guard let entry = nodes[networkID] else { return .stopped }
-        return await entry.node.status()
+        guard let entry = nodes[networkID],
+            catalog.withLock({ $0.networks[networkID]?.revision }) == entry.published.revision
+        else { return .stopped }
+        let status = await entry.node.status()
+        guard nodes[networkID]?.node === entry.node,
+            catalog.withLock({ $0.networks[networkID]?.revision }) == entry.published.revision
+        else { return .stopped }
+        return status
     }
 
     /// What the network's node reports about itself and its peers; empty

@@ -2,6 +2,10 @@ import Foundation
 import HeelerOverlay
 import Observation
 
+enum OverlayNetworkPrimaryAction: Equatable {
+    case signIn, connect, connecting, disconnect
+}
+
 enum OverlayNetworkStoreError: Error, Equatable {
     /// `update`/`remove` addressed a network the catalog does not contain.
     case unknownNetwork
@@ -45,6 +49,7 @@ enum OverlayNetworkStoreError: Error, Equatable {
 @Observable
 final class OverlayNetworkStore {
     private static let defaultsKey = "overlayNetworks"
+    private static let knownLoginsKey = "overlayKnownTailscaleLogins"
     private static let catalogVersion = 1
 
     /// Decodes each network separately so a kind added by a newer build
@@ -131,6 +136,11 @@ final class OverlayNetworkStore {
     private(set) var signOutFailures: [OverlayNetwork.ID: TransportError] = [:]
     /// Tailscale networks signed out and not connected again since.
     private(set) var signedOut: Set<OverlayNetwork.ID> = []
+    /// A presentation hint, never an authorization decision. Only a live
+    /// node can confirm whether a saved login is still usable.
+    private var knownTailscaleLogins: Set<OverlayNetwork.ID> = []
+    private var pendingBrowserSignIns: Set<OverlayNetwork.ID> = []
+    @ObservationIgnored private var signInResumeTask: Task<Void, Never>?
     /// The node ID of the device's ZeroTier identity in the Keychain.
     private(set) var zeroTierIdentityNodeID: String?
     /// No identity could be created ahead of time (the generator failed,
@@ -173,6 +183,9 @@ final class OverlayNetworkStore {
                 return
             }
         }
+        knownTailscaleLogins = Set(
+            (defaults.stringArray(forKey: Self.knownLoginsKey) ?? []).compactMap(UUID.init(uuidString:)))
+            .intersection(networks.filter { $0.kind == .tailscale }.map(\.id))
         migrateLegacyZeroTierPlanet()
         publish()
         refreshZeroTierDeviceState()
@@ -221,7 +234,19 @@ final class OverlayNetworkStore {
             try secrets.removeSecret(account: oldAccount)
         }
         if settingsChanged || secretChanged {
+            cancelConnect(network.id)
             revisions[network.id, default: 0] += 1
+        }
+        let loginChanged: Bool
+        switch (previous.settings, network.settings) {
+        case (.tailscale(_, let oldServer), .tailscale(_, let newServer)):
+            loginChanged = oldServer != newServer || secretChanged
+        default:
+            loginChanged = previous.kind != network.kind
+        }
+        if loginChanged {
+            setKnownTailscaleLogin(network.id, known: false)
+            statuses[network.id] = nil
         }
         if secretChanged {
             secretRevisions[network.id, default: 0] += 1
@@ -245,6 +270,8 @@ final class OverlayNetworkStore {
         if let account = OverlaySecretAccount.secret(for: removed) {
             try secrets.removeSecret(account: account)
         }
+        cancelConnect(id)
+        setKnownTailscaleLogin(id, known: false)
         networks.remove(at: index)
         entries.removeAll { $0.knownNetwork?.id == id }
         // The ZeroTier identity is the device's, shared by every ZeroTier
@@ -294,11 +321,87 @@ final class OverlayNetworkStore {
 
     // MARK: Node status
 
+    func primaryAction(for network: OverlayNetwork) -> OverlayNetworkPrimaryAction {
+        let id = network.id
+        if connecting.contains(id) { return .connecting }
+        if statuses[id]?.isOnline == true { return .disconnect }
+        if network.kind == .tailscale {
+            if case .needsLogin = statuses[id] { return .signIn }
+            if connectFailures[id]?.overlayLoginURL != nil || signedOut.contains(id) {
+                return .signIn
+            }
+            if !knownTailscaleLogins.contains(id), !hasSecret(for: network) { return .signIn }
+        }
+        return .connect
+    }
+
+    /// One user action both starts the node and obtains its current login
+    /// link. Starting again also replaces links left by a suspended node.
+    /// The view opens the result only while its initiating task is alive.
+    func signIn(_ id: OverlayNetwork.ID, timeout: Duration = .seconds(30)) async -> URL? {
+        guard let network = network(id: id), network.kind == .tailscale,
+            !signingOut.contains(id)
+        else { return nil }
+        let revision = revisions[id]
+        guard await connect(id, timeout: timeout), !Task.isCancelled,
+            revisions[id] == revision, self.network(id: id) != nil,
+            statuses[id]?.isOnline != true
+        else { return nil }
+        let candidate: URL?
+        if case .needsLogin(let url) = statuses[id] {
+            candidate = url
+        } else {
+            candidate = connectFailures[id]?.overlayLoginURL
+        }
+        guard let url = candidate, network.acceptsLoginURL(url) else { return nil }
+        pendingBrowserSignIns.insert(id)
+        return url
+    }
+
+    /// Called after app suspension has finished and the app is active again.
+    /// Resume only an explicit browser sign-in, once, without opening a URL.
+    func resumePendingSignIns() async {
+        let pending = pendingBrowserSignIns
+        for id in pending {
+            guard !Task.isCancelled else { return }
+            guard pendingBrowserSignIns.contains(id), network(id: id) != nil,
+                !signingOut.contains(id)
+            else { continue }
+            await refreshStatus(id)
+            guard !Task.isCancelled else { return }
+            if pendingBrowserSignIns.contains(id), !signedOut.contains(id), statuses[id] == .stopped {
+                await connect(id)
+            }
+            if !Task.isCancelled { pendingBrowserSignIns.remove(id) }
+        }
+    }
+
+    /// Do not hold the app activity event loop while the network answers.
+    /// The next suspension cancels this work before stopping the nodes.
+    func resumeBrowserSignInAfterActivation() {
+        let previous = signInResumeTask
+        previous?.cancel()
+        signInResumeTask = Task {
+            await previous?.value
+            guard !Task.isCancelled else { return }
+            await resumePendingSignIns()
+        }
+    }
+
+    func suspend() async {
+        let resuming = signInResumeTask
+        resuming?.cancel()
+        signInResumeTask = nil
+        await resuming?.value
+        await runtime.suspend()
+    }
+
     /// Brings the network's node up, then records what it reports.
     /// `cancelConnect` (or cancelling the calling task) ends it at once; a
     /// cancelled Connect records no failure.
-    func connect(_ id: OverlayNetwork.ID, timeout: Duration = .seconds(30)) async {
-        guard !connecting.contains(id) else { return }
+    @discardableResult
+    func connect(_ id: OverlayNetwork.ID, timeout: Duration = .seconds(30)) async -> Bool {
+        guard !connecting.contains(id), !signingOut.contains(id) else { return false }
         connecting.insert(id)
         connectFailures[id] = nil
         signOutFailures[id] = nil
@@ -319,7 +422,7 @@ final class OverlayNetworkStore {
         }
         // Cancelled meanwhile: `cancelConnect` already settled the state,
         // and a newer Connect may own it now.
-        guard connectAttempts[id] == attempt else { return }
+        guard connectAttempts[id] == attempt else { return false }
         connectAttempts[id] = nil
         connecting.remove(id)
         switch failure {
@@ -331,6 +434,11 @@ final class OverlayNetworkStore {
             connectFailures[id] = .channelFailed(detail: String(describing: error))
         }
         await refreshStatus(id)
+        if Task.isCancelled { return false }
+        switch failure {
+        case TransportError.cancelled?, is CancellationError: return false
+        default: return true
+        }
     }
 
     /// Stops waiting for a Connect in progress: Settings is usable again at
@@ -338,6 +446,7 @@ final class OverlayNetworkStore {
     /// came up (a ZeroTier network stays joined; see
     /// `OverlayNetworkRuntime.start`).
     func cancelConnect(_ id: OverlayNetwork.ID) {
+        pendingBrowserSignIns.remove(id)
         guard let attempt = connectAttempts.removeValue(forKey: id) else { return }
         attempt.cancel()
         connecting.remove(id)
@@ -346,6 +455,8 @@ final class OverlayNetworkStore {
     }
 
     func disconnect(_ id: OverlayNetwork.ID) async {
+        cancelConnect(id)
+        connectFailures[id] = nil
         await runtime.stop(networkID: id)
         await refreshStatus(id)
     }
@@ -355,6 +466,8 @@ final class OverlayNetworkStore {
     /// connections; the next Connect signs in again.
     func signOut(_ id: OverlayNetwork.ID, timeout: Duration = .seconds(15)) async {
         guard !signingOut.contains(id) else { return }
+        cancelConnect(id)
+        setKnownTailscaleLogin(id, known: false)
         signingOut.insert(id)
         signOutFailures[id] = nil
         connectFailures[id] = nil
@@ -392,12 +505,23 @@ final class OverlayNetworkStore {
     }
 
     private func refreshNodeStatus(_ id: OverlayNetwork.ID) async {
+        guard network(id: id) != nil else { return }
+        let revision = revisions[id]
         let status = await runtime.status(networkID: id)
+        guard network(id: id) != nil, revisions[id] == revision else { return }
         statuses[id] = status
         // Browser sign-in or controller approval can finish after Connect
         // returned an error. The live node supersedes that failed attempt.
         if status.isOnline {
             connectFailures[id] = nil
+            pendingBrowserSignIns.remove(id)
+            if network(id: id)?.kind == .tailscale {
+                setKnownTailscaleLogin(id, known: true)
+            }
+        } else if case .needsLogin = status {
+            setKnownTailscaleLogin(id, known: false)
+        } else if connectFailures[id]?.overlayLoginURL != nil {
+            setKnownTailscaleLogin(id, known: false)
         }
         await refreshSignedOut(id)
     }
@@ -405,8 +529,21 @@ final class OverlayNetworkStore {
     private func refreshSignedOut(_ id: OverlayNetwork.ID) async {
         if await runtime.isSignedOut(id) {
             signedOut.insert(id)
+            setKnownTailscaleLogin(id, known: false)
         } else {
             signedOut.remove(id)
+        }
+    }
+
+    private func setKnownTailscaleLogin(_ id: OverlayNetwork.ID, known: Bool) {
+        let changed: Bool
+        if known {
+            changed = knownTailscaleLogins.insert(id).inserted
+        } else {
+            changed = knownTailscaleLogins.remove(id) != nil
+        }
+        if changed {
+            defaults?.set(knownTailscaleLogins.map(\.uuidString).sorted(), forKey: Self.knownLoginsKey)
         }
     }
 

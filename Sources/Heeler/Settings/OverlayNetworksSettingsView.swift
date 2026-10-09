@@ -197,7 +197,7 @@ enum OverlayStatusCopy {
             case .loginRequired:
                 return "Sign in to add this device to the tailnet."
             case .signedOut:
-                return "Connect to sign this device in again."
+                return "Sign in to add this device to the tailnet again."
             case .notReady(let detail):
                 return sentence(detail) + " If an admin must approve this device, authorize it "
                     + "in the network's admin console."
@@ -370,7 +370,9 @@ struct OverlayNetworkDetailView: View {
     @State private var deleteFailed = false
     @State private var addHostRequest: OverlayPeerHostRequest?
     @State private var pendingOnboardingHostID: Host.ID?
+    @State private var signInRequestID: UUID?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     /// Injected app-wide by `ContentView`; absent in previews, where peers
     /// offer no Add Host….
     @Environment(HostStore.self) private var hostStore: HostStore?
@@ -396,6 +398,17 @@ struct OverlayNetworkDetailView: View {
                 try? await Task.sleep(for: .seconds(2))
             }
         }
+        .task(id: signInRequestID) {
+            guard let requestID = signInRequestID else { return }
+            defer {
+                if signInRequestID == requestID { signInRequestID = nil }
+            }
+            if let url = await store.signIn(networkID), !Task.isCancelled,
+                signInRequestID == requestID
+            {
+                openURL(url)
+            }
+        }
         .sheet(item: $addHostRequest, onDismiss: {
             // As in Hosts, wait for the form to close before onboarding can
             // present its first-connection trust alert (#359, #426).
@@ -414,7 +427,10 @@ struct OverlayNetworkDetailView: View {
     private func content(_ network: OverlayNetwork) -> some View {
         let status = store.statuses[networkID] ?? .stopped
         let failure = store.connectFailures[networkID]
-        let isConnecting = store.connecting.contains(networkID)
+        let isStartingSignIn = signInRequestID != nil
+        let action: OverlayNetworkPrimaryAction =
+            isStartingSignIn ? .connecting : store.primaryAction(for: network)
+        let isConnecting = action == .connecting
         let details = store.details[networkID] ?? OverlayNodeDetails()
         return List {
             Section {
@@ -445,42 +461,51 @@ struct OverlayNetworkDetailView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                if let loginURL = loginURL(network, status: status, failure: failure) {
-                    Link(destination: loginURL) {
-                        Label("Sign In", systemImage: "person.badge.key")
-                    }
-                }
-                if case .online = status, !isConnecting {
+                switch action {
+                case .disconnect:
                     Button {
                         Task { await store.disconnect(networkID) }
                     } label: {
                         Label("Disconnect", systemImage: "bolt.horizontal.circle")
                     }
-                } else if isConnecting {
+                case .connecting:
                     HStack {
                         ProgressView()
-                        Text("Connecting…")
+                        Text(isStartingSignIn ? "Preparing Sign-In…" : "Connecting…")
                     }
                     .accessibilityElement(children: .combine)
                     Button(role: .cancel) {
                         store.cancelConnect(networkID)
+                        signInRequestID = nil
                     } label: {
                         Label("Cancel", systemImage: "xmark.circle")
                     }
                     .accessibilityLabel("Cancel connecting")
-                } else {
+                case .signIn:
+                    Button {
+                        signInRequestID = UUID()
+                    } label: {
+                        Label("Sign In", systemImage: "person.badge.key")
+                    }
+                    .disabled(store.signingOut.contains(networkID))
+                case .connect:
                     Button {
                         Task { await store.connect(networkID) }
                     } label: {
                         Label("Connect", systemImage: "bolt.horizontal")
                     }
+                    .disabled(store.signingOut.contains(networkID))
                 }
             } header: {
                 Text("Status")
             } footer: {
                 Text(
-                    "Hosts on this network connect it automatically. Connect here to sign in "
-                        + "or check the network before adding a Host.")
+                    network.kind == .tailscale
+                        ? "Sign In opens your browser to authorize this device. Return to Heeler "
+                            + "after signing in; it connects automatically. Hosts on this network "
+                            + "reconnect it when needed."
+                        : "Hosts on this network connect it automatically. Connect here to check "
+                            + "the network before adding a Host.")
             }
 
             deviceSection(network, details: details, isOnline: status.isOnline)
@@ -528,7 +553,7 @@ struct OverlayNetworkDetailView: View {
                 } footer: {
                     Text(
                         "Logs this device out of the tailnet and forgets its login. Hosts stay "
-                            + "disconnected until you connect here again.")
+                            + "disconnected until you sign in here again.")
                 }
             }
 
@@ -569,8 +594,8 @@ struct OverlayNetworkDetailView: View {
         } message: {
             Text(
                 "This device is logged out of the tailnet and its login is deleted. Hosts "
-                    + "using this network disconnect and stay disconnected until you tap Connect "
-                    + "here, which signs in again — automatically if an auth key is saved.")
+                    + "using this network disconnect and stay disconnected until you tap Sign In "
+                    + "here, which signs in automatically if an auth key is saved.")
         }
         .confirmationDialog(
             "Reset the machine ID?",
@@ -788,15 +813,6 @@ struct OverlayNetworkDetailView: View {
         }
     }
 
-    /// Only links the network accepts (https, see `acceptsLoginURL`).
-    private func loginURL(
-        _ network: OverlayNetwork, status: OverlayNodeStatus, failure: TransportError?
-    ) -> URL? {
-        let candidate: URL? =
-            if case .needsLogin(let url) = status { url } else { failure?.overlayLoginURL }
-        return candidate.flatMap { network.acceptsLoginURL($0) ? $0 : nil }
-    }
-
     private func delete() {
         do {
             try store.remove(networkID)
@@ -940,7 +956,8 @@ struct OverlayNetworkFormView: View {
                 Text("Tailscale")
             } footer: {
                 Text(
-                    "Without an auth key, Connect shows a sign-in link. Leave the coordination "
+                    "Without an auth key, tap Sign In after saving to authorize this device in "
+                        + "your browser. Leave the coordination "
                         + "server blank for Tailscale, or enter a Headscale https URL.")
             }
         case .zerotier:

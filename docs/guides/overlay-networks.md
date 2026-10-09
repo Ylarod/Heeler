@@ -24,7 +24,7 @@ Open **Settings > Overlay Networks > Add Network**, then choose the provider and
 | Tailscale | ZeroTier |
 | --- | --- |
 | [![Tailscale Add Network form with device name, coordination server, and auth key fields](images/overlay-networks/tailscale-form.png)](images/overlay-networks/tailscale-form.png) | [![ZeroTier Add Network form with network ID and this device's node ID](images/overlay-networks/zerotier-form.png)](images/overlay-networks/zerotier-form.png) |
-| **Browser sign-in:** leave Coordination server and Auth key blank, then Save and Connect. [Follow the Tailscale setup](tailscale.md#3-join-the-same-tailnet-from-heeler). | **Private network:** enter your network ID, then authorize your own **This device** node ID in Central. [Follow the ZeroTier setup](zerotier.md#3-heeler-and-central-join-and-authorize-the-app). |
+| **Browser sign-in:** leave Coordination server and Auth key blank, then Save and Sign In. [Follow the Tailscale setup](tailscale.md#3-join-the-same-tailnet-from-heeler). | **Private network:** enter your network ID, then authorize your own **This device** node ID in Central. [Follow the ZeroTier setup](zerotier.md#3-heeler-and-central-join-and-authorize-the-app). |
 
 | EasyTier Manual | EasyTier Config Server |
 | --- | --- |
@@ -60,7 +60,7 @@ An existing key enrolled through QR pairing can be reused. You can copy a public
 
 ## Connect from Heeler
 
-First complete the chosen provider's tutorial until the Mac and Heeler have joined the same network and have usable addresses. A saved network alone is not enough: open it and use **Connect** to complete sign-in, authorization, or configuration assignment.
+First complete the chosen provider's tutorial until the Mac and Heeler have joined the same network and have usable addresses. A saved network alone is not enough: open it and use **Sign In** for Tailscale browser authorization, or **Connect** when using an auth key or another provider. Return to Heeler after browser authorization; it connects automatically.
 
 1. Open **Hosts > Add Host**, or edit an existing Host. Tailscale and EasyTier also offer **Add Host…** on eligible peers in the network detail screen.
 2. Scroll to **Network** and select the saved Overlay Network. **Direct** uses the phone's normal network connection, including any separately installed system VPN; it does not select Heeler's built-in overlay node.
@@ -103,7 +103,7 @@ Opening an Agent's live terminal can take over its existing attachment. Use a di
 | Observation | Next step |
 | --- | --- |
 | No **Overlay Networks** settings | Confirm the installed Heeler build includes this feature |
-| **Needs sign-in** | Open the network's **Sign In** link, finish enrollment, return to Heeler, and check required device approval |
+| **Needs sign-in** | Tap the network's **Sign In** button, finish enrollment, return to Heeler, and check required device approval |
 | **Waiting** | For ZeroTier, authorize the exact node ID; for EasyTier Config Server, assign and start a network for the exact Machine ID |
 | Connected network, SSH timeout | Confirm the selected Network, destination IP/port, awake Host, SSH listener, and provider rules; see the provider-specific troubleshooting table |
 | SSH authentication error | Check the local account, allowed Remote Login users, and authorized public key or password |
@@ -126,6 +126,6 @@ These tutorials were prepared on **2026-10-09** against the local PR #426 implem
 
 ## Screenshots and maintenance
 
-The provider tutorials include unedited screenshots of the actual Heeler forms, captured from the `eb52bf0c` local build on an iPhone 17 Pro Simulator running iOS 26.5, in light appearance at default text size. Fields are intentionally unconfigured. The pictured ZeroTier node ID and EasyTier Machine ID belong to the isolated tutorial device; use your own IDs. No production account, auth key, network secret, or configured network appears in the images.
+The provider tutorials include unedited screenshots of the actual Heeler forms, captured on an iPhone 17 Pro Simulator running iOS 26.5, in light appearance at default text size. The Tailscale form was refreshed on **2026-10-09** for the single-button Sign In flow; the other forms come from build `eb52bf0c`. Names are examples, and credentials are left blank. The pictured ZeroTier node ID and EasyTier Machine ID belong to the isolated tutorial device; use your own IDs. No production account, auth key, or network secret appears in the images.
 
 Text tables describe every required field so the procedures remain usable without images. When labels or behavior change, update the relevant tutorial and its screenshot together. Consult [the overlay architecture](../adr/0021-in-process-overlay-networks.md) and [the source map](../agents/navigation.md) for implementation work. Official sources are linked beside each provider's instructions.

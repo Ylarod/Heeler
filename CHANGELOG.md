@@ -47,6 +47,7 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Start Tailscale browser authorization with one Sign In button, reconnect automatically after returning from the browser, and show Connect only for a saved login or auth key. (#426)
 - Show Connected and remove the sign-in prompt when Tailscale browser authorization completes, without requiring another Connect. (#426)
 - Open a Host's connection checks after adding it from an overlay network's peer list, so its SSH host key can be trusted on the first connection. (#426)
 

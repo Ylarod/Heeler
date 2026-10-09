@@ -163,14 +163,16 @@ final class HeelerAppModel {
         // background and rendering nothing, and a consumer that only compares
         // the value it last saw misses both that edge and the resume behind
         // it (#142). The stream has one consumer for the life of the process.
-        // Overlay nodes stop with the connections they carried; the first
-        // dial after reactivation brings them back up.
-        let overlayRuntime = overlayNetworks.runtime
+        // Overlay nodes stop with the connections they carried. After the
+        // Console resumes, pending browser sign-ins also resume, even when
+        // no Host has been added to bring their nodes back up with a dial.
+        let overlayNetworks = overlayNetworks
         Task {
             await ConsoleActivityDriver(
                 activity: activity,
                 console: console,
-                afterSuspend: { await overlayRuntime.suspend() }
+                afterSuspend: { await overlayNetworks.suspend() },
+                afterResume: { await overlayNetworks.resumeBrowserSignInAfterActivation() }
             ).run()
         }
         Task { await pushRegistration.refresh() }
