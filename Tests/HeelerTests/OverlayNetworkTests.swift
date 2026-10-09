@@ -2162,6 +2162,19 @@ struct OverlayNetworkPlanetAndDetailsTests {
         #expect(store.details[tailnet.id] == OverlayNodeDetails())
     }
 
+    @Test func theStatusLineCountsPeersButNotZeroTierRoots() {
+        let online = OverlayPeer(id: "a", name: "mac", addresses: ["100.64.0.1"], isOnline: true)
+        let offline = OverlayPeer(id: "b", name: "pi", addresses: ["100.64.0.2"], isOnline: false)
+        let root = OverlayPeer(id: "c", isOnline: true, role: "planet")
+        let unknown = OverlayPeer(id: "d", name: "lab", addresses: ["10.0.0.4"], isOnline: nil)
+
+        #expect(
+            OverlayStatusCopy.peerCount([online, offline], kind: .tailscale) == "1 of 2 peers online")
+        #expect(OverlayStatusCopy.peerCount([online, root], kind: .zerotier) == "1 of 1 peer online")
+        #expect(OverlayStatusCopy.peerCount([root], kind: .zerotier) == "No peers yet")
+        #expect(OverlayStatusCopy.peerCount([online, unknown], kind: .easytier) == "2 peers")
+    }
+
     @Test func aTailscaleNetworkWithoutALoginReadsAsNeedingTheUser() throws {
         #expect(OverlayStatusCopy.summary(.stopped, failure: nil) == "Not connected")
         #expect(OverlayStatusCopy.tone(.stopped, failure: nil) == .idle)

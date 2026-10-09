@@ -177,6 +177,15 @@ extension OverlayNodeStatus {
 /// How a network's status reads at a glance: the dot beside it.
 enum OverlayStatusTone: Equatable {
     case idle, busy, ok, attention, failed
+
+    var color: Color {
+        switch self {
+        case .ok: .green
+        case .attention: .orange
+        case .failed: .red
+        case .idle, .busy: .secondary
+        }
+    }
 }
 
 /// The colored dot for an `OverlayStatusTone`; the text beside it says
@@ -187,17 +196,8 @@ struct OverlayStatusDot: View {
     var body: some View {
         Image(systemName: "circle.fill")
             .font(.system(size: 9))
-            .foregroundStyle(color)
+            .foregroundStyle(tone.color)
             .accessibilityHidden(true)
-    }
-
-    private var color: Color {
-        switch tone {
-        case .ok: .green
-        case .attention: .orange
-        case .failed: .red
-        case .idle, .busy: .secondary
-        }
     }
 }
 
@@ -225,25 +225,61 @@ enum OverlayStatusCopy {
         }
     }
 
-    /// What the network screen's one action does next, under the status;
-    /// nil where the button says enough.
-    static func actionHint(
-        _ action: OverlayNetworkPrimaryAction, kind: OverlayKind, isStartingSignIn: Bool
+    /// The status badge's symbol: what kind of state, where the tone
+    /// only says how urgent.
+    static func symbol(
+        _ status: OverlayNodeStatus?, failure: TransportError?, signedOut: Bool = false,
+        needsSignIn: Bool = false
+    ) -> String {
+        let signIn = "person.fill", waiting = "hourglass", failed = "exclamationmark"
+        if let failure {
+            guard case .overlayFailed(_, let reason) = failure else { return failed }
+            switch reason {
+            case .loginRequired, .signedOut: return signIn
+            case .notReady: return waiting
+            default: return failed
+            }
+        }
+        switch status ?? .stopped {
+        case .stopped: return signedOut || needsSignIn ? signIn : "pause.fill"
+        case .starting: return "ellipsis"
+        case .needsLogin: return signIn
+        case .waiting: return waiting
+        case .online: return "checkmark"
+        case .failed: return failed
+        }
+    }
+
+    /// The line under the network screen's status when no failure explains
+    /// it: what the one action does, or how the network is doing.
+    static func statusDetail(
+        _ action: OverlayNetworkPrimaryAction, kind: OverlayKind, isStartingSignIn: Bool,
+        peers: [OverlayPeer]?
     ) -> String? {
         switch action {
         case .signIn:
-            return "Sign In opens your browser. Come back to Heeler after signing in; it "
-                + "connects on its own."
+            return "Opens your browser to sign in."
         case .connect:
-            return kind == .tailscale
-                ? "Hosts on this network connect it when needed."
-                : "Hosts on this network connect it automatically. Connect here to check the "
-                    + "network before adding a Host."
+            return "Connects when a Host needs it."
         case .connecting:
-            return isStartingSignIn ? "Your browser opens when the sign-in page is ready." : nil
+            return isStartingSignIn ? "Your browser opens when it is ready." : nil
         case .disconnect:
-            return nil
+            return peers.flatMap { peerCount($0, kind: kind) }
         }
+    }
+
+    /// "2 of 9 peers online", or "9 peers" where the overlay does not say
+    /// who is online. ZeroTier roots are infrastructure, not peers.
+    static func peerCount(_ peers: [OverlayPeer], kind: OverlayKind) -> String? {
+        let members = kind == .zerotier
+            ? peers.filter { $0.role != "planet" && $0.role != "moon" } : peers
+        guard !members.isEmpty else { return "No peers yet" }
+        let noun = members.count == 1 ? "peer" : "peers"
+        guard members.allSatisfy({ $0.isOnline != nil }) else {
+            return "\(members.count) \(noun)"
+        }
+        let online = members.filter { $0.isOnline == true }.count
+        return "\(online) of \(members.count) \(noun) online"
     }
 
     /// A few words for the list row and the Status row; the network's name
@@ -398,35 +434,47 @@ struct OverlayCopyableRow: View {
     }
 }
 
-/// The first row of a network's screen: a status dot, the few-word
-/// summary with the reason under it, and the network's one action at the
-/// trailing edge (which also shows when it is busy).
+/// The first row of a network's screen: a tinted badge for the state, the
+/// few-word summary with one line under it, and the network's one action
+/// at the trailing edge (which also shows when it is busy).
 private struct OverlayStatusHeader<Action: View>: View {
     let summary: String
-    let explanation: String?
+    let detail: String?
+    let symbol: String
     let tone: OverlayStatusTone
     @ViewBuilder let action: Action
+    @ScaledMetric(relativeTo: .body) private var badgeSize = 36.0
 
     var body: some View {
         HStack(spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                OverlayStatusDot(tone: tone)
-                VStack(alignment: .leading, spacing: 2) {
+            Image(systemName: symbol)
+                .font(.system(size: badgeSize * 0.4, weight: .semibold))
+                .foregroundStyle(tone.color)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: badgeSize, height: badgeSize)
+                .background(tone.color.opacity(0.15), in: .circle)
+                .accessibilityHidden(true)
+            // The detail runs under the button too, so the button's width
+            // never squeezes it into a narrow column. The button already
+            // pads the title's line, so no extra spacing.
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
                     Text(summary)
-                        .font(.headline)
-                    if let explanation {
-                        Text(explanation)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                        .font(.body.weight(.semibold))
+                        .contentTransition(.opacity)
+                        .accessibilityLabel("Status: \(summary)")
+                    Spacer(minLength: 0)
+                    action
+                }
+                if let detail {
+                    Text(detail)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(
-                explanation.map { "Status: \(summary). \($0)" } ?? "Status: \(summary)")
-            Spacer(minLength: 0)
-            action
         }
+        .padding(.vertical, 4)
     }
 }
 
@@ -438,6 +486,26 @@ private struct OverlayStatusActionStyle: ViewModifier {
             .buttonBorderShape(.capsule)
             .controlSize(.small)
             .fixedSize()
+    }
+}
+
+/// The status button's label, wide enough for every state's title so the
+/// button keeps its size as Connect turns into Cancel and Disconnect.
+private struct OverlayStatusActionLabel: View {
+    let title: String
+    var isBusy = false
+    @ScaledMetric(relativeTo: .subheadline) private var minWidth = 84.0
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if isBusy {
+                ProgressView()
+                    .controlSize(.small)
+            }
+            Text(title)
+        }
+        .font(.subheadline.weight(.semibold))
+        .frame(minWidth: minWidth)
     }
 }
 
@@ -616,8 +684,16 @@ struct OverlayNetworkDetailView: View {
                         : OverlayStatusCopy.summary(
                             status, failure: failure, signedOut: signedOut,
                             needsSignIn: needsSignIn),
-                    explanation: isConnecting
-                        ? nil : OverlayStatusCopy.explanation(status, failure: failure),
+                    detail: (isConnecting
+                        ? nil : OverlayStatusCopy.explanation(status, failure: failure))
+                        ?? OverlayStatusCopy.statusDetail(
+                            action, kind: network.kind, isStartingSignIn: isStartingSignIn,
+                            peers: details.peers),
+                    symbol: isConnecting
+                        ? "ellipsis"
+                        : OverlayStatusCopy.symbol(
+                            status, failure: failure, signedOut: signedOut,
+                            needsSignIn: needsSignIn),
                     tone: isConnecting
                         ? .busy
                         : OverlayStatusCopy.tone(
@@ -645,13 +721,8 @@ struct OverlayNetworkDetailView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-            } footer: {
-                if let hint = OverlayStatusCopy.actionHint(
-                    action, kind: network.kind, isStartingSignIn: isStartingSignIn)
-                {
-                    Text(hint)
-                }
             }
+            .animation(.snappy, value: action)
 
             deviceSection(network, details: details, isOnline: status.isOnline)
 
@@ -771,8 +842,10 @@ struct OverlayNetworkDetailView: View {
     ) -> some View {
         switch action {
         case .disconnect:
-            Button("Disconnect") {
+            Button {
                 Task { await store.disconnect(networkID) }
+            } label: {
+                OverlayStatusActionLabel(title: "Disconnect")
             }
             .buttonStyle(.bordered)
             .modifier(OverlayStatusActionStyle())
@@ -781,23 +854,23 @@ struct OverlayNetworkDetailView: View {
                 store.cancelConnect(networkID)
                 cancelSignIn()
             } label: {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Cancel")
-                }
+                OverlayStatusActionLabel(title: "Cancel", isBusy: true)
             }
             .buttonStyle(.bordered)
             .modifier(OverlayStatusActionStyle())
             .accessibilityLabel(isStartingSignIn ? "Cancel sign-in" : "Cancel connecting")
         case .signIn:
-            Button("Sign In", action: startSignIn)
-                .buttonStyle(.borderedProminent)
-                .modifier(OverlayStatusActionStyle())
-                .disabled(isSigningOut)
+            Button(action: startSignIn) {
+                OverlayStatusActionLabel(title: "Sign In")
+            }
+            .buttonStyle(.borderedProminent)
+            .modifier(OverlayStatusActionStyle())
+            .disabled(isSigningOut)
         case .connect:
-            Button("Connect") {
+            Button {
                 Task { await store.connect(networkID) }
+            } label: {
+                OverlayStatusActionLabel(title: "Connect")
             }
             .buttonStyle(.bordered)
             .modifier(OverlayStatusActionStyle())
