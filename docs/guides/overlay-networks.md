@@ -60,9 +60,9 @@ An existing key enrolled through QR pairing can be reused. You can copy a public
 
 ## Connect from Heeler
 
-First complete the chosen provider's tutorial until the Mac and Heeler have joined the same network and have usable addresses. A saved network alone is not enough. Saving opens the network: a Tailscale network starts browser sign-in (or connects with its auth key) at once; for another provider, tap **Connect**. Return to Heeler after browser authorization; it connects automatically.
+First complete the chosen provider's tutorial until the Mac and Heeler have joined the same network and have usable addresses. A saved network alone is not enough. Adding a network opens it: a Tailscale network starts browser sign-in (or connects with its auth key) at once; for another provider, turn on its switch. Return to Heeler after browser authorization; it connects automatically.
 
-1. Open **Hosts > Add Host**, or edit an existing Host. For Tailscale and EasyTier you can instead tap an eligible peer in the network detail screen; it opens the Host form with the peer's address filled in.
+1. Open **Hosts > Add Host**, or edit an existing Host. For Tailscale and EasyTier you can instead tap **Add** beside a machine on the network's screen; it opens the Host form with the machine's address filled in.
 2. Under **Network**, at the top of the form once you have an Overlay Network, select the saved network. **Direct** uses the phone's normal network connection, including any separately installed system VPN; it does not select Heeler's built-in overlay node.
 3. Fill in the Host fields using the table below. Save the Host to begin onboarding.
 4. Compare the displayed SSH fingerprint with the trusted value obtained on the Mac. Trust it only when it matches, then let the connection checks finish. If a check fails, follow its details and use **Run Checks Again** after correcting the cause.
@@ -103,12 +103,12 @@ Opening an Agent's live terminal can take over its existing attachment. Use a di
 | Observation | Next step |
 | --- | --- |
 | No **Overlay Networks** settings | Confirm the installed Heeler build includes this feature |
-| **Needs sign-in** | Tap the network's **Sign In** button, finish enrollment, return to Heeler, and check required device approval |
+| **Not signed in** | Tap the network's **Sign In** button, finish enrollment, return to Heeler, and check required device approval |
 | **Waiting** | For ZeroTier, authorize the exact node ID; for EasyTier Config Server, assign and start a network for the exact Machine ID |
 | Connected network, SSH timeout | Confirm the selected Network, destination IP/port, awake Host, SSH listener, and provider rules; see the provider-specific troubleshooting table |
 | SSH authentication error | Check the local account, allowed Remote Login users, and authorized public key or password |
 | SSH passes, herdr fails | Inspect the failing onboarding check for herdr executable/PATH, session, protocol version, or SSH stream-local forwarding |
-| Returns immediately after **Disconnect** | A Host can request another connection. To retire the network, first move its Hosts to another working route or remove the affected Host entries, then delete the network |
+| Reconnects right after you turn its switch off | A Host can request another connection. To retire the network, first move its Hosts to another working route or remove the affected Host entries, then delete the network |
 
 ## Agent handoff and evidence
 

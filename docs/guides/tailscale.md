@@ -28,19 +28,19 @@ In Heeler, open **Settings → Overlay Networks**, add a network, and choose **T
 | Coordination server | Leave blank for Tailscale |
 | Auth key | Leave blank for browser sign-in |
 
-![Heeler Add Network form with Tailscale selected, a Device name field, and an Optional section holding Coordination server and Auth key](images/overlay-networks/tailscale-form.png)
+![Heeler Add Network form with Tailscale selected, a Device name field, and an Advanced row holding Coordination server and Auth key](images/overlay-networks/tailscale-form.png)
 
-**In this screen:** enter a recognizable Device name and leave the Optional section blank for the browser sign-in route. Tap **Save**; Heeler opens the new network and starts **Sign In** on its own. [Open the full-size screenshot](images/overlay-networks/tailscale-form.png). [Capture details](overlay-networks.md#screenshots-and-maintenance).
+**In this screen:** enter a recognizable Device name and leave **Advanced** blank for the browser sign-in route. Tap **Continue to Sign In**; Heeler opens the new network and starts browser sign-in on its own. [Open the full-size screenshot](images/overlay-networks/tailscale-form.png). [Capture details](overlay-networks.md#screenshots-and-maintenance).
 
-The browser opens when the sign-in page is ready. Authenticate to the same tailnet as the Mac, then return to Heeler. It connects automatically, including after a longer stay in the browser. Approve the new Heeler device in the admin console if required. If you leave the browser without signing in, the network shows **Needs sign-in**; tap **Sign In** to try again. The network's screen always shows its status first, with the one action it needs: **Sign In**, **Connect** (signed in but idle; Hosts also connect it when needed), or **Disconnect**. Heeler is a separate device from any Tailscale iOS app installed on the phone, with its own identity and address.
+The browser opens when the sign-in page is ready. Authenticate to the same tailnet as the Mac, then return to Heeler. It connects automatically, including after a longer stay in the browser. Approve the new Heeler device in the admin console if required. If the admin console requires approval, the network shows **Waiting for approval** and joins once the device is approved. If you leave the browser without signing in, the network shows **Sign in to Tailscale**; tap **Sign In with Browser** to try again. Once signed in, the network's switch connects or disconnects it, and Hosts also connect it when needed; while it connects, **Cancel** stops waiting. Heeler is a separate device from any Tailscale iOS app installed on the phone, with its own identity and address.
 
-You can supply a Tailscale auth key instead of using browser sign-in. Obtain it from your tailnet administrator and enter it only in the Auth key field. Heeler stores it in the Keychain and connects with the key right after you save. If your organization uses Headscale, enter its HTTPS coordination-server URL and follow that server's enrollment process on both devices.
+You can supply a Tailscale auth key instead of using browser sign-in. Obtain it from your tailnet administrator and enter it only in the Auth key field under **Advanced**. Heeler stores it in the Keychain and connects with the key when you tap **Add and Connect**. If your organization uses Headscale, enter its HTTPS coordination-server URL and follow that server's enrollment process on both devices.
 
-Wait for the network to report **Connected**. Its detail screen shows this device's addresses and the peers visible to it. Being signed in alone does not grant SSH access: the tailnet's grants or ACLs must allow Heeler's device to reach the Mac's TCP port 22.
+Wait for the network to report **Connected**. Its screen shows this device's address and the other machines visible to it. Being signed in alone does not grant SSH access: the tailnet's grants or ACLs must allow Heeler's device to reach the Mac's TCP port 22.
 
 ## 4. Add the Mac as a Host
 
-Follow [Connect from Heeler](overlay-networks.md#connect-from-heeler). In the Host form, select your new network under **Network** at the top, then use **Choose from Tailnet…** to select the Mac. Use **IP Address** for the first connection; **Machine Name** is also available. You can also tap the Mac in the network screen's **Peers** list to open a Host form with its address filled in.
+Follow [Connect from Heeler](overlay-networks.md#connect-from-heeler). In the Host form, select your new network under **Network** at the top, then use **Choose from Tailnet…** to select the Mac. Use **IP Address** for the first connection; **Machine Name** is also available. You can also tap **Add** beside the Mac in the network screen's machine list to open a Host form with its address filled in.
 
 Set Port to `22`, User to the Mac's local SSH account, and choose the authentication method prepared in step 1. Leave Jump Host blank for this setup. Save, verify the SSH host-key fingerprint against the Mac, and complete the connection checks.
 
@@ -54,7 +54,7 @@ Complete [Verify the connection](overlay-networks.md#verify-the-connection), inc
 | SSH times out | The Mac is awake, Tailscale is connected, and policy permits TCP 22 from Heeler's device. |
 | SSH authentication fails | Use the Mac's local account and its authorized SSH key or password. Tailscale sign-in does not replace SSH authentication. |
 | SSH connects but herdr checks fail | Return to the Host preparation and verification steps to check herdr installation, PATH, and session selection. |
-| Heeler reports Signed out | Open the Overlay Network and tap Sign In to sign in again. |
+| Heeler reports Signed out | Open the Overlay Network and tap Sign In with Browser to sign in again. |
 
 Heeler's **Sign Out** targets its own node; it does not sign the Mac out. The current PR build has a source-confirmed race between sign-out and an active Host's automatic reconnect, so sign-out alone is not a reliable access-revocation step in that case. To revoke access, remove the intended Heeler device in the tailnet admin console and retire its saved auth key if applicable; preserve other devices and keys. Heeler stops overlay nodes when the app suspends after its Background Grace Period and rebuilds them when needed on return. Notifications use the Push Relay independently of this live SSH connection.
 

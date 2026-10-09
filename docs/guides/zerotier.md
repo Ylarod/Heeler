@@ -64,8 +64,8 @@ Open **Settings > Overlay Networks > Add Network > Type > ZeroTier** to reach th
 1. In Heeler, open **Settings > Overlay Networks > Add Network**.
 2. Give the entry a recognizable **Name**, choose **Type > ZeroTier**, and paste `ZT_NETWORK_ID` into **Network ID**. Keep **Moons** empty and **Planet** set to **ZeroTier default**.
 3. Copy **This device**, the generated Heeler node ID. If generation is still pending, save the entry and find **This Device > Node ID** on its detail screen after the first connection attempt.
-4. Save, open the network, and tap **Connect**. A message asking for authorization is expected for a new private-network member.
-5. In Central, refresh the network's members and authorize the row matching the Heeler node ID. Authorizing the Mac alone does not authorize Heeler. Return to the network details in Heeler and allow its status to refresh; tap **Connect** again if a prior attempt has ended and it is not connected.
+4. Add the network, then turn on its switch. A message asking for authorization is expected for a new private-network member.
+5. In Central, refresh the network's members and authorize the row matching the Heeler node ID. Authorizing the Mac alone does not authorize Heeler. Return to the network details in Heeler and allow its status to refresh; turn its switch on again if a prior attempt has ended and it is not connected.
 
 Heeler shares one ZeroTier identity across its configured ZeroTier networks and keeps the private identity in the Keychain. That identity belongs to Heeler, independently of any other ZeroTier app installed on the same device. Keep both private identities on their own devices; Central needs only the public node IDs.
 
@@ -116,7 +116,7 @@ The existing Heeler live check used a controller-less IPv6 ad-hoc network to ver
 
 ## Stop using the network
 
-Selecting **Disconnect** ends the current network connection and retains its configuration and identity. An active Host can request a connection again. To retire the network, first move its Hosts to another working route or remove those Host entries, then delete the network entry.
+Turning off the network's switch ends the current network connection and retains its configuration and identity. An active Host can request a connection again. To retire the network, first move its Hosts to another working route or remove those Host entries, then delete the network entry.
 
 On the Mac, leave only the network you intend to remove:
 

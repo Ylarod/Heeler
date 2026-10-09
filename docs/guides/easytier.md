@@ -98,7 +98,7 @@ Open **Settings > Overlay Networks > Add Network**, select **EasyTier**, and fil
 
 **In this screen:** select **Manual**, enter the Mac's network name and secret, then set Fixed IPv4 and Peers from the table above. Save before opening the network and selecting Connect. [Open the full-size screenshot](images/overlay-networks/easytier-manual-form.png). [Capture details](overlay-networks.md#screenshots-and-maintenance).
 
-Save, open the network, and select **Connect**. Look for the Mac peer with virtual address `10.144.144.2`. A blank Fixed IPv4 requests DHCP; this example uses distinct fixed addresses to make verification predictable. Include the network prefix and avoid `/32`, which EasyTier treats as part of a `/24`. Heeler's Manual **Peers** field accepts `tcp://` and `udp://` endpoints; a peer's virtual address is not the bootstrap endpoint unless some existing route already makes it reachable. The Config Server field below has a separate set of accepted schemes.
+Add the network, then turn on its switch. Look for the Mac peer with virtual address `10.144.144.2`. A blank Fixed IPv4 requests DHCP; this example uses distinct fixed addresses to make verification predictable. Include the network prefix and avoid `/32`, which EasyTier treats as part of a `/24`. Heeler's Manual **Peers** field accepts `tcp://` and `udp://` endpoints; a peer's virtual address is not the bootstrap endpoint unless some existing route already makes it reachable. The Config Server field below has a separate set of accepted schemes.
 
 ### 4. Add and verify the SSH Host
 
@@ -204,7 +204,7 @@ An already assigned network can remain usable during a configuration-server outa
 
 ## Stop or remove this setup
 
-Choose **Disconnect** to end the current network connection and keep its saved configuration. A Host can request another connection and start the network again. When retiring it, move its Hosts to another working route or remove those Host entries before deleting the network entry.
+Turn off the network's switch to end the current network connection and keep its saved configuration. A Host can request another connection and start the network again. When retiring it, move its Hosts to another working route or remove those Host entries before deleting the network entry.
 
 For these foreground Mac commands, press **Control-C** in the peer terminal and, if used, the web-console terminal. Run `unset ET_NETWORK_SECRET` in the peer's shell afterward. No boot service was installed by this guide. Retain the console database if you intend to keep its accounts and device assignments; removing it loses that state. Remove only the specific firewall/router rules and temporary SSH authorization that you added for this setup.
 
