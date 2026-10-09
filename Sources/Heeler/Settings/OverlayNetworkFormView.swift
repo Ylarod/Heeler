@@ -16,6 +16,8 @@ struct OverlayNetworkFormView: View {
     var onAdded: ((OverlayNetwork.ID) -> Void)?
     @State private var draft: OverlayNetworkDraft
     @State private var saveError: String?
+    @State private var isConfirmingNodeIDForget = false
+    @State private var nodeIDForgetError: String?
     @Environment(\.dismiss) private var dismiss
 
     init(
@@ -161,20 +163,11 @@ struct OverlayNetworkFormView: View {
                 }
             }
         case .zerotier:
-            Section {
-                if let nodeID = store.zeroTierNodeID {
-                    OverlayCopyableRow(title: "Node ID", value: nodeID)
-                } else {
-                    LabeledContent("Node ID", value: "Created on first connect")
-                }
-            } header: {
-                Text("This Device")
-            } footer: {
-                Text(
-                    "Authorize it on the network so this device can join. Every ZeroTier network "
-                        + "on this device shares it.")
+            // No node ID is made just for looking at the form: the first
+            // connect creates it, and the network's screen shows it.
+            if let nodeID = store.zeroTierNodeID {
+                zeroTierNodeIDSection(nodeID)
             }
-            .task { await store.prepareZeroTierIdentity() }
             Section {
                 NavigationLink {
                     ZeroTierAdvancedForm(draft: $draft)
@@ -185,6 +178,10 @@ struct OverlayNetworkFormView: View {
                 if !draft.invalidMoons.isEmpty {
                     Text("A moon is not valid. Fix it in Advanced.")
                         .foregroundStyle(.red)
+                } else if store.zeroTierNodeID == nil {
+                    Text(
+                        "Heeler creates this device's node ID when it connects. The network's "
+                            + "screen then shows it, ready to authorize.")
                 }
             }
         case .easytier:
@@ -193,6 +190,64 @@ struct OverlayNetworkFormView: View {
             } else {
                 easyTierNetworkSections
             }
+        }
+    }
+
+    /// The node ID this device already has, from an earlier ZeroTier
+    /// network. Touch and hold forgets it while no network uses it.
+    private func zeroTierNodeIDSection(_ nodeID: String) -> some View {
+        Section {
+            OverlayCopyableRow(title: "Node ID", value: nodeID)
+                .contextMenu {
+                    // Text, Text, Image: the menu shows the value as a subtitle.
+                    Button {
+                        UIPasteboard.general.string = nodeID
+                    } label: {
+                        Text("Copy Node ID")
+                        Text(nodeID)
+                        Image(systemName: "doc.on.doc")
+                    }
+                    if store.hasUnusedZeroTierIdentity {
+                        Button(role: .destructive) {
+                            isConfirmingNodeIDForget = true
+                        } label: {
+                            Label("Forget Node ID…", systemImage: "trash")
+                        }
+                    }
+                }
+        } header: {
+            Text("This Device")
+        } footer: {
+            Text(
+                "Authorize it on the network so this device can join. Every ZeroTier network on "
+                    + "this device shares it.")
+        }
+        .confirmationDialog(
+            "Forget node ID \(nodeID)?", isPresented: $isConfirmingNodeIDForget,
+            titleVisibility: .visible
+        ) {
+            Button("Forget Node ID", role: .destructive) {
+                do {
+                    try store.removeUnusedZeroTierIdentity()
+                } catch {
+                    nodeIDForgetError = "The node ID could not be removed from the Keychain."
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "This device gets a new one when it next connects a ZeroTier network. An admin "
+                    + "who authorized this one has to authorize the new one.")
+        }
+        .alert(
+            "Could not forget the node ID",
+            isPresented: Binding(
+                get: { nodeIDForgetError != nil },
+                set: { if !$0 { nodeIDForgetError = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(nodeIDForgetError ?? "")
         }
     }
 

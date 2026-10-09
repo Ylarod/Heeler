@@ -58,7 +58,6 @@ struct OverlayNetworksSettingsView: View {
                             + "stays connected only while Heeler is open.")
                 }
             }
-            ZeroTierUnusedIdentitySection(store: store)
         }
         .navigationTitle("Overlay Networks")
         .toolbar {
@@ -447,48 +446,6 @@ extension OverlayNodeStatus {
         switch self {
         case .starting, .needsLogin, .waiting, .online: true
         case .stopped, .failed: false
-        }
-    }
-}
-
-/// Settings › Overlay Networks › ZeroTier: a node ID generated for a
-/// network that was never added (or whose networks were deleted). It may
-/// already be authorized somewhere, so it stays until the user forgets it.
-/// Custom planets are per network, in each ZeroTier network's form.
-private struct ZeroTierUnusedIdentitySection: View {
-    let store: OverlayNetworkStore
-    @State private var errorMessage: String?
-
-    var body: some View {
-        if store.hasUnusedZeroTierIdentity, let nodeID = store.zeroTierNodeID {
-            Section {
-                OverlayCopyableRow(title: "Node ID", value: nodeID)
-                Button(role: .destructive) {
-                    do {
-                        try store.removeUnusedZeroTierIdentity()
-                    } catch {
-                        errorMessage = "The node ID could not be removed from the Keychain."
-                    }
-                } label: {
-                    Label("Forget Unused Node ID", systemImage: "trash")
-                }
-            } header: {
-                Text("ZeroTier")
-            } footer: {
-                Text(
-                    "The node ID was created for a network not added yet; it is kept in case "
-                        + "it was already authorized.")
-            }
-            .alert(
-                "Could not change ZeroTier settings",
-                isPresented: Binding(
-                    get: { errorMessage != nil },
-                    set: { if !$0 { errorMessage = nil } })
-            ) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(errorMessage ?? "")
-            }
         }
     }
 }

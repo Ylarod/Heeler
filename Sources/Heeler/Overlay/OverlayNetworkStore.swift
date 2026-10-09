@@ -601,9 +601,10 @@ final class OverlayNetworkStore {
         }
     }
 
-    /// An identity generated for an Add form that was cancelled, or kept
-    /// after its networks were deleted elsewhere: it may already be
-    /// authorized by an admin, so it is kept until the user removes it.
+    /// An identity no ZeroTier network uses, as an earlier build's Add form
+    /// made before any network was added (deleting the last network forgets
+    /// it): it may already be authorized by an admin, so it stays until the
+    /// user forgets it in the Add form.
     var hasUnusedZeroTierIdentity: Bool {
         zeroTierIdentityNodeID != nil && !networks.contains { $0.kind == .zerotier }
     }
