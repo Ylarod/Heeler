@@ -12,6 +12,9 @@ struct OverlayNetworksSettingsView: View {
     let onHostAdded: (Host.ID) -> Void
     @State private var isAdding = false
     @State private var deleteError: String?
+    /// A network just added, opened once its form has closed.
+    @State private var addedNetworkID: OverlayNetwork.ID?
+    @State private var openedNetworkID: OverlayNetwork.ID?
 
     var body: some View {
         List {
@@ -31,7 +34,8 @@ struct OverlayNetworksSettingsView: View {
                             network: network,
                             status: store.statuses[network.id],
                             failure: store.connectFailures[network.id],
-                            signedOut: store.signedOut.contains(network.id))
+                            signedOut: store.signedOut.contains(network.id),
+                            needsSignIn: store.needsSignIn(network))
                     }
                 }
                 .onDelete { offsets in
@@ -72,8 +76,19 @@ struct OverlayNetworksSettingsView: View {
         } message: {
             Text(deleteError ?? "")
         }
-        .sheet(isPresented: $isAdding) {
-            OverlayNetworkFormView(store: store)
+        .sheet(isPresented: $isAdding, onDismiss: {
+            // Push only after the sheet has gone, or the push is dropped.
+            guard let id = addedNetworkID else { return }
+            addedNetworkID = nil
+            openedNetworkID = id
+        }) {
+            OverlayNetworkFormView(store: store) { addedNetworkID = $0 }
+        }
+        .navigationDestination(item: $openedNetworkID) { id in
+            // A network just added starts at once: Tailscale goes straight
+            // to sign-in instead of waiting for another tap here.
+            OverlayNetworkDetailView(
+                store: store, networkID: id, onHostAdded: onHostAdded, startsOnAppear: true)
         }
         .task {
             // Node status changes on its own (sign-in completes, peers come
@@ -91,14 +106,21 @@ private struct OverlayNetworkRow: View {
     let status: OverlayNodeStatus?
     let failure: TransportError?
     let signedOut: Bool
+    let needsSignIn: Bool
 
     var body: some View {
-        let summary = OverlayStatusCopy.summary(status, failure: failure, signedOut: signedOut)
-        VStack(alignment: .leading, spacing: 2) {
-            Text(network.displayName)
-            Text("\(network.kind.displayName) · \(summary)")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+        let summary = OverlayStatusCopy.summary(
+            status, failure: failure, signedOut: signedOut, needsSignIn: needsSignIn)
+        HStack(spacing: 10) {
+            OverlayStatusDot(
+                tone: OverlayStatusCopy.tone(
+                    status, failure: failure, signedOut: signedOut, needsSignIn: needsSignIn))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(network.displayName)
+                Text("\(network.kind.displayName) · \(summary)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
         .accessibilityElement(children: .combine)
     }
@@ -152,12 +174,85 @@ extension OverlayNodeStatus {
     }
 }
 
+/// How a network's status reads at a glance: the dot beside it.
+enum OverlayStatusTone: Equatable {
+    case idle, busy, ok, attention, failed
+}
+
+/// The colored dot for an `OverlayStatusTone`; the text beside it says
+/// the same, so it is hidden from VoiceOver.
+struct OverlayStatusDot: View {
+    let tone: OverlayStatusTone
+
+    var body: some View {
+        Image(systemName: "circle.fill")
+            .font(.system(size: 9))
+            .foregroundStyle(color)
+            .accessibilityHidden(true)
+    }
+
+    private var color: Color {
+        switch tone {
+        case .ok: .green
+        case .attention: .orange
+        case .failed: .red
+        case .idle, .busy: .secondary
+        }
+    }
+}
+
 /// One status vocabulary for the list row and the detail screen.
 enum OverlayStatusCopy {
+    /// The tone of `summary`: whether the network is up, needs the user
+    /// (sign-in, approval), or failed.
+    static func tone(
+        _ status: OverlayNodeStatus?, failure: TransportError?, signedOut: Bool = false,
+        needsSignIn: Bool = false
+    ) -> OverlayStatusTone {
+        if let failure {
+            guard case .overlayFailed(_, let reason) = failure else { return .failed }
+            switch reason {
+            case .loginRequired, .signedOut, .notReady: return .attention
+            default: return .failed
+            }
+        }
+        switch status ?? .stopped {
+        case .stopped: return signedOut || needsSignIn ? .attention : .idle
+        case .starting: return .busy
+        case .needsLogin, .waiting: return .attention
+        case .online: return .ok
+        case .failed: return .failed
+        }
+    }
+
+    /// What the network screen's one action does next, under the status;
+    /// nil where the button says enough.
+    static func actionHint(
+        _ action: OverlayNetworkPrimaryAction, kind: OverlayKind, isStartingSignIn: Bool
+    ) -> String? {
+        switch action {
+        case .signIn:
+            return "Sign In opens your browser. Come back to Heeler after signing in; it "
+                + "connects on its own."
+        case .connect:
+            return kind == .tailscale
+                ? "Hosts on this network connect it when needed."
+                : "Hosts on this network connect it automatically. Connect here to check the "
+                    + "network before adding a Host."
+        case .connecting:
+            return isStartingSignIn ? "Your browser opens when the sign-in page is ready." : nil
+        case .disconnect:
+            return nil
+        }
+    }
+
     /// A few words for the list row and the Status row; the network's name
     /// is already beside it. `explanation` carries the reason.
+    /// `needsSignIn`: a stopped Tailscale network has no login to start
+    /// with (`OverlayNetworkStore.primaryAction` is Sign In).
     static func summary(
-        _ status: OverlayNodeStatus?, failure: TransportError?, signedOut: Bool = false
+        _ status: OverlayNodeStatus?, failure: TransportError?, signedOut: Bool = false,
+        needsSignIn: Bool = false
     ) -> String {
         if let failure {
             guard case .overlayFailed(_, let reason) = failure else { return "Failed" }
@@ -174,7 +269,9 @@ enum OverlayStatusCopy {
             }
         }
         switch status ?? .stopped {
-        case .stopped: return signedOut ? "Signed out" : "Not connected"
+        case .stopped:
+            if signedOut { return "Signed out" }
+            return needsSignIn ? "Not signed in" : "Not connected"
         case .starting: return "Connecting…"
         case .needsLogin: return "Needs sign-in"
         case .waiting: return "Waiting"
@@ -301,6 +398,37 @@ struct OverlayCopyableRow: View {
     }
 }
 
+/// The first row of a network's screen: a status dot (or a spinner while
+/// busy), the few-word summary, and the reason under it.
+private struct OverlayStatusHeader: View {
+    let summary: String
+    let explanation: String?
+    let tone: OverlayStatusTone
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            if tone == .busy {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                OverlayStatusDot(tone: tone)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(summary)
+                    .font(.headline)
+                if let explanation {
+                    Text(explanation)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            explanation.map { "Status: \(summary). \($0)" } ?? "Status: \(summary)")
+    }
+}
+
 /// One peer of a network's node: name, addresses, reachability.
 private struct OverlayPeerRow: View {
     let peer: OverlayPeer
@@ -310,8 +438,45 @@ private struct OverlayPeerRow: View {
     var onAddHost: (() -> Void)?
 
     var body: some View {
+        Group {
+            if let onAddHost {
+                // Adding a Host is what a peer is for here, so the whole row
+                // does it; copying stays in the context menu.
+                Button(action: onAddHost) {
+                    HStack {
+                        details
+                        Spacer(minLength: 8)
+                        Image(systemName: "plus.circle")
+                            .foregroundStyle(Color.accentColor)
+                            .accessibilityHidden(true)
+                    }
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Adds this peer as a Host")
+            } else {
+                details
+            }
+        }
+        .contextMenu {
+            if let onAddHost {
+                Button(action: onAddHost) {
+                    Label("Add Host…", systemImage: "plus")
+                }
+            }
+            ForEach(showsPaths ? [] : peer.addresses, id: \.self) { address in
+                Button {
+                    UIPasteboard.general.string = address
+                } label: {
+                    Label("Copy \(address)", systemImage: "doc.on.doc")
+                }
+            }
+        }
+    }
+
+    private var details: some View {
         let summary = OverlayStatusCopy.peerSummary(peer)
-        VStack(alignment: .leading, spacing: 2) {
+        return VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 if let isOnline = peer.isOnline {
                     Image(systemName: "circle.fill")
@@ -335,34 +500,20 @@ private struct OverlayPeerRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityActions {
-            if let onAddHost {
-                Button("Add Host", action: onAddHost)
-            }
-        }
-        .contextMenu {
-            if let onAddHost {
-                Button(action: onAddHost) {
-                    Label("Add Host…", systemImage: "plus")
-                }
-            }
-            ForEach(showsPaths ? [] : peer.addresses, id: \.self) { address in
-                Button {
-                    UIPasteboard.general.string = address
-                } label: {
-                    Label("Copy \(address)", systemImage: "doc.on.doc")
-                }
-            }
-        }
     }
 }
 
-/// One network: its status with Connect / Sign In / Disconnect, its
-/// settings, and Edit and Delete.
+/// One network: its status with the one action it needs next (Sign In,
+/// Connect, Cancel, or Disconnect), this device, its peers, its settings,
+/// and Edit, Sign Out, and Delete.
 struct OverlayNetworkDetailView: View {
     let store: OverlayNetworkStore
     let networkID: OverlayNetwork.ID
     let onHostAdded: (Host.ID) -> Void
+    /// Set for a network just added: a Tailscale network starts its
+    /// sign-in (or Connect, with an auth key) when the screen opens.
+    var startsOnAppear = false
+    @State private var didStartOnAppear = false
     @State private var isEditing = false
     @State private var isConfirmingDelete = false
     @State private var isConfirmingSignOut = false
@@ -370,7 +521,10 @@ struct OverlayNetworkDetailView: View {
     @State private var deleteFailed = false
     @State private var addHostRequest: OverlayPeerHostRequest?
     @State private var pendingOnboardingHostID: Host.ID?
-    @State private var signInRequestID: UUID?
+    /// The Sign In in progress: owned here rather than by `.task(id:)`,
+    /// which a navigation push can start twice for one request.
+    @State private var signInTask: Task<Void, Never>?
+    @State private var signInToken: UUID?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     /// Injected app-wide by `ContentView`; absent in previews, where peers
@@ -391,6 +545,19 @@ struct OverlayNetworkDetailView: View {
             }
         }
         .task {
+            // Once: coming back from Diagnostics runs this task again.
+            guard startsOnAppear, !didStartOnAppear else { return }
+            didStartOnAppear = true
+            guard let network = store.network(id: networkID), network.kind == .tailscale else {
+                return
+            }
+            switch store.primaryAction(for: network) {
+            case .signIn: startSignIn()
+            case .connect: await store.connect(networkID)
+            case .connecting, .disconnect: break
+            }
+        }
+        .task {
             // Sign-in, approval, and address assignment complete on their
             // own; follow them while this screen is visible.
             while !Task.isCancelled {
@@ -398,17 +565,8 @@ struct OverlayNetworkDetailView: View {
                 try? await Task.sleep(for: .seconds(2))
             }
         }
-        .task(id: signInRequestID) {
-            guard let requestID = signInRequestID else { return }
-            defer {
-                if signInRequestID == requestID { signInRequestID = nil }
-            }
-            if let url = await store.signIn(networkID), !Task.isCancelled,
-                signInRequestID == requestID
-            {
-                openURL(url)
-            }
-        }
+        // Leaving the screen abandons a sign-in it started.
+        .onDisappear { cancelSignIn() }
         .sheet(item: $addHostRequest, onDismiss: {
             // As in Hosts, wait for the form to close before onboarding can
             // present its first-connection trust alert (#359, #426).
@@ -427,22 +585,32 @@ struct OverlayNetworkDetailView: View {
     private func content(_ network: OverlayNetwork) -> some View {
         let status = store.statuses[networkID] ?? .stopped
         let failure = store.connectFailures[networkID]
-        let isStartingSignIn = signInRequestID != nil
+        let isStartingSignIn = signInTask != nil
         let action: OverlayNetworkPrimaryAction =
             isStartingSignIn ? .connecting : store.primaryAction(for: network)
         let isConnecting = action == .connecting
         let details = store.details[networkID] ?? OverlayNodeDetails()
+        let signedOut = store.signedOut.contains(networkID)
+        let isSigningOut = store.signingOut.contains(networkID)
+        let needsSignIn = store.needsSignIn(network)
+        // Sign Out only once there may be a login to forget, and while it
+        // runs even though the network already needs a new sign-in.
+        let offersSignOut = network.kind == .tailscale && (!needsSignIn || isSigningOut)
         return List {
             Section {
-                LabeledContent(
-                    "Status",
-                    value: OverlayStatusCopy.summary(
-                        status, failure: failure, signedOut: store.signedOut.contains(networkID)))
-                if let explanation = OverlayStatusCopy.explanation(status, failure: failure) {
-                    Text(explanation)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+                OverlayStatusHeader(
+                    summary: isConnecting
+                        ? (isStartingSignIn ? "Preparing sign-in…" : "Connecting…")
+                        : OverlayStatusCopy.summary(
+                            status, failure: failure, signedOut: signedOut,
+                            needsSignIn: needsSignIn),
+                    explanation: isConnecting
+                        ? nil : OverlayStatusCopy.explanation(status, failure: failure),
+                    tone: isConnecting
+                        ? .busy
+                        : OverlayStatusCopy.tone(
+                            status, failure: failure, signedOut: signedOut,
+                            needsSignIn: needsSignIn))
                 if case .waiting = status,
                     case .easytierConfigServer(_, let machineID, _, _) = network.settings
                 {
@@ -469,43 +637,34 @@ struct OverlayNetworkDetailView: View {
                         Label("Disconnect", systemImage: "bolt.horizontal.circle")
                     }
                 case .connecting:
-                    HStack {
-                        ProgressView()
-                        Text(isStartingSignIn ? "Preparing Sign-In…" : "Connecting…")
-                    }
-                    .accessibilityElement(children: .combine)
                     Button(role: .cancel) {
                         store.cancelConnect(networkID)
-                        signInRequestID = nil
+                        cancelSignIn()
                     } label: {
                         Label("Cancel", systemImage: "xmark.circle")
                     }
-                    .accessibilityLabel("Cancel connecting")
+                    .accessibilityLabel(isStartingSignIn ? "Cancel sign-in" : "Cancel connecting")
                 case .signIn:
                     Button {
-                        signInRequestID = UUID()
+                        startSignIn()
                     } label: {
                         Label("Sign In", systemImage: "person.badge.key")
                     }
-                    .disabled(store.signingOut.contains(networkID))
+                    .disabled(isSigningOut)
                 case .connect:
                     Button {
                         Task { await store.connect(networkID) }
                     } label: {
                         Label("Connect", systemImage: "bolt.horizontal")
                     }
-                    .disabled(store.signingOut.contains(networkID))
+                    .disabled(isSigningOut)
                 }
-            } header: {
-                Text("Status")
             } footer: {
-                Text(
-                    network.kind == .tailscale
-                        ? "Sign In opens your browser to authorize this device. Return to Heeler "
-                            + "after signing in; it connects automatically. Hosts on this network "
-                            + "reconnect it when needed."
-                        : "Hosts on this network connect it automatically. Connect here to check "
-                            + "the network before adding a Host.")
+                if let hint = OverlayStatusCopy.actionHint(
+                    action, kind: network.kind, isStartingSignIn: isStartingSignIn)
+                {
+                    Text(hint)
+                }
             }
 
             deviceSection(network, details: details, isOnline: status.isOnline)
@@ -534,12 +693,12 @@ struct OverlayNetworkDetailView: View {
                 settingsRows(network)
             }
 
-            if network.kind == .tailscale {
-                Section {
+            Section {
+                if offersSignOut {
                     Button(role: .destructive) {
                         isConfirmingSignOut = true
                     } label: {
-                        if store.signingOut.contains(networkID) {
+                        if isSigningOut {
                             HStack {
                                 ProgressView()
                                 Text("Signing Out…")
@@ -549,17 +708,19 @@ struct OverlayNetworkDetailView: View {
                                 .foregroundStyle(.red)
                         }
                     }
-                    .disabled(store.signingOut.contains(networkID) || isConnecting)
-                } footer: {
-                    Text(
-                        "Logs this device out of the tailnet and forgets its login. Hosts stay "
-                            + "disconnected until you sign in here again.")
+                    .disabled(isSigningOut || isConnecting)
                 }
-            }
-
-            Section {
-                Button("Delete Network", role: .destructive) {
+                Button(role: .destructive) {
                     isConfirmingDelete = true
+                } label: {
+                    Label("Delete Network", systemImage: "trash")
+                        .foregroundStyle(.red)
+                }
+            } footer: {
+                if offersSignOut {
+                    Text(
+                        "Sign Out logs this device out of the tailnet and forgets its login; "
+                            + "Hosts stay disconnected until you sign in again.")
                 }
             }
         }
@@ -614,6 +775,27 @@ struct OverlayNetworkDetailView: View {
         .alert("Could not delete the network", isPresented: $deleteFailed) {
             Button("OK", role: .cancel) {}
         }
+    }
+
+    /// Starts the node and opens its login page once it has one. A newer
+    /// Sign In or Cancel supersedes this one, which then opens nothing.
+    private func startSignIn() {
+        signInTask?.cancel()
+        let token = UUID()
+        signInToken = token
+        signInTask = Task {
+            let url = await store.signIn(networkID)
+            guard !Task.isCancelled, signInToken == token else { return }
+            signInTask = nil
+            signInToken = nil
+            if let url { openURL(url) }
+        }
+    }
+
+    private func cancelSignIn() {
+        signInTask?.cancel()
+        signInTask = nil
+        signInToken = nil
     }
 
     /// Add Host… for a peer that has an overlay address, prefilled with it.
@@ -675,12 +857,13 @@ struct OverlayNetworkDetailView: View {
         _ peers: [OverlayPeer], kind: OverlayKind, title: String? = nil
     ) -> some View {
         let showsPaths = kind == .zerotier
+        let offersAddHost = hostStore != nil && OverlayPeerList.offersPeers(kind)
         return Section {
             if peers.isEmpty {
                 Text("No peers")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(peers) { peer in
+                ForEach(Self.onlineFirst(peers)) { peer in
                     OverlayPeerRow(
                         peer: peer, showsPaths: showsPaths,
                         onAddHost: addHostAction(for: peer, kind: kind))
@@ -694,8 +877,15 @@ struct OverlayNetworkDetailView: View {
                     "Every node this device's ZeroTier has been in touch with, across all its "
                         + "ZeroTier networks. Paths are the public addresses the traffic takes, "
                         + "not addresses to use for a Host.")
+            } else if offersAddHost, !peers.isEmpty {
+                Text("Tap a peer to add it as a Host. Touch and hold to copy its address.")
             }
         }
+    }
+
+    /// Online (or unknown) peers before offline ones, otherwise as reported.
+    static func onlineFirst(_ peers: [OverlayPeer]) -> [OverlayPeer] {
+        peers.filter { $0.isOnline != false } + peers.filter { $0.isOnline == false }
     }
 
     @ViewBuilder
@@ -749,16 +939,23 @@ struct OverlayNetworkDetailView: View {
             || !details.addresses.isEmpty
         {
             Section {
-                if let nodeID {
-                    OverlayCopyableRow(title: "Node ID", value: nodeID)
-                } else if network.kind == .zerotier {
-                    LabeledContent("Node ID", value: "Created on first connect")
+                if network.kind == .zerotier {
+                    if let nodeID {
+                        OverlayCopyableRow(title: "Node ID", value: nodeID)
+                    } else {
+                        LabeledContent("Node ID", value: "Created on first connect")
+                    }
                 }
                 if let hostname {
                     LabeledContent("Name", value: hostname)
                 }
                 ForEach(details.addresses, id: \.self) { address in
-                    OverlayCopyableRow(title: "Address", value: address)
+                    OverlayCopyableRow(
+                        title: Self.addressTitle(address, among: details.addresses), value: address)
+                }
+                // Rarely needed (support, admin APIs), so after what a Host uses.
+                if network.kind != .zerotier, let nodeID {
+                    OverlayCopyableRow(title: "Node ID", value: nodeID)
                 }
             } header: {
                 Text("This Device")
@@ -768,6 +965,16 @@ struct OverlayNetworkDetailView: View {
                 }
             }
         }
+    }
+
+    /// "IPv4" / "IPv6" where the device has both, so two rows do not both
+    /// read "Address".
+    static func addressTitle(_ address: String, among addresses: [String]) -> String {
+        let isIPv6: (String) -> Bool = { $0.contains(":") }
+        guard addresses.contains(where: isIPv6), addresses.contains(where: { !isIPv6($0) }) else {
+            return "Address"
+        }
+        return isIPv6(address) ? "IPv6" : "IPv4"
     }
 
     @ViewBuilder
@@ -828,15 +1035,22 @@ struct OverlayNetworkDetailView: View {
 struct OverlayNetworkFormView: View {
     let store: OverlayNetworkStore
     var editing: OverlayNetwork?
+    /// Called with a new network's id after it is saved, before the form
+    /// closes; not called when editing.
+    var onAdded: ((OverlayNetwork.ID) -> Void)?
     @State private var draft: OverlayNetworkDraft
     @State private var saveError: String?
     @State private var isImportingPlanet = false
     @State private var planetError: String?
     @Environment(\.dismiss) private var dismiss
 
-    init(store: OverlayNetworkStore, editing: OverlayNetwork? = nil) {
+    init(
+        store: OverlayNetworkStore, editing: OverlayNetwork? = nil,
+        onAdded: ((OverlayNetwork.ID) -> Void)? = nil
+    ) {
         self.store = store
         self.editing = editing
+        self.onAdded = onAdded
         _draft = State(
             initialValue: editing.map {
                 OverlayNetworkDraft(network: $0, configServerURL: store.secretText(for: $0))
@@ -905,8 +1119,8 @@ struct OverlayNetworkFormView: View {
         NavigationStack {
             Form {
                 Section {
-                    plainField("Name", prompt: "Optional", text: $draft.name)
-                    // The kind decides where the secret lives; changing it on
+                    // The kind decides every field below, so it comes first.
+                    // It also decides where the secret lives; changing it on
                     // a saved network would orphan that secret.
                     Picker("Type", selection: $draft.kind) {
                         ForEach(OverlayKind.allCases, id: \.self) { kind in
@@ -914,6 +1128,7 @@ struct OverlayNetworkFormView: View {
                         }
                     }
                     .disabled(editing != nil)
+                    plainField("Name", prompt: "Optional", text: $draft.name)
                 }
 
                 kindSection
@@ -948,17 +1163,26 @@ struct OverlayNetworkFormView: View {
         case .tailscale:
             Section {
                 plainField("Device name", prompt: "heeler", text: $draft.hostname)
-                plainField(
-                    "Coordination server", prompt: "Tailscale (optional)", text: $draft.controlURL)
-                    .keyboardType(.URL)
-                secretField("Auth key", prompt: "Optional")
             } header: {
                 Text("Tailscale")
             } footer: {
                 Text(
-                    "Without an auth key, tap Sign In after saving to authorize this device in "
-                        + "your browser. Leave the coordination "
-                        + "server blank for Tailscale, or enter a Headscale https URL.")
+                    editing == nil
+                        ? "How this device appears in your tailnet. After saving, Heeler opens "
+                            + "your browser to sign it in."
+                        : "How this device appears in your tailnet.")
+            }
+            Section {
+                plainField(
+                    "Coordination server", prompt: "Tailscale", text: $draft.controlURL)
+                    .keyboardType(.URL)
+                secretField("Auth key", prompt: "None")
+            } header: {
+                Text("Optional")
+            } footer: {
+                Text(
+                    "Leave both blank for a Tailscale account. Enter a Headscale https URL to "
+                        + "use your own server. An auth key signs in without the browser.")
             }
         case .zerotier:
             Section {
@@ -1147,6 +1371,7 @@ struct OverlayNetworkFormView: View {
         do {
             if editing == nil {
                 try store.add(network, secret: draft.secretUpdate)
+                onAdded?(network.id)
             } else {
                 try store.update(network, secret: draft.secretUpdate)
             }

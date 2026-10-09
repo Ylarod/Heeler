@@ -322,17 +322,20 @@ final class OverlayNetworkStore {
     // MARK: Node status
 
     func primaryAction(for network: OverlayNetwork) -> OverlayNetworkPrimaryAction {
+        if connecting.contains(network.id) { return .connecting }
+        if statuses[network.id]?.isOnline == true { return .disconnect }
+        return needsSignIn(network) ? .signIn : .connect
+    }
+
+    /// Whether a Tailscale network has no usable login, so starting it
+    /// means a browser sign-in; false while it is online. Unlike
+    /// `primaryAction`, it holds while a Connect is in progress.
+    func needsSignIn(_ network: OverlayNetwork) -> Bool {
         let id = network.id
-        if connecting.contains(id) { return .connecting }
-        if statuses[id]?.isOnline == true { return .disconnect }
-        if network.kind == .tailscale {
-            if case .needsLogin = statuses[id] { return .signIn }
-            if connectFailures[id]?.overlayLoginURL != nil || signedOut.contains(id) {
-                return .signIn
-            }
-            if !knownTailscaleLogins.contains(id), !hasSecret(for: network) { return .signIn }
-        }
-        return .connect
+        guard network.kind == .tailscale, statuses[id]?.isOnline != true else { return false }
+        if case .needsLogin = statuses[id] { return true }
+        if connectFailures[id]?.overlayLoginURL != nil || signedOut.contains(id) { return true }
+        return !knownTailscaleLogins.contains(id) && !hasSecret(for: network)
     }
 
     /// One user action both starts the node and obtains its current login

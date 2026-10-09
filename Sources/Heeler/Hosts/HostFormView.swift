@@ -130,6 +130,12 @@ struct HostFormView: View {
     /// expressions instead of one very long modifier chain.
     @ViewBuilder
     private var formSections: some View {
+        // The network decides which address to enter (and offers its peers
+        // under it), so it leads the form once there is one to choose.
+        if networkLeadsForm {
+            networkSection
+        }
+
         Section("Host") {
             TextField("Name (optional)", text: $draft.name)
             TextField("Address", text: $draft.address)
@@ -225,7 +231,15 @@ struct HostFormView: View {
             }
         }
 
-        networkSection
+        if !networkLeadsForm {
+            networkSection
+        }
+    }
+
+    /// Without Overlay Networks the Network section is only a pointer to
+    /// Settings, so it stays at the end, out of a direct Host's way.
+    private var networkLeadsForm: Bool {
+        !(overlayNetworks?.networks.isEmpty ?? true) || draft.overlayNetworkID != nil
     }
 
     /// The Overlay Network the draft names, when it still exists.
@@ -292,9 +306,12 @@ struct HostFormView: View {
                     + "or EasyTier networks in Settings › Overlay Networks."
         }
         let target = draft.usesJumpHost ? "the Jump Host" : "this Host"
-        return "Heeler joins the overlay network itself and reaches \(target) through it — "
-            + "no VPN is turned on. Use \(target)'s overlay address or name (such as its "
-            + "MagicDNS name) as its address."
+        let base = "Heeler reaches \(target) through this network without turning on a VPN."
+        guard let network = selectedOverlayNetwork, OverlayPeerList.offersPeers(network.kind) else {
+            return base + " Enter \(target)'s overlay address."
+        }
+        let source = network.kind == .tailscale ? "the tailnet" : "the network"
+        return base + " Choose it from \(source) below, or enter its overlay address or name."
     }
 
     private var jumpHostFooter: String {

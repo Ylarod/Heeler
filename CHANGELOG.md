@@ -31,8 +31,8 @@ Entries reference the pull request that made the change.
 - Pick a Host from a Tailscale or EasyTier network instead of typing its
   address: Choose from Tailnet… in the Host form connects the network if
   needed and lists its peers to search, filling in the peer's IP address
-  (or Tailscale machine name) and a blank Host name. A peer on a network's
-  screen in Settings offers Add Host… too. (#426)
+  (or Tailscale machine name) and a blank Host name. Tapping a peer on a
+  network's screen in Settings adds it as a Host too. (#426)
 - A ZeroTier network's screen has Diagnostics: the network's status,
   addresses, routes, roots and members with their paths, and recent events,
   with Copy All for reporting a problem. Its peers are listed as members and
@@ -44,6 +44,10 @@ Entries reference the pull request that made the change.
   returns at once without a timeout error. A ZeroTier network stays joined
   so a later authorization still applies; a stopped Host stays paused until
   you reconnect it. (#426)
+
+### Changed
+
+- Simplify setting up a Tailscale network: saving it opens the network and starts browser sign-in (or connects with its auth key), the form keeps the coordination server and auth key in an Optional section, and a network's screen leads with one status line and the one action it needs, with Sign Out and Delete together at the end. A network that was never signed in reads Not signed in, and the Host form puts Network first once an overlay network exists. (#426)
 
 ### Fixed
 

@@ -28,19 +28,19 @@ In Heeler, open **Settings → Overlay Networks**, add a network, and choose **T
 | Coordination server | Leave blank for Tailscale |
 | Auth key | Leave blank for browser sign-in |
 
-![Heeler Add Network form with Tailscale selected, Device name, optional Coordination server, and optional Auth key fields](images/overlay-networks/tailscale-form.png)
+![Heeler Add Network form with Tailscale selected, a Device name field, and an Optional section holding Coordination server and Auth key](images/overlay-networks/tailscale-form.png)
 
-**In this screen:** enter a recognizable Device name and leave Coordination server and Auth key blank for the browser sign-in route. Tap **Save**, then open the saved network and tap **Sign In**. [Open the full-size screenshot](images/overlay-networks/tailscale-form.png). [Capture details](overlay-networks.md#screenshots-and-maintenance).
+**In this screen:** enter a recognizable Device name and leave the Optional section blank for the browser sign-in route. Tap **Save**; Heeler opens the new network and starts **Sign In** on its own. [Open the full-size screenshot](images/overlay-networks/tailscale-form.png). [Capture details](overlay-networks.md#screenshots-and-maintenance).
 
-Tap **Sign In** to open the browser, authenticate to the same tailnet as the Mac, then return to Heeler. It connects automatically, including after a longer stay in the browser. Approve the new Heeler device in the admin console if required. Once signed in, a disconnected network offers **Connect**; a connected network offers **Disconnect**. Heeler is a separate device from any Tailscale iOS app installed on the phone, with its own identity and address.
+The browser opens when the sign-in page is ready. Authenticate to the same tailnet as the Mac, then return to Heeler. It connects automatically, including after a longer stay in the browser. Approve the new Heeler device in the admin console if required. If you leave the browser without signing in, the network shows **Needs sign-in**; tap **Sign In** to try again. The network's screen always shows its status first, with the one action it needs: **Sign In**, **Connect** (signed in but idle; Hosts also connect it when needed), or **Disconnect**. Heeler is a separate device from any Tailscale iOS app installed on the phone, with its own identity and address.
 
-You can supply a Tailscale auth key instead of using browser sign-in. Obtain it from your tailnet administrator and enter it only in the Auth key field. Heeler stores it in the Keychain; tap **Connect** to join using the key. If your organization uses Headscale, enter its HTTPS coordination-server URL and follow that server's enrollment process on both devices.
+You can supply a Tailscale auth key instead of using browser sign-in. Obtain it from your tailnet administrator and enter it only in the Auth key field. Heeler stores it in the Keychain and connects with the key right after you save. If your organization uses Headscale, enter its HTTPS coordination-server URL and follow that server's enrollment process on both devices.
 
 Wait for the network to report **Connected**. Its detail screen shows this device's addresses and the peers visible to it. Being signed in alone does not grant SSH access: the tailnet's grants or ACLs must allow Heeler's device to reach the Mac's TCP port 22.
 
 ## 4. Add the Mac as a Host
 
-Follow [Connect from Heeler](overlay-networks.md#connect-from-heeler). In the Host form, select your new network under **Network**, then use **Choose from Tailnet…** to select the Mac. Use **IP Address** for the first connection; **Machine Name** is also available. You can also open the Mac's peer on the network detail screen and choose **Add Host…**.
+Follow [Connect from Heeler](overlay-networks.md#connect-from-heeler). In the Host form, select your new network under **Network** at the top, then use **Choose from Tailnet…** to select the Mac. Use **IP Address** for the first connection; **Machine Name** is also available. You can also tap the Mac in the network screen's **Peers** list to open a Host form with its address filled in.
 
 Set Port to `22`, User to the Mac's local SSH account, and choose the authentication method prepared in step 1. Leave Jump Host blank for this setup. Save, verify the SSH host-key fingerprint against the Mac, and complete the connection checks.
 

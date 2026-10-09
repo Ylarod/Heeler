@@ -744,6 +744,30 @@ struct OverlayNetworkSignInTests {
         #expect(store.primaryAction(for: tailnet) == .signIn)
     }
 
+    @Test func aNetworkWithoutALoginStillNeedsSignInWhileItsFirstSignInRuns() async throws {
+        let factory = BlockingNodeFactory()
+        factory.hang.withLock { $0 = .milliseconds(400) }
+        let runtime = OverlayNetworkRuntime(
+            secrets: VolatileSecretStore(), stateRoot: temporaryStateRoot(), makeNode: factory.make)
+        let store = OverlayNetworkStore(volatileNetworks: [tailnet, zeroTierLab], runtime: runtime)
+        #expect(store.needsSignIn(tailnet))
+        #expect(!store.needsSignIn(zeroTierLab))
+
+        // The screen offers no Sign Out while there is no login to forget,
+        // even though the action has turned to Connecting.
+        let signingIn = Task { await store.signIn(tailnet.id) }
+        let started = await eventually { factory.built.first?.state.withLock { $0.starts > 0 } == true }
+        #expect(started)
+        #expect(store.primaryAction(for: tailnet) == .connecting)
+        #expect(store.needsSignIn(tailnet))
+
+        #expect(await signingIn.value == nil)
+        #expect(store.primaryAction(for: tailnet) == .disconnect)
+        #expect(!store.needsSignIn(tailnet))
+        await store.disconnect(tailnet.id)
+        #expect(!store.needsSignIn(tailnet))
+    }
+
     @Test func suspensionCancelsABlockingBrowserReturnWithoutWaitingForItsTimeout() async throws {
         let factory = BlockingNodeFactory()
         factory.hang.withLock { $0 = nil }
@@ -2136,6 +2160,20 @@ struct OverlayNetworkPlanetAndDetailsTests {
 
         await store.disconnect(tailnet.id)
         #expect(store.details[tailnet.id] == OverlayNodeDetails())
+    }
+
+    @Test func aTailscaleNetworkWithoutALoginReadsAsNeedingTheUser() throws {
+        #expect(OverlayStatusCopy.summary(.stopped, failure: nil) == "Not connected")
+        #expect(OverlayStatusCopy.tone(.stopped, failure: nil) == .idle)
+        #expect(OverlayStatusCopy.summary(.stopped, failure: nil, needsSignIn: true) == "Not signed in")
+        #expect(OverlayStatusCopy.tone(.stopped, failure: nil, needsSignIn: true) == .attention)
+        // A sign-out says so, whatever else is known.
+        #expect(
+            OverlayStatusCopy.summary(.stopped, failure: nil, signedOut: true, needsSignIn: true)
+                == "Signed out")
+        #expect(OverlayStatusCopy.tone(.online(addresses: []), failure: nil) == .ok)
+        let timedOut = TransportError.overlayFailed(network: "T", reason: .timedOut)
+        #expect(OverlayStatusCopy.tone(.stopped, failure: timedOut) == .failed)
     }
 
     @Test func statusIsShortAndTheReasonGoesUnderIt() throws {
