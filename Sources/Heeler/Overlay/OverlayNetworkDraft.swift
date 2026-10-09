@@ -146,6 +146,11 @@ struct OverlayNetworkDraft: Equatable, Sendable {
         return url
     }
 
+    /// Blank (Tailscale's own server) or an https URL with a host.
+    var controlURLIsValid: Bool {
+        controlURL.trimmingCharacters(in: .whitespaces).isEmpty || controlURLValue != nil
+    }
+
     /// Peers that are not `tcp://host:port` or `udp://host:port`, as typed.
     var invalidPeers: [String] {
         peerList.filter { !Self.isValidPeer($0) }
@@ -193,8 +198,7 @@ struct OverlayNetworkDraft: Equatable, Sendable {
         let hostnameIsSet = !hostname.trimmingCharacters(in: .whitespaces).isEmpty
         switch kind {
         case .tailscale:
-            let controlIsBlank = controlURL.trimmingCharacters(in: .whitespaces).isEmpty
-            return hostnameIsSet && (controlIsBlank || controlURLValue != nil)
+            return hostnameIsSet && controlURLIsValid
         case .zerotier:
             return OverlayNetwork.zeroTierNetworkID(networkID) != nil && invalidMoons.isEmpty
         case .easytier where easyTierSource == .configServer:

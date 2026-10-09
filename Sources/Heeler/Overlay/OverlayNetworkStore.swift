@@ -6,6 +6,18 @@ enum OverlayNetworkPrimaryAction: Equatable {
     case signIn, connect, connecting, disconnect
 }
 
+/// What a network offers at the trailing edge of its row and status: a
+/// switch that keeps it connected, or, while something is in progress, the
+/// button that shows it. A Tailscale network without a login offers Sign In.
+enum OverlayNetworkControl: Equatable {
+    case signIn
+    /// A Connect in progress; Cancel stops it.
+    case connecting
+    /// A Sign Out in progress; it cannot be stopped.
+    case signingOut
+    case toggle(isOn: Bool)
+}
+
 enum OverlayNetworkStoreError: Error, Equatable {
     /// `update`/`remove` addressed a network the catalog does not contain.
     case unknownNetwork
@@ -327,6 +339,14 @@ final class OverlayNetworkStore {
         return needsSignIn(network) ? .signIn : .connect
     }
 
+    func control(for network: OverlayNetwork) -> OverlayNetworkControl {
+        let id = network.id
+        if signingOut.contains(id) { return .signingOut }
+        if connecting.contains(id) { return .connecting }
+        if needsSignIn(network) { return .signIn }
+        return .toggle(isOn: statuses[id]?.isRunning ?? false)
+    }
+
     /// Whether a Tailscale network has no usable login, so starting it
     /// means a browser sign-in; false while it is online. Unlike
     /// `primaryAction`, it holds while a Connect is in progress.
@@ -500,9 +520,14 @@ final class OverlayNetworkStore {
         }
     }
 
+    /// Every network's status, and the details of those online, as the
+    /// network list polls them (its rows count peers).
     func refreshStatuses() async {
         for network in networks {
             await refreshNodeStatus(network.id)
+            if statuses[network.id]?.isOnline == true {
+                details[network.id] = await runtime.details(networkID: network.id)
+            }
         }
         refreshZeroTierDeviceState()
     }

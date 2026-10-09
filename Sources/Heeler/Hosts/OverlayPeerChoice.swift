@@ -98,14 +98,17 @@ enum OverlayPeerList {
     /// Peers with at least one overlay address, online (or unknown) before
     /// offline, then by name.
     static func candidates(from peers: [OverlayPeer]) -> [OverlayPeerCandidate] {
-        peers.map(OverlayPeerCandidate.init)
-            .filter { !$0.addresses.isEmpty }
-            .sorted { lhs, rhs in
-                if lhs.isOffline != rhs.isOffline { return !lhs.isOffline }
-                let order = lhs.displayName.localizedStandardCompare(rhs.displayName)
-                if order != .orderedSame { return order == .orderedAscending }
-                return lhs.id < rhs.id
-            }
+        sorted(peers.map(OverlayPeerCandidate.init).filter { !$0.addresses.isEmpty })
+    }
+
+    /// Online (or unknown) before offline, then by name.
+    static func sorted(_ candidates: [OverlayPeerCandidate]) -> [OverlayPeerCandidate] {
+        candidates.sorted { lhs, rhs in
+            if lhs.isOffline != rhs.isOffline { return !lhs.isOffline }
+            let order = lhs.displayName.localizedStandardCompare(rhs.displayName)
+            if order != .orderedSame { return order == .orderedAscending }
+            return lhs.id < rhs.id
+        }
     }
 
     /// Peers grouped by the network they are on, in order of first
@@ -120,6 +123,34 @@ enum OverlayPeerList {
             }
         }
         return groups
+    }
+
+    /// The Host already reached at `candidate` over `networkID`: one whose
+    /// first hop (its Jump Host when it has one) is one of the peer's
+    /// addresses or its machine name, bare or as a MagicDNS name.
+    static func host(
+        for candidate: OverlayPeerCandidate, networkID: UUID, among hosts: [Host]
+    ) -> Host? {
+        let addresses = Set(candidate.addresses.map(normalizedAddress))
+        let name = candidate.name.map(normalizedAddress)
+        return hosts.first { host in
+            guard host.overlayNetworkID == networkID else { return false }
+            let firstHop = normalizedAddress(host.usesJumpHost ? host.jumpAddress : host.address)
+            guard !firstHop.isEmpty else { return false }
+            if addresses.contains(firstHop) { return true }
+            guard let name, !name.isEmpty else { return false }
+            return firstHop == name || firstHop.hasPrefix(name + ".")
+        }
+    }
+
+    /// Lowercased, without brackets, a prefix length, or a trailing dot.
+    private static func normalizedAddress(_ address: String) -> String {
+        var trimmed = address.trimmingCharacters(in: .whitespaces).lowercased()
+        if trimmed.hasPrefix("["), trimmed.hasSuffix("]") {
+            trimmed = String(trimmed.dropFirst().dropLast())
+        }
+        trimmed = trimmed.split(separator: "/", maxSplits: 1).first.map(String.init) ?? ""
+        return trimmed.hasSuffix(".") ? String(trimmed.dropLast()) : trimmed
     }
 
     /// Candidates whose name, network, or any address contains `query`,

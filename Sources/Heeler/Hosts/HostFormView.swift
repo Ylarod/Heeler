@@ -7,6 +7,8 @@ struct HostFormView: View {
     let store: HostStore
     var editing: Host?
     var onSaved: ((Host) -> Void)?
+    /// Starts in User, for a prefill that already says where the Host is.
+    var focusesUsername = false
 
     @State private var draft: HostDraft
     @State private var authorizedKeysLine: String?
@@ -20,6 +22,7 @@ struct HostFormView: View {
     @State private var deviceKeyReplacementError: String?
     @State private var rsaKeyReplacementError: String?
     @State private var isChoosingOverlayPeer = false
+    @FocusState private var isUsernameFocused: Bool
     @Environment(\.dismiss) private var dismiss
     /// Absent in previews and hosting tests; the Network picker then offers
     /// only Direct (plus the Host's current choice).
@@ -36,10 +39,14 @@ struct HostFormView: View {
 
     /// Adds a new Host starting from `prefill`, as Duplicate does: saving
     /// never touches the Host the draft was copied from.
-    init(store: HostStore, prefill: HostDraft, onSaved: ((Host) -> Void)? = nil) {
+    init(
+        store: HostStore, prefill: HostDraft, focusesUsername: Bool = false,
+        onSaved: ((Host) -> Void)? = nil
+    ) {
         self.store = store
         self.editing = nil
         self.onSaved = onSaved
+        self.focusesUsername = focusesUsername
         _draft = State(initialValue: prefill)
     }
 
@@ -111,13 +118,16 @@ struct HostFormView: View {
                     OverlayPeerPickerView(
                         network: network,
                         target: draft.overlayPeerTarget,
-                        model: OverlayPeerPickerModel(store: overlayNetworks, networkID: network.id)
+                        model: OverlayPeerPickerModel(store: overlayNetworks, networkID: network.id),
+                        // The Host being edited is not another Host to warn about.
+                        hosts: store.hosts.filter { $0.id != editing?.id }
                     ) { candidate, style in
                         draft.applyOverlayPeer(candidate, style: style)
                     }
                 }
             }
             .task {
+                if focusesUsername { isUsernameFocused = true }
                 loadDeviceKey()
                 if draft.authMethod == .rsaKey {
                     loadRSAKey()
@@ -151,6 +161,7 @@ struct HostFormView: View {
                 .textContentType(.username)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+                .focused($isUsernameFocused)
         }
 
         Section {

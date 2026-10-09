@@ -59,6 +59,24 @@ struct OverlayNetwork: Identifiable, Codable, Hashable, Sendable {
         return trimmed.isEmpty ? kind.displayName : trimmed
     }
 
+    /// This device's name on the network, where the overlay has one.
+    var deviceName: String? {
+        switch settings {
+        case .tailscale(let hostname, _), .easytier(_, _, let hostname, _),
+            .easytierConfigServer(_, _, let hostname, _):
+            hostname
+        case .zerotier:
+            nil
+        }
+    }
+
+    /// The Tailscale coordination server this network signs in to; nil for
+    /// Tailscale's own and for other kinds.
+    var tailscaleControlURL: URL? {
+        guard case .tailscale(_, let controlURL) = settings else { return nil }
+        return controlURL
+    }
+
     init(id: UUID = UUID(), name: String, settings: Settings) {
         self.id = id
         self.name = name

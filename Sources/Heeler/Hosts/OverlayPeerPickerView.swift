@@ -7,6 +7,8 @@ import SwiftUI
 struct OverlayPeerPickerView: View {
     let network: OverlayNetwork
     let target: OverlayPeerTarget
+    /// Hosts that may already reach a peer, which is then tagged Host.
+    let hosts: [Host]
     let onPick: (OverlayPeerCandidate, OverlayPeerCandidate.AddressStyle) -> Void
 
     @State private var model: OverlayPeerPickerModel
@@ -18,10 +20,12 @@ struct OverlayPeerPickerView: View {
         network: OverlayNetwork,
         target: OverlayPeerTarget,
         model: OverlayPeerPickerModel,
+        hosts: [Host] = [],
         onPick: @escaping (OverlayPeerCandidate, OverlayPeerCandidate.AddressStyle) -> Void
     ) {
         self.network = network
         self.target = target
+        self.hosts = hosts
         self.onPick = onPick
         _model = State(initialValue: model)
     }
@@ -95,7 +99,10 @@ struct OverlayPeerPickerView: View {
                             onPick(candidate, style)
                             dismiss()
                         } label: {
-                            OverlayPeerChoiceRow(candidate: candidate, style: style)
+                            OverlayPeerChoiceRow(
+                                candidate: candidate, style: style,
+                                isHost: OverlayPeerList.host(
+                                    for: candidate, networkID: network.id, among: hosts) != nil)
                         }
                         .buttonStyle(.plain)
                     }
@@ -111,7 +118,7 @@ struct OverlayPeerPickerView: View {
     private var styleFooter: String {
         switch style {
         case .ipAddress:
-            "The peer's Tailscale IP address stays the same while the machine is in the tailnet."
+            "The IP address stays the same while the machine is in the tailnet."
         case .machineName:
             "The machine name is resolved through MagicDNS and follows the machine if its "
                 + "address changes."
@@ -165,14 +172,17 @@ struct OverlayPeerPickerView: View {
     }
 }
 
-/// One peer in the picker: name, the address it would fill in, and whether
-/// it is online. Offline peers stay choosable but are dimmed.
+/// One peer in the picker, as a network's Machines list shows it: name,
+/// the address it would fill in and how it is reached, and a Host tag when
+/// a Host already reaches it. Offline peers stay choosable but are dimmed.
 private struct OverlayPeerChoiceRow: View {
     let candidate: OverlayPeerCandidate
     let style: OverlayPeerCandidate.AddressStyle
+    let isHost: Bool
 
     var body: some View {
-        let summary = OverlayStatusCopy.peerSummary(candidate.peer)
+        let reachability = OverlayStatusCopy.peerReachability(candidate.peer)
+        let address = candidate.address(style) ?? ""
         HStack(spacing: 10) {
             if let isOnline = candidate.isOnline {
                 Image(systemName: "circle.fill")
@@ -183,25 +193,37 @@ private struct OverlayPeerChoiceRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(candidate.displayName)
                     .foregroundStyle(candidate.isOffline ? .secondary : .primary)
-                Text(candidate.addresses.joined(separator: ", "))
-                    .font(.footnote.monospaced())
-                    .foregroundStyle(.secondary)
+                Group {
+                    if reachability.isEmpty {
+                        Text(address).monospaced()
+                    } else {
+                        Text("\(Text(address).monospaced()) · \(reachability)")
+                    }
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
                 if let network = candidate.network {
                     Text("Network \(network)")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                if !summary.isEmpty {
-                    Text(summary)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
             }
             Spacer(minLength: 0)
+            if isHost {
+                Text("Host")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(.fill.tertiary, in: .capsule)
+            }
         }
         .opacity(candidate.isOffline ? 0.6 : 1)
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
-        .accessibilityHint("Uses \(candidate.address(style) ?? "this peer") as the address")
+        .accessibilityHint(
+            isHost
+                ? "A Host already uses this machine"
+                : "Uses \(candidate.address(style) ?? "this peer") as the address")
     }
 }

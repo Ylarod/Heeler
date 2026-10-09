@@ -31,8 +31,9 @@ Entries reference the pull request that made the change.
 - Pick a Host from a Tailscale or EasyTier network instead of typing its
   address: Choose from Tailnet… in the Host form connects the network if
   needed and lists its peers to search, filling in the peer's IP address
-  (or Tailscale machine name) and a blank Host name. Tapping a peer on a
-  network's screen in Settings adds it as a Host too. (#426)
+  (or Tailscale machine name) and a blank Host name. Add beside a machine
+  on a network's screen in Settings adds it as a Host too, and machines
+  that already are a Host say so. (#426)
 - A ZeroTier network's screen has Diagnostics: the network's status,
   addresses, routes, roots and members with their paths, and recent events,
   with Copy All for reporting a problem. Its peers are listed as members and
@@ -47,11 +48,11 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
-- Simplify setting up a Tailscale network: saving it opens the network and starts browser sign-in (or connects with its auth key), the form keeps the coordination server and auth key in an Optional section, and a network's screen leads with one status line and the one action it needs, with Sign Out and Delete together at the end. A network that was never signed in reads Not signed in, and the Host form puts Network first once an overlay network exists. (#426)
+- Redesign Settings › Overlay Networks: each network has a switch to connect or disconnect it (Cancel while it connects, Sign In before its first login), a status card with this device's address to copy, and its machines with Add or Host beside each, searchable. Adding a Tailscale network picks the kind from cards, keeps the coordination server and auth key under Advanced, and goes straight to browser sign-in (or connects with its auth key); Edit, Sign Out and Delete sit in the network's menu. A Tailscale device awaiting admin approval shows Waiting for approval and joins once approved, and the Host form puts Network first once an overlay network exists. (#426)
 
 ### Fixed
 
-- Start Tailscale browser authorization with one Sign In button, reconnect automatically after returning from the browser, and show Connect only for a saved login or auth key. (#426)
+- Start Tailscale browser authorization with one Sign In button and reconnect automatically after returning from the browser. (#426)
 - Show Connected and remove the sign-in prompt when Tailscale browser authorization completes, without requiring another Connect. (#426)
 - Open a Host's connection checks after adding it from an overlay network's peer list, so its SSH host key can be trusted on the first connection. (#426)
 

@@ -68,6 +68,42 @@ struct OverlayPeerChoiceTests {
         #expect(draft.port == "22")
     }
 
+    @Test func aPeerIsAHostWhenAHostOnItsNetworkDialsItsAddressOrName() {
+        let networkID = UUID()
+        let candidate = OverlayPeerCandidate(peer: tailscalePeer)
+        let byIPv4 = Host(address: "100.64.0.7", username: "me", overlayNetworkID: networkID)
+        let byIPv6 = Host(address: "[FD7A:115C:A1E0::1]", username: "me", overlayNetworkID: networkID)
+        let byName = Host(address: "devbox", username: "me", overlayNetworkID: networkID)
+        let byMagicDNS = Host(
+            address: "DevBox.tail1234.ts.net.", username: "me", overlayNetworkID: networkID)
+        let viaJump = Host(
+            address: "127.0.0.1", username: "me", jumpAddress: "100.64.0.7",
+            overlayNetworkID: networkID)
+
+        for host in [byIPv4, byIPv6, byName, byMagicDNS, viaJump] {
+            #expect(
+                OverlayPeerList.host(for: candidate, networkID: networkID, among: [host])?.id
+                    == host.id, "\(host.address) \(host.jumpAddress)")
+        }
+    }
+
+    @Test func aPeerIsNotAHostElsewhereOrUnderAnotherName() {
+        let networkID = UUID()
+        let candidate = OverlayPeerCandidate(peer: tailscalePeer)
+        let hosts = [
+            // Same address, but direct or on another network.
+            Host(address: "100.64.0.7", username: "me"),
+            Host(address: "100.64.0.7", username: "me", overlayNetworkID: UUID()),
+            // Another machine whose name starts like this one's.
+            Host(address: "devbox2", username: "me", overlayNetworkID: networkID),
+            // Behind a Jump Host that is another machine.
+            Host(
+                address: "100.64.0.7", username: "me", jumpAddress: "100.64.0.9",
+                overlayNetworkID: networkID),
+        ]
+        #expect(OverlayPeerList.host(for: candidate, networkID: networkID, among: hosts) == nil)
+    }
+
     @Test func onlinePeersComeFirstThenByNameAndAddresslessOnesAreDropped() {
         let peers = [
             OverlayPeer(id: "a", name: "zeta", addresses: ["100.64.0.1"], isOnline: true),

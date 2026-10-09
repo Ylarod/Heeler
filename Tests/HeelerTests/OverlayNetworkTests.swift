@@ -513,6 +513,78 @@ struct OverlayNetworkSignInTests {
         #expect(store.primaryAction(for: tailnet) == .signIn)
     }
 
+    @Test func theSwitchFollowsWhetherTheNodeIsUp() async throws {
+        let factory = FakeNodeFactory()
+        let store = OverlayNetworkStore(volatileNetworks: [], runtime: makeRuntime(factory))
+        try store.add(tailnet, secret: "tskey-auth-test")
+        #expect(store.control(for: tailnet) == .toggle(isOn: false))
+
+        await store.connect(tailnet.id)
+        #expect(store.control(for: tailnet) == .toggle(isOn: true))
+
+        let node = try #require(factory.built.first)
+        node.state.withLock { $0.status = .failed("boom") }
+        await store.refreshStatus(tailnet.id)
+        #expect(store.control(for: tailnet) == .toggle(isOn: false))
+    }
+
+    @Test func withoutALoginTheNetworkOffersSignInUntilItIsOnline() async throws {
+        let factory = FakeNodeFactory()
+        let store = OverlayNetworkStore(volatileNetworks: [tailnet], runtime: makeRuntime(factory))
+        #expect(store.control(for: tailnet) == .signIn)
+        let headline = OverlayNetworkHeadline(network: tailnet, store: store)
+        #expect(headline.title == "Sign in to Tailscale")
+        #expect(headline.rowSummary == "Not signed in")
+        #expect(headline.tone == .attention)
+
+        #expect(await store.signIn(tailnet.id) == nil)
+        #expect(store.control(for: tailnet) == .toggle(isOn: true))
+        #expect(OverlayNetworkHeadline(network: tailnet, store: store).title == "Connected")
+    }
+
+    @Test func aTailscaleDeviceAwaitingApprovalWaitsWithItsSwitchOn() async throws {
+        let factory = FakeNodeFactory()
+        let store = OverlayNetworkStore(volatileNetworks: [], runtime: makeRuntime(factory))
+        try store.add(tailnet, secret: "tskey-auth-test")
+        await store.connect(tailnet.id)
+        let node = try #require(factory.built.first)
+        node.state.withLock {
+            $0.status = .waiting("This device is waiting for approval by a tailnet admin.")
+        }
+        await store.refreshStatus(tailnet.id)
+
+        #expect(store.control(for: tailnet) == .toggle(isOn: true))
+        let headline = OverlayNetworkHeadline(network: tailnet, store: store)
+        #expect(headline.isAwaitingApproval)
+        #expect(headline.title == "Waiting for approval")
+        #expect(headline.rowSummary == "Waiting for approval")
+        #expect(headline.subtitle == "An admin must approve heeler before it joins.")
+        #expect(headline.tone == .attention)
+        #expect(headline.symbol == "hourglass")
+    }
+
+    @Test func aConnectedRowCountsTheOnlineMachines() async throws {
+        let factory = FakeNodeFactory()
+        let store = OverlayNetworkStore(volatileNetworks: [], runtime: makeRuntime(factory))
+        try store.add(tailnet, secret: "tskey-auth-test")
+        await store.connect(tailnet.id)
+        let node = try #require(factory.built.first)
+        node.state.withLock {
+            $0.details = OverlayNodeDetails(
+                addresses: ["100.64.0.2"],
+                peers: [
+                    OverlayPeer(id: "a", name: "mac", addresses: ["100.64.0.7"], isOnline: true),
+                    OverlayPeer(id: "b", name: "pi", addresses: ["100.64.0.8"], isOnline: false),
+                ])
+        }
+        // The list's poll refreshes the details of online networks too.
+        await store.refreshStatuses()
+
+        let headline = OverlayNetworkHeadline(network: tailnet, store: store)
+        #expect(headline.rowSummary == "Connected · 1 of 2 online")
+        #expect(headline.subtitle == "1 of 2 machines online")
+    }
+
     @Test func otherBackendsKeepTheirConnectAction() throws {
         let easyTier = OverlayNetwork(
             name: "Lab", settings: .easytier(networkName: "lab", peers: ["tcp://p:1"], hostname: "h"))
@@ -760,6 +832,8 @@ struct OverlayNetworkSignInTests {
         #expect(started)
         #expect(store.primaryAction(for: tailnet) == .connecting)
         #expect(store.needsSignIn(tailnet))
+        // The switch's place shows the Connect in progress, not Sign In.
+        #expect(store.control(for: tailnet) == .connecting)
 
         #expect(await signingIn.value == nil)
         #expect(store.primaryAction(for: tailnet) == .disconnect)
@@ -2169,7 +2243,12 @@ struct OverlayNetworkPlanetAndDetailsTests {
         let unknown = OverlayPeer(id: "d", name: "lab", addresses: ["10.0.0.4"], isOnline: nil)
 
         #expect(
-            OverlayStatusCopy.peerCount([online, offline], kind: .tailscale) == "1 of 2 peers online")
+            OverlayStatusCopy.peerCount([online, offline], kind: .tailscale)
+                == "1 of 2 machines online")
+        #expect(OverlayStatusCopy.peerCount([], kind: .tailscale) == "No other machines yet")
+        #expect(OverlayStatusCopy.shortPeerCount([online, offline], kind: .tailscale) == "1 of 2 online")
+        #expect(OverlayStatusCopy.shortPeerCount([online, unknown], kind: .easytier) == "2 peers")
+        #expect(OverlayStatusCopy.shortPeerCount([root], kind: .zerotier) == nil)
         #expect(OverlayStatusCopy.peerCount([online, root], kind: .zerotier) == "1 of 1 peer online")
         #expect(OverlayStatusCopy.peerCount([root], kind: .zerotier) == "No peers yet")
         #expect(OverlayStatusCopy.peerCount([online, unknown], kind: .easytier) == "2 peers")
