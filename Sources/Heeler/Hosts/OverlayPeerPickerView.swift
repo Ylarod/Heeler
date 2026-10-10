@@ -7,6 +7,8 @@ import SwiftUI
 struct OverlayPeerPickerView: View {
     let network: OverlayNetwork
     let target: OverlayPeerTarget
+    /// The address the form already holds; its peer is checked.
+    let chosenAddress: String
     /// Hosts that may already reach a peer, which is then tagged Host.
     let hosts: [Host]
     let onPick: (OverlayPeerCandidate, OverlayPeerCandidate.AddressStyle) -> Void
@@ -19,12 +21,14 @@ struct OverlayPeerPickerView: View {
     init(
         network: OverlayNetwork,
         target: OverlayPeerTarget,
+        chosenAddress: String = "",
         model: OverlayPeerPickerModel,
         hosts: [Host] = [],
         onPick: @escaping (OverlayPeerCandidate, OverlayPeerCandidate.AddressStyle) -> Void
     ) {
         self.network = network
         self.target = target
+        self.chosenAddress = chosenAddress
         self.hosts = hosts
         self.onPick = onPick
         _model = State(initialValue: model)
@@ -44,7 +48,15 @@ struct OverlayPeerPickerView: View {
                     }
                 }
         }
-        .task { await model.load() }
+        .task {
+            await model.load()
+            // Open on the style the form's address already uses.
+            if let chosen = OverlayPeerList.chosen(
+                among: model.candidates(matching: ""), address: chosenAddress),
+               let chosenStyle = OverlayPeerList.style(dialing: chosenAddress, chosen) {
+                style = chosenStyle
+            }
+        }
         // A Try Again still connecting must not outlive the sheet.
         .onDisappear { model.cancel() }
     }
@@ -94,6 +106,8 @@ struct OverlayPeerPickerView: View {
                     Text(query.isEmpty ? "No peers with an address" : "No matching peers")
                         .foregroundStyle(.secondary)
                 } else {
+                    let chosen = OverlayPeerList.chosen(
+                        among: model.candidates(matching: ""), address: chosenAddress)
                     ForEach(candidates) { candidate in
                         Button {
                             onPick(candidate, style)
@@ -102,7 +116,8 @@ struct OverlayPeerPickerView: View {
                             OverlayPeerChoiceRow(
                                 candidate: candidate, style: style,
                                 isHost: OverlayPeerList.host(
-                                    for: candidate, networkID: network.id, among: hosts) != nil)
+                                    for: candidate, networkID: network.id, among: hosts) != nil,
+                                isChosen: candidate.id == chosen?.id)
                         }
                         .buttonStyle(.plain)
                     }
@@ -179,6 +194,8 @@ private struct OverlayPeerChoiceRow: View {
     let candidate: OverlayPeerCandidate
     let style: OverlayPeerCandidate.AddressStyle
     let isHost: Bool
+    /// The peer the form already holds.
+    let isChosen: Bool
 
     var body: some View {
         let reachability = OverlayStatusCopy.peerReachability(candidate.peer)
@@ -217,10 +234,17 @@ private struct OverlayPeerChoiceRow: View {
                     .padding(.vertical, 3)
                     .background(.fill.tertiary, in: .capsule)
             }
+            if isChosen {
+                Image(systemName: "checkmark")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.tint)
+                    .accessibilityHidden(true)
+            }
         }
         .opacity(candidate.isOffline ? 0.6 : 1)
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isChosen ? .isSelected : [])
         .accessibilityHint(
             isHost
                 ? "A Host already uses this machine"

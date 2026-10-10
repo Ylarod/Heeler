@@ -172,16 +172,31 @@ enum OverlayPeerList {
     static func host(
         for candidate: OverlayPeerCandidate, networkID: UUID, among hosts: [Host]
     ) -> Host? {
-        let addresses = Set(candidate.addresses.map(normalizedAddress))
-        let name = candidate.name.map(normalizedAddress)
-        return hosts.first { host in
-            guard host.overlayNetworkID == networkID else { return false }
-            let firstHop = normalizedAddress(host.usesJumpHost ? host.jumpAddress : host.address)
-            guard !firstHop.isEmpty else { return false }
-            if addresses.contains(firstHop) { return true }
-            guard let name, !name.isEmpty else { return false }
-            return firstHop == name || firstHop.hasPrefix(name + ".")
+        hosts.first { host in
+            host.overlayNetworkID == networkID
+                && style(dialing: host.usesJumpHost ? host.jumpAddress : host.address, candidate) != nil
         }
+    }
+
+    /// The peer a Host form's first hop already dials, so "Choose from …"
+    /// shows it as chosen: the first of `candidates` whose address or
+    /// machine name `address` is.
+    static func chosen(
+        among candidates: [OverlayPeerCandidate], address: String
+    ) -> OverlayPeerCandidate? {
+        candidates.first { style(dialing: address, $0) != nil }
+    }
+
+    /// How `address` reaches `candidate`: one of its addresses, or its
+    /// machine name, bare or as a MagicDNS name; nil when it is neither.
+    static func style(
+        dialing address: String, _ candidate: OverlayPeerCandidate
+    ) -> OverlayPeerCandidate.AddressStyle? {
+        let firstHop = normalizedAddress(address)
+        guard !firstHop.isEmpty else { return nil }
+        if candidate.addresses.map(normalizedAddress).contains(firstHop) { return .ipAddress }
+        guard let name = candidate.name.map(normalizedAddress), !name.isEmpty else { return nil }
+        return firstHop == name || firstHop.hasPrefix(name + ".") ? .machineName : nil
     }
 
     /// Lowercased, without brackets, a prefix length, or a trailing dot.
@@ -213,6 +228,11 @@ extension HostDraft {
     /// is set (ADR 0021).
     var overlayPeerTarget: OverlayPeerTarget {
         usesJumpHost ? .jumpHost : .host
+    }
+
+    /// The address a peer chosen from the Overlay Network fills.
+    var overlayPeerAddress: String {
+        usesJumpHost ? jumpAddress : address
     }
 
     /// Fills the first hop's address from `candidate`, and a blank Host

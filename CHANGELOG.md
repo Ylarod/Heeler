@@ -31,9 +31,10 @@ Entries reference the pull request that made the change.
 - Pick a Host from a Tailscale or EasyTier network instead of typing its
   address: Choose from Tailnet… in the Host form connects the network if
   needed and lists its peers to search, filling in the peer's IP address
-  (or Tailscale machine name) and a blank Host name. Add beside a machine
-  on a network's screen in Settings adds it as a Host too, and machines
-  that already are a Host say so. (#426)
+  (or Tailscale machine name) and a blank Host name; the form then names
+  the chosen machine and the list marks it. Add beside a machine on a
+  network's screen in Settings adds it as a Host too, and machines that
+  already are a Host say so. (#426)
 - A ZeroTier network's screen has Diagnostics: the network's status,
   addresses, routes, roots and members with their paths, and recent events,
   with Copy All for reporting a problem. Its peers are listed as members and

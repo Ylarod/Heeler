@@ -104,6 +104,37 @@ struct OverlayPeerChoiceTests {
         #expect(OverlayPeerList.host(for: candidate, networkID: networkID, among: hosts) == nil)
     }
 
+    /// Add on a machine in Settings fills its address, so the form's
+    /// "Choose from Tailnet…" shows that machine as chosen.
+    @Test func theFormsAddressChoosesItsPeerAndTheStyleItUses() {
+        let other = OverlayPeerCandidate(
+            peer: OverlayPeer(id: "n3", name: "nas", addresses: ["100.64.0.9"]))
+        let devbox = OverlayPeerCandidate(peer: tailscalePeer)
+        let candidates = [other, devbox]
+
+        let prefilled = HostDraft(overlayPeer: devbox, networkID: UUID())
+        #expect(OverlayPeerList.chosen(among: candidates, address: prefilled.overlayPeerAddress)?.id == "n1")
+        #expect(OverlayPeerList.style(dialing: prefilled.overlayPeerAddress, devbox) == .ipAddress)
+
+        for address in ["devbox", "DevBox.tail1234.ts.net."] {
+            #expect(OverlayPeerList.chosen(among: candidates, address: address)?.id == "n1", "\(address)")
+            #expect(OverlayPeerList.style(dialing: address, devbox) == .machineName, "\(address)")
+        }
+        #expect(OverlayPeerList.chosen(among: candidates, address: "[fd7a:115c:a1e0::1]")?.id == "n1")
+        for address in ["", "  ", "100.64.0.8", "devbox2"] {
+            #expect(OverlayPeerList.chosen(among: candidates, address: address) == nil, "\(address)")
+        }
+    }
+
+    @Test func withAJumpHostTheJumpHostIsTheChosenAddress() {
+        var draft = HostDraft()
+        draft.address = "127.0.0.1"
+        draft.jumpAddress = "100.64.0.7"
+        #expect(draft.overlayPeerAddress == "100.64.0.7")
+        #expect(OverlayPeerList.chosen(
+            among: [OverlayPeerCandidate(peer: tailscalePeer)], address: draft.overlayPeerAddress)?.id == "n1")
+    }
+
     @Test func onlinePeersComeFirstThenByNameAndAddresslessOnesAreDropped() {
         let peers = [
             OverlayPeer(id: "a", name: "zeta", addresses: ["100.64.0.1"], isOnline: true),

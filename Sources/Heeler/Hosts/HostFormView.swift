@@ -118,6 +118,7 @@ struct HostFormView: View {
                     OverlayPeerPickerView(
                         network: network,
                         target: draft.overlayPeerTarget,
+                        chosenAddress: draft.overlayPeerAddress,
                         model: OverlayPeerPickerModel(store: overlayNetworks, networkID: network.id),
                         // The Host being edited is not another Host to warn about.
                         hosts: store.hosts.filter { $0.id != editing?.id }
@@ -254,15 +255,44 @@ struct HostFormView: View {
 
     /// Under the network: pick the first hop's address (the Host's, or the
     /// Jump Host's when one is set) from its peers instead of typing it.
+    /// Once that address is a known peer's, as after Add on a machine in
+    /// Settings, the row names the peer like a picker showing its choice.
     /// ZeroTier reports no member addresses; its footer says where they are.
     @ViewBuilder
     private var overlayPeerChooser: some View {
         if let network = selectedOverlayNetwork, OverlayPeerList.offersPeers(network.kind) {
-            Button(OverlayPeerList.chooseTitle(for: network.kind)) {
+            Button {
                 isChoosingOverlayPeer = true
+            } label: {
+                if let chosen = chosenOverlayPeer(on: network) {
+                    // Styled like the Network picker above, not as a tinted button.
+                    LabeledContent {
+                        HStack(spacing: 6) {
+                            Text(chosen.displayName)
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .accessibilityHidden(true)
+                        }
+                    } label: {
+                        // `.primary` would resolve to the button's tint.
+                        Text(network.kind == .tailscale ? "Machine" : "Peer")
+                            .foregroundStyle(Color.primary)
+                    }
+                } else {
+                    Text(OverlayPeerList.chooseTitle(for: network.kind))
+                }
             }
             .accessibilityHint("Lists the peers of \(network.displayName)")
         }
+    }
+
+    /// The peer the first hop already dials, from the network's last report.
+    private func chosenOverlayPeer(on network: OverlayNetwork) -> OverlayPeerCandidate? {
+        let peers = overlayNetworks?.details[network.id]?.peers ?? []
+        return OverlayPeerList.chosen(
+            among: OverlayPeerList.candidates(from: peers), address: draft.overlayPeerAddress)
     }
 
     /// Direct, or one of Settings › Overlay Networks. A Host still naming a
