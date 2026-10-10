@@ -4,6 +4,8 @@ This guide reaches a Mac running herdr through a private ZeroTier Central networ
 
 You need a Heeler build with [PR #426](https://github.com/ZingerLittleBee/Heeler/pull/426). Read [Overlay Networks](overlay-networks.md) first for the shared SSH setup. This guide was checked against Heeler's source and the linked ZeroTier documentation on **2026-10-09**.
 
+**Userspace alternative:** ZeroTier also provides the official [Sockets SDK (libzt)](https://docs.zerotier.com/sockets/), which Heeler uses internally. On the Mac, a libzt-based program can forward ZeroTier TCP connections to `127.0.0.1:22` without creating a system virtual interface or changing system routes or DNS. Installing the SDK alone does not provide this SSH forwarding service: you must supply and maintain the forwarding program, including node identity storage and access control. This guide covers ZeroTier One, not that custom integration. For a userspace setup using an existing daemon and forwarding command, see [Tailscale userspace with Serve](tailscale-userspace.md).
+
 ## Before you start
 
 - You need admin access to the Mac, a Central account that can manage the network, and Heeler on the phone.
