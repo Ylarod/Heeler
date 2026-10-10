@@ -57,6 +57,13 @@ version and keeps only the Swift layer and `CHeelerOverlaySupport`.
   binary was published under, and its Installation Information describes
   rebuilding there and overriding the release with a local checkout of that
   repository in Heeler's Xcode project.
+- A distributed build records the Heeler commit it was archived from
+  (`HeelerSourceRevision`, shown in About › Acknowledgements), and that
+  commit's `Packages/HeelerOverlay/Package.swift` names the natives release.
+  The marketing version alone cannot: an interim TestFlight build keeps the
+  version of an earlier tag. A local archive records the commit only when it
+  is pushed and nothing but the build number is uncommitted
+  (`scripts/source-revision.sh`).
 
 ## Why not NetworkExtension
 

@@ -784,3 +784,31 @@ private struct PackageResolved: Decodable {
 
     let pins: [Pin]
 }
+
+/// The build's source commit, which ties a distributed binary to the
+/// corresponding source its LGPL and MPL components require.
+@Suite("Build source revision")
+struct BuildSourceRevisionTests {
+    private static let commit = "f5f35846c0a1b2d3e4f5a6b7c8d9e0f1a2b3c4d5"
+
+    @Test func fullCommitIdLinksToThatTree() throws {
+        let revision = try #require(BuildSourceRevision(
+            infoDictionary: [BuildSourceRevision.infoKey: Self.commit.uppercased()]))
+
+        #expect(revision.commit == Self.commit)
+        #expect(revision.shortCommit == "f5f35846")
+        #expect(revision.sourceURL?.absoluteString
+            == "https://github.com/ZingerLittleBee/Heeler/tree/\(Self.commit)")
+    }
+
+    /// Debug and test builds leave the setting empty; a build that never
+    /// expanded it, or a malformed value, must not name a wrong source.
+    @Test(arguments: [
+        nil, "", "$(HEELER_SOURCE_REVISION)", "f5f35846",
+        "f5f35846c0a1b2d3e4f5a6b7c8d9e0f1a2b3c4dg", Self.commit + "-dirty",
+    ])
+    func anythingButAFullCommitIdShowsNothing(value: String?) {
+        let info: [String: Any] = value.map { [BuildSourceRevision.infoKey: $0] } ?? [:]
+        #expect(BuildSourceRevision(infoDictionary: info) == nil)
+    }
+}
