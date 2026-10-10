@@ -114,6 +114,12 @@ targets:
         # In-app overlay nodes (ADR 0021) find peers on the same LAN for direct
         # paths; iOS asks before the first local-network packet.
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby."
+      configs:
+        Release:
+          # Nothing loads symbols from the app executable, so its export
+          # trie is dead weight: 1.56 MB, mostly CEasyTier's Rust symbols.
+          # Release only; Debug's test host and debug dylib need it.
+          LD_EXPORT_SYMBOLS: NO
     dependencies:
       - package: HeelerSSH
       - package: HeelerOverlay
