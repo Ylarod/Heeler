@@ -96,10 +96,12 @@ targets:
         CURRENT_PROJECT_VERSION: "25"
         # Scan to Pair (#62) reads the Pairing Code QR from the computer screen.
         INFOPLIST_KEY_NSCameraUsageDescription: "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything."
-        # Only exempt encryption is used (standard SSH algorithms via the
-        # HeelerSSH package's libssh2/OpenSSL, OS-provided CryptoKit);
-        # declaring it here keeps every TestFlight upload from stalling on the
-        # Missing Compliance prompt.
+        # Only exempt encryption is used: standard, published algorithms in
+        # SSH (the HeelerSSH package's libssh2/OpenSSL), OS-provided
+        # CryptoKit, and the overlay networks' protocols (WireGuard in
+        # Tailscale, ZeroTier's, and EasyTier's, ADR 0021). Declaring it here
+        # keeps every TestFlight upload from stalling on the Missing
+        # Compliance prompt.
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         # iPhone and iPad. App Store Connect derives device support from the build.
         TARGETED_DEVICE_FAMILY: "1,2"

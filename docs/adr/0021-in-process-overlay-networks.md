@@ -277,13 +277,25 @@ the Host chosen by the user, never a fallback after a direct dial fails.
 ## Licensing
 
 - libtailscale and the tailscale.com modules are BSD-3-Clause.
-- libzt and ZeroTierOne were released under the Business Source License
-  1.1, whose change date converted them to Apache-2.0 on 2026-01-01.
+- libzt was released under the Business Source License 1.1, whose change
+  date converted it to Apache-2.0 on 2026-01-01.
+- ZeroTierOne 1.16.2's core (`node/`, `osdep/`) is MPL-2.0; ZeroTier
+  relicensed it from the Business Source License in 1.16.0. Heeler's libzt
+  patches modify MPL-covered files in `node/`, so the natives release tag is
+  their Source Code Form. Nothing from ZeroTierOne's source-available
+  `nonfree/` directory is compiled.
 - EasyTier is LGPL-3.0 and is linked statically. Heeler is Apache-2.0 open
   source and can be rebuilt from its repository, which satisfies the
   relinking obligation of LGPLv3 §4(d)(0); the app ships the LGPL and GPL
-  texts. **Risk:** whether LGPLv3's Installation Information requirement is
-  compatible with App Store distribution terms needs legal review before an
-  App Store release that includes EasyTier.
+  texts. **Risk:** LGPLv3 §4 requires the terms of the combined work not to
+  restrict modifying the library or reverse engineering to debug such
+  modifications, and GPLv3 §10 forbids further restrictions. Whether the App
+  Store's terms are such restrictions is unsettled: the FSF argued so in
+  2010, and VLC was pulled in 2011 after a contributor's complaint. Any
+  EasyTier contributor could raise it, and the project has no CLA. The
+  Installation Information requirement (§4(e)) is likely not the issue: it
+  applies only when the code is conveyed with the transfer of a User
+  Product, and App Store distribution transfers no device. This needs legal
+  review before an App Store release that includes EasyTier.
 - The package's notices inventory records the audited versions; the notice
   texts are those of the heeler-overlay-natives release Heeler depends on.

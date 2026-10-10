@@ -198,7 +198,7 @@
       "displayName": "Heeler modifications to libzt and ZeroTier One",
       "version": "7e5d0f99a2de81c45faa28e44289bcd19d933bf2",
       "source": "https://github.com/Ylarod/heeler-overlay-natives, patches/libzt and native/zerotier/heeler_zerotier.{cpp,h}",
-      "spdx": "Apache-2.0",
+      "spdx": "Apache-2.0 AND MIT AND MPL-2.0",
       "notice": "ZeroTier-Heeler-modifications.txt"
     },
     {
