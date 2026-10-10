@@ -55,4 +55,4 @@ Complete [Verify the connection](overlay-networks.md#verify-the-connection), inc
 
 **Sign Out** in Heeler signs out only Heeler's node, never the Mac. A Host that is reconnecting can race with it, so to revoke access, remove Heeler's device in the admin console and retire its auth key, if any. Heeler stops its node after the Background Grace Period and rebuilds it when you return. Notifications use the Push Relay and do not depend on this connection.
 
-Official documentation and Heeler's form labels were checked on **2026-10-09**. See the [shared verification scope](overlay-networks.md#agent-handoff-and-evidence).
+Official documentation and Heeler's form labels were checked on **2026-10-09**. See the [verification scope](../agents/overlay-network-guides.md#verification-scope).

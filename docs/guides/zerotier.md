@@ -2,16 +2,16 @@
 
 This guide reaches a Mac running herdr through a private ZeroTier Central network. The Mac runs ZeroTier One, which adds a virtual network interface with the network's managed addresses and routes. Heeler runs its own ZeroTier node, so the phone needs no ZeroTier app or VPN.
 
-You need a Heeler build with [PR #426](https://github.com/ZingerLittleBee/Heeler/pull/426). Read [Overlay Networks](overlay-networks.md) first for the shared SSH setup. This guide was checked against Heeler's source and the linked ZeroTier documentation on **2026-10-09**.
+You need a Heeler build with [PR #426](https://github.com/ZingerLittleBee/Heeler/pull/426). Read [Overlay Networks](overlay-networks.md) first for the shared SSH setup.
 
-**Userspace alternative:** ZeroTier also provides the official [Sockets SDK (libzt)](https://docs.zerotier.com/sockets/), which Heeler uses internally. On the Mac, a libzt-based program can forward ZeroTier TCP connections to `127.0.0.1:22` without creating a system virtual interface or changing system routes or DNS. Installing the SDK alone does not provide this SSH forwarding service: you must supply and maintain the forwarding program, including node identity storage and access control. This guide covers ZeroTier One, not that custom integration. For a userspace setup using an existing daemon and forwarding command, see [Tailscale userspace with Serve](tailscale-userspace.md).
+**Userspace alternative:** ZeroTier's official [Sockets SDK (libzt)](https://docs.zerotier.com/sockets/), also used inside Heeler, supports app-level networking without changing system interfaces, routes, or DNS. Using it for SSH on the Mac requires your own forwarding program; installing the SDK alone is not enough.
 
 ## Before you start
 
 - You need admin access to the Mac, a Central account that can manage the network, and Heeler on the phone.
 - Complete [Prepare the Host](overlay-networks.md#prepare-the-host): Remote Login, herdr, a Device Key, and the Mac's host-key fingerprint.
 - Keep the Mac awake and Heeler in the foreground during setup. Both need internet access to ZeroTier's roots and the controller.
-- Use a private network with manual authorization and an IPv4 range that does not overlap the Mac's LAN. Leave custom Planet and Moons empty.
+- Use a private network with manual authorization and an IPv4 range that does not overlap the Mac's LAN or existing VPN routes. Leave custom Planet and Moons empty.
 
 A node ID names a device and a network ID names the network. Neither is the address SSH uses.
 
@@ -19,7 +19,7 @@ A node ID names a device and a network ID names the network. Neither is the addr
 | --- | --- | --- |
 | `ZT_NETWORK_ID` | Central's network page, 16 hex digits | Joining on both devices |
 | Mac node ID | `zerotier-cli info`, 10 hex digits | Authorizing the Mac |
-| Heeler node ID | The network's status card in Heeler, 10 hex digits | Authorizing Heeler |
+| Heeler node ID | **This device** on Heeler's network status card, 10 hex digits | Authorizing Heeler |
 | Mac managed IP | Central's member list or `zerotier-cli listnetworks` | Host address, without the `/prefix` |
 
 ## 1. Central: create a private network
@@ -31,7 +31,7 @@ A node ID names a device and a network ID names the network. Neither is the addr
 | New Central | Select your organization's default network, or **Networks > New Network**. | In **Member Devices**, find its node ID and choose **Actions > Authorize**. |
 | Legacy Central | **Networks > Create A Network**, then open it. | In **Members**, find its **Address** and check **Auth?**. |
 
-Keep the network private (Legacy Central: **Access Control > Private**) and keep a managed IPv4 pool with its matching route. Copy the network ID. See ZeroTier's [network guide](https://docs.zerotier.com/networks/) for each console's settings.
+Keep the network private (Legacy Central: **Access Control > Private**) and keep a managed IPv4 pool with its matching route. Copy the 16-digit network ID generated when the network was created; use the same ID on the Mac and in Heeler. See ZeroTier's [network guide](https://docs.zerotier.com/networks/) for each console's settings.
 
 ## 2. Mac: install ZeroTier One and join
 
@@ -56,10 +56,10 @@ In Central, authorize the member with the Mac's node ID and give it a name. Run 
 
 1. In Heeler, open **Settings > Overlay Networks > Add Network** and choose **ZeroTier**.
 2. Enter a **Name** and paste `ZT_NETWORK_ID` into **Network ID**. Leave **Advanced** (Moons and Planet) at its defaults.
-3. Tap **Add and Connect**. Heeler creates its node ID on this first connect, then shows **Waiting for authorization** with the node ID on the status card. On ZeroTier's default roots, the card also offers **Open ZeroTier Central**.
+3. Tap **Add and Connect**, then copy the node ID under **This device** on the status card. While **Waiting for authorization**, tap **Open ZeroTier Central** (available with the default roots).
 4. In Central, authorize the member with Heeler's node ID. Authorizing the Mac does not authorize Heeler. Heeler connects once it is authorized; if the attempt has already ended, turn the network's switch back on.
 
-Heeler uses one ZeroTier identity for all its ZeroTier networks, separate from any other ZeroTier app on the phone, and keeps its private key in the Keychain. Later ZeroTier forms show this node ID under **This Device**.
+Heeler uses one ZeroTier identity for all its ZeroTier networks, separate from any other ZeroTier app on the phone, and keeps its private key in the Keychain.
 
 **Checkpoint:** Heeler shows **Connected** with its own address, and Central lists both devices as authorized. The next step uses the Mac's address, not Heeler's.
 
@@ -102,8 +102,6 @@ Known limitation: a new Heeler process first contacts ZeroTier's official roots 
 
 Custom roots join one root set shared by every ZeroTier network in Heeler, so a per-network Planet does not keep its roots private. See [ADR 0021](../adr/0021-in-process-overlay-networks.md).
 
-Heeler's live check used a controller-less IPv6 ad-hoc network for SSH, terminal traffic, and background recovery. It did not cover Central enrollment, private controllers, custom Planet or Moons, or overlapping IPv4.
-
 ## Stop using the network
 
 Turning off the network's switch disconnects it but keeps its settings and node ID; a Host can still connect it again. To retire it, move or remove its Hosts first, then delete the network. Deleting the last ZeroTier network also deletes Heeler's node ID.
@@ -117,8 +115,8 @@ sudo zerotier-cli listnetworks
 
 Disconnecting or deleting does not revoke access. Deauthorize the Mac or Heeler member in Central for that. Leave other networks and members untouched.
 
-## Sources and maintenance
+## References
 
 ZeroTier documentation checked on **2026-10-09**: [Quickstart](https://docs.zerotier.com/quickstart/), [Networks](https://docs.zerotier.com/networks/), [Create a Network](https://docs.zerotier.com/start/), [CLI](https://docs.zerotier.com/cli/), [macOS](https://docs.zerotier.com/macos/), and [Remote Desktop / SSH](https://docs.zerotier.com/remotedesktop/).
 
-Heeler behavior comes from [the network form](../../Sources/Heeler/Settings/OverlayNetworkFormView.swift), [the network screen](../../Sources/Heeler/Settings/OverlayNetworkDetailView.swift), [the Host form](../../Sources/Heeler/Hosts/HostFormView.swift), [ZeroTierNetworkNode](../../Packages/HeelerOverlay/Sources/HeelerOverlay/ZeroTierNetworkNode.swift), and [ZeroTierRuntime](../../Packages/HeelerOverlay/Sources/HeelerOverlay/ZeroTierRuntime.swift). Recheck the startup limitation when they change.
+For test coverage and source references, see [guide maintenance](../agents/overlay-network-guides.md).

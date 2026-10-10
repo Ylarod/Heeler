@@ -202,11 +202,7 @@ On the Mac, press **Control-C** in the peer and web console Terminals, then run 
 
 To run EasyTier at startup, follow the [macOS service guide](https://github.com/EasyTier/easytier.github.io/blob/main/en/guide/network/install-as-a-macos-service.md) with your verified settings. TUN mode and system daemons are separate choices from this guide's no-TUN setup.
 
-## Verification scope and sources
-
-On Simulators, candidate `bb266061` passed a Network entry against the official v2.6.4 no-TUN peer: SSH, Host checks, herdr inventory, terminal input and output, background recovery, and peer restart. A local v2.6.4 Config Server with encryption required passed registration, assignment, SSH and terminal traffic, and continued use of an assigned network while the server was stopped. Candidate `eb52bf0c` added peer-to-Host onboarding on iPhone and iPad Simulators.
-
-Not covered: physical phones, other internet, NAT, and relay setups, the eight-network limit, overlapping assignments, and WSS certificate failures. The self-hosting command was checked against v2.6.4 help and source; the live Config Server test used an isolated container. Repeat the checks on your own devices and network.
+## References
 
 EasyTier sources checked on 2026-10-09:
 
@@ -215,4 +211,4 @@ EasyTier sources checked on 2026-10-09:
 - [Web console](https://github.com/EasyTier/easytier.github.io/blob/main/en/guide/network/web-console.md) and [hosted-service notice](https://github.com/EasyTier/easytier.github.io/blob/main/.vitepress/components/WebRedirect.vue).
 - [TCP proxy](https://github.com/EasyTier/EasyTier/blob/v2.6.4/easytier/src/gateway/tcp_proxy.rs#L765), [configuration listener](https://github.com/EasyTier/EasyTier/blob/v2.6.4/easytier-web/src/main.rs#L206), and [Noise transport](https://github.com/EasyTier/EasyTier/blob/v2.6.4/easytier/src/web_client/security.rs).
 
-Heeler's fields, limits, and routing come from [the network form](../../Sources/Heeler/Settings/OverlayNetworkFormView.swift), [the configuration URL contract](../../Packages/HeelerOverlay/Sources/HeelerOverlay/OverlayNode.swift), and [the overlay package documentation](../../Packages/HeelerOverlay/README.md).
+For test coverage and source references, see [guide maintenance](../agents/overlay-network-guides.md).

@@ -31,7 +31,7 @@ For a Linux or Windows Host, install the provider's client from its own document
 | <a href="images/overlay-networks/easytier-manual-form.png"><img src="images/overlay-networks/easytier-manual-form.png" width="260" alt="EasyTier Network form with network name, secret, and peers"></a> | <a href="images/overlay-networks/easytier-config-server-form.png"><img src="images/overlay-networks/easytier-config-server-form.png" width="260" alt="EasyTier Config Server form with a server URL and this device's Machine ID"></a> |
 | Match the Mac's network name and secret and add its peer endpoint. [Network setup](easytier.md#3-add-the-network-in-heeler) | Enter the operator's full server URL and assign a network to the Machine ID. [Config Server setup](easytier.md#2-register-heelers-device) |
 
-The values shown are examples. See [Screenshots and maintenance](#screenshots-and-maintenance) for how they were captured.
+The values shown are examples.
 
 ## Prepare the Host
 
@@ -112,22 +112,4 @@ Opening an Agent's live terminal can take over its existing attachment, so use a
 | SSH works, herdr fails | Read the failing check: herdr on PATH, session name, protocol version, or SSH stream-local forwarding |
 | Network reconnects after you switch it off | A Host asked for it. Move or remove its Hosts before deleting the network |
 
-## Agent handoff and evidence
-
-An agent continuing setup needs the tutorial and mode, Host OS and client version, Heeler build, SSH username and port, network identifier, Host overlay IP, herdr session, and the last passing check. Keep passwords, auth keys, network secrets, private keys, and token-bearing URLs out of the handoff; share sanitized errors only.
-
-Inspect an existing installation before starting another daemon, and reuse its network and account instead of creating a replacement when enrollment stalls. Complete browser sign-ins and OS prompts in their own UI, where the operator can see the account and the requested access.
-
-These tutorials were written on **2026-10-09** against PR #426 at `eb52bf0c`. The scenarios below ran on `bb266061`; `eb52bf0c` also passed EasyTier peer-to-Host onboarding on iPhone and iPad Simulators. Not every scenario was rerun on the later build, so repeat the checks on your deployment.
-
-| Route | Verified live | Still needs deployment-specific checks |
-| --- | --- | --- |
-| Tailscale | Userspace daemon on a Mac, real tailnet, Simulator SSH, herdr, terminal, background recovery | Standard macOS app, physical phone on cellular |
-| ZeroTier | Controller-less IPv6 ad-hoc network, Simulator SSH, herdr, terminal, recovery | Central enrollment, custom Planet and Moons, private controller, overlapping IPv4 |
-| EasyTier | Network and encrypted Config Server, Simulator SSH, herdr, terminal, peer restart | Physical phone, eight-network limit, overlapping assignments, WSS failures |
-
-## Screenshots and maintenance
-
-The screenshots are unedited Add Network forms from build `137a4aa3`, captured on **2026-10-10** on an iPhone 17 Pro Simulator (iOS 26.5) in dark appearance at the default text size. Names, addresses, and the server URL are examples. Credentials are blank, and the Machine ID belongs to a disposable Simulator.
-
-The tables list every required field, so the steps work without the images. When labels or behavior change, update the tutorial and its screenshot together. For implementation work, see [the overlay architecture](../adr/0021-in-process-overlay-networks.md) and [the source map](../agents/navigation.md).
+For test coverage, screenshot provenance, and agent handoff, see [guide maintenance](../agents/overlay-network-guides.md).
