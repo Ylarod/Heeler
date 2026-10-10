@@ -53,28 +53,37 @@ you choose, as described below.
 
 Overlay Networks are optional. When you add a Tailscale, ZeroTier, or
 EasyTier network, Heeler runs that network's software inside the app to reach
-your Hosts. Heeler's developer operates none of these services. The provider
-or server you choose operates them under its own privacy terms. SSH still
-encrypts everything between your device and your Host, so these services and
-any relays see encrypted packets and network metadata, never terminal content
-or SSH credentials.
+your Hosts. Heeler's developer operates none of these services. The
+providers, the servers you choose, and the third-party servers named below
+handle this data under their own privacy terms. SSH still encrypts everything
+between your device and your Host, so these services and any relays see
+encrypted packets and network metadata, never terminal content or SSH
+credentials.
 
 - **Tailscale.** Heeler signs in to the coordination server (Tailscale's by
   default, or one you enter, such as Headscale) and registers this device
-  with its device name, keys, and network addresses. Traffic may pass through
-  Tailscale's DERP relays when no direct path works. Tailscale's log upload
+  with its device name, keys, and network addresses. While connected, the
+  device keeps a connection to a nearby DERP relay (Tailscale's, or those
+  your server lists), which learns its IP address. Traffic passes through a
+  relay until a direct path works, or when none does. Tailscale's log upload
   is turned off.
-- **ZeroTier.** Heeler contacts ZeroTier's root servers, including for a
-  network with custom roots, and the network's controller, such as ZeroTier
-  Central. They learn the device's ZeroTier node ID, the networks it joins,
-  and its public IP address and port. To allow direct connections, the
-  ZeroTier node may ask your local router to open a port mapping (UPnP or
-  NAT-PMP).
+- **ZeroTier.** Heeler contacts ZeroTier's root servers (including for a
+  network with custom roots), any custom roots or moons a network names, and
+  the network's controller, such as ZeroTier Central. They learn the device's
+  ZeroTier node ID, the networks it joins, and its public IP address and
+  port. One ZeroTier node serves every ZeroTier network in Heeler, so each
+  set of roots may also learn which ZeroTier addresses the device looks up on
+  the others. To allow direct connections, the node may ask your local router
+  to open a port mapping (UPnP or NAT-PMP).
 - **EasyTier.** Heeler connects to the peers you enter or, for a Config
-  Server network, to that server. A Config Server knows the network secrets
-  and receives this device's machine ID, device name, and the state of its
-  networks; entering only a user name uses EasyTier's public server at
-  `config-server.easytier.cn`. Peers learn this device's IP addresses.
+  Server network, to that server and the peers it assigns. A Config Server
+  knows the network secrets and receives this device's machine ID, device
+  name, and the state of its networks; entering only a user name uses
+  EasyTier's public server at `config-server.easytier.cn`. Members of the
+  network learn this device's name and IP addresses. To find direct paths,
+  EasyTier also queries public STUN servers, EasyTier's own and third-party
+  ones such as Xiaomi's, Bilibili's, Cloudflare's, and Twilio's, which learn
+  the device's public IP address.
 
 Deleting a network or signing out of Tailscale in Heeler does not remove the
 device from the provider. Remove it in the provider's admin console, or ask
