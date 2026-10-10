@@ -116,8 +116,8 @@ targets:
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Heeler uses your local network to connect directly to Hosts on your Tailscale, ZeroTier, or EasyTier network when they are nearby."
       configs:
         Release:
-          # Nothing loads symbols from the app executable, so its export
-          # trie is dead weight: 1.56 MB, mostly CEasyTier's Rust symbols.
+          # Nothing loads symbols from the app executable, so its 1.52 MB
+          # export trie, mostly CEasyTier's Rust symbols, is dead weight.
           # Release only; Debug's test host and debug dylib need it.
           LD_EXPORT_SYMBOLS: NO
     dependencies:
