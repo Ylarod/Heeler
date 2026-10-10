@@ -1,13 +1,13 @@
 {
-  "originHash" : "18f137d7eb36660cf723cc5696bf09daf0ed0439fccd1f9e024fda5acf5b63b8",
+  "originHash" : "da26748f3db2f453ab50795f5d462761d663886d3eb8d151ecfe365a1f1437ad",
   "pins" : [
     {
       "identity" : "heeler-overlay-natives",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Ylarod/heeler-overlay-natives.git",
       "state" : {
-        "revision" : "070bfa2ca443b854415851934962b4228698591c",
-        "version" : "1.0.1"
+        "revision" : "1c0dfbf53c893be376b24457a0f9542a9ffab869",
+        "version" : "1.0.2"
       }
     },
     {

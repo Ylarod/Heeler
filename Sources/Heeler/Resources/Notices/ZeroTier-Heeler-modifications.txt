@@ -38,3 +38,9 @@ commit plus these patches). prometheus-cpp-lite (MIT) is modified by patch
   Files changed:
     ext/ZeroTierOne/ext/prometheus-cpp-lite-1.0/core/include/prometheus/save_to_file.h
 
+0004-rebind-defunct-udp-sockets.patch (SHA-256 50e352bb77487dfd0e4d4f5f229822014f4f93e5c700132be183e7e6de742365)
+  Heeler: rebind the UDP sockets that iOS defuncts while the app is suspended.
+  Files changed:
+    ext/ZeroTierOne/osdep/Phy.hpp
+    src/NodeService.cpp
+
